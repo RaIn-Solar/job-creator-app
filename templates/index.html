@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Clients{% endblock %}
+{% block content %}
+<h1>Client profiles</h1>
+<div class="card">
+  {% if clients %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Contact</th>
+        <th>Phone</th>
+        <th>City</th>
+        <th>Utility</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in clients %}
+      <tr>
+        <td>{{ c["name"] }}</td>
+        <td>{{ c["contact_name"] }}</td>
+        <td>{{ c["phone"] }}</td>
+        <td>{{ c["city"] }}{% if c["state"] %}, {{ c["state"] }}{% endif %}</td>
+        <td>{{ c["utility_company"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No clients yet.</p>
+  {% endif %}
+</div>
+<p class="muted">Piece 1 checkpoint: if you can see this page with the two
+sample clients, the skeleton works. Piece 2 adds the “New client” form and
+client profile pages.</p>
+{% endblock %}
