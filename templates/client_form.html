@@ -5,44 +5,37 @@
 <form method="post" class="card">
   <div class="form-grid">
     <div class="field wide">
-      <label for="name">Client / job site name *</label>
+      <label for="name">Client name *</label>
       <input id="name" name="name" value="{{ values.get('name', '') }}" required>
     </div>
     <div class="field">
-      <label for="contact_name">Contact name</label>
-      <input id="contact_name" name="contact_name" value="{{ values.get('contact_name', '') }}">
+      <label for="phone">Phone number *</label>
+      <input id="phone" name="phone" value="{{ values.get('phone', '') }}" required>
     </div>
     <div class="field">
-      <label for="phone">Phone</label>
-      <input id="phone" name="phone" value="{{ values.get('phone', '') }}">
-    </div>
-    <div class="field">
-      <label for="email">Email</label>
+      <label for="email">Email address (optional)</label>
       <input id="email" name="email" type="email" value="{{ values.get('email', '') }}">
     </div>
     <div class="field wide">
-      <label for="street">Street address</label>
-      <input id="street" name="street" value="{{ values.get('street', '') }}">
+      <label for="street_address">Street address *</label>
+      <input id="street_address" name="street_address"
+             placeholder="123 Main St, Dallas, TX 75201"
+             value="{{ values.get('street_address', '') }}" required>
     </div>
-    <div class="field">
-      <label for="city">City</label>
-      <input id="city" name="city" value="{{ values.get('city', '') }}">
+    <div class="field wide">
+      <label for="billing_address">Billing address *</label>
+      <input id="billing_address" name="billing_address"
+             value="{{ values.get('billing_address', '') }}" required>
+      <label style="font-weight:normal; display:flex; align-items:center; gap:0.35rem;">
+        <input type="checkbox" id="same_as_street" style="width:auto;">
+        Same as street address
+      </label>
     </div>
-    <div class="field">
-      <label for="state">State</label>
-      <input id="state" name="state" value="{{ values.get('state', 'TX') }}">
-    </div>
-    <div class="field">
-      <label for="zip">ZIP</label>
-      <input id="zip" name="zip" value="{{ values.get('zip', '') }}">
-    </div>
-    <div class="field">
-      <label for="utility_company">Utility company</label>
-      <input id="utility_company" name="utility_company" value="{{ values.get('utility_company', '') }}">
-    </div>
-    <div class="field">
-      <label for="hoa_name">HOA name (leave blank if none)</label>
-      <input id="hoa_name" name="hoa_name" value="{{ values.get('hoa_name', '') }}">
+    <div class="field wide">
+      <label for="referral_source">Referral source (optional)</label>
+      <input id="referral_source" name="referral_source"
+             placeholder="Google, door hanger, referred by the Smith install…"
+             value="{{ values.get('referral_source', '') }}">
     </div>
     <div class="field wide">
       <label for="notes">Notes (gate codes, pets, preferences…)</label>
@@ -54,4 +47,20 @@
     <a href="{{ url_for('home') }}" class="btn btn-secondary">Cancel</a>
   </div>
 </form>
+<script>
+  // "Same as street address": mirror the street address into billing while checked.
+  const street = document.getElementById("street_address");
+  const billing = document.getElementById("billing_address");
+  const same = document.getElementById("same_as_street");
+  function syncBilling() {
+    if (same.checked) {
+      billing.value = street.value;
+      billing.readOnly = true;
+    } else {
+      billing.readOnly = false;
+    }
+  }
+  same.addEventListener("change", syncBilling);
+  street.addEventListener("input", syncBilling);
+</script>
 {% endblock %}

@@ -11,20 +11,18 @@
     <thead>
       <tr>
         <th>Name</th>
-        <th>Contact</th>
         <th>Phone</th>
-        <th>City</th>
-        <th>Utility</th>
+        <th>Street address</th>
+        <th>Referral source</th>
       </tr>
     </thead>
     <tbody>
       {% for c in clients %}
       <tr>
         <td><a href="{{ url_for('client_detail', client_id=c['id']) }}">{{ c["name"] }}</a></td>
-        <td>{{ c["contact_name"] }}</td>
         <td>{{ c["phone"] }}</td>
-        <td>{{ c["city"] }}{% if c["state"] %}, {{ c["state"] }}{% endif %}</td>
-        <td>{{ c["utility_company"] }}</td>
+        <td>{{ c["street_address"] }}</td>
+        <td>{{ c["referral_source"] }}</td>
       </tr>
       {% endfor %}
     </tbody>

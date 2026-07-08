@@ -8,17 +8,18 @@
 
 <div class="card">
   <dl class="profile">
-    <dt>Contact</dt><dd>{{ client["contact_name"] or "—" }}</dd>
     <dt>Phone</dt><dd>{{ client["phone"] or "—" }}</dd>
     <dt>Email</dt><dd>{{ client["email"] or "—" }}</dd>
-    <dt>Address</dt>
+    <dt>Street address</dt><dd>{{ client["street_address"] or "—" }}</dd>
+    <dt>Billing address</dt>
     <dd>
-      {%- if client["street"] or client["city"] -%}
-        {{ client["street"] }}{% if client["street"] and client["city"] %}, {% endif %}{{ client["city"] }}{% if client["state"] %}, {{ client["state"] }}{% endif %} {{ client["zip"] }}
-      {%- else -%}—{%- endif -%}
+      {%- if client["billing_address"] == client["street_address"] and client["billing_address"] -%}
+        Same as street address
+      {%- else -%}
+        {{ client["billing_address"] or "—" }}
+      {%- endif -%}
     </dd>
-    <dt>Utility company</dt><dd>{{ client["utility_company"] or "—" }}</dd>
-    <dt>HOA</dt><dd>{{ client["hoa_name"] or "No HOA on file" }}</dd>
+    <dt>Referral source</dt><dd>{{ client["referral_source"] or "—" }}</dd>
     <dt>Notes</dt><dd>{{ client["notes"] or "—" }}</dd>
     <dt>Client since</dt><dd>{{ client["created_at"] }}</dd>
   </dl>

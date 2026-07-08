@@ -19,9 +19,17 @@ DATABASE = BASE_DIR / "job_creator.db"
 
 # The columns a user can fill in on the client form, in display order.
 CLIENT_FIELDS = [
-    "name", "contact_name", "phone", "email", "street", "city",
-    "state", "zip", "utility_company", "hoa_name", "notes",
+    "name", "phone", "street_address", "billing_address",
+    "email", "referral_source", "notes",
 ]
+
+# Fields that must not be blank, with the labels shown in error messages.
+REQUIRED_CLIENT_FIELDS = {
+    "name": "Client name",
+    "phone": "Phone number",
+    "street_address": "Street address",
+    "billing_address": "Billing address",
+}
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -44,20 +52,36 @@ def close_db(exc):
         db.close()
 
 
+def ensure_columns(db, table, columns):
+    """Auto-upgrade an existing database: add any columns the table is
+    missing. Lets the schema evolve piece by piece without anyone having
+    to delete their job_creator.db."""
+    existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+    for column in columns:
+        if column not in existing:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT DEFAULT ''")
+
+
 def init_db():
-    """Create tables if missing and add two sample clients the first time,
-    so the home page has something to show before you enter real data."""
+    """Create tables if missing, upgrade older databases, and add two
+    sample clients the first time so the home page isn't empty."""
     db = sqlite3.connect(DATABASE)
     db.executescript((BASE_DIR / "schema.sql").read_text())
+    ensure_columns(db, "clients", CLIENT_FIELDS)
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
         db.executemany(
-            "INSERT INTO clients (name, contact_name, phone, city, state, utility_company)"
+            "INSERT INTO clients"
+            " (name, phone, street_address, billing_address, email, referral_source)"
             " VALUES (?, ?, ?, ?, ?, ?)",
             [
-                ("Johnson Residence (sample)", "Mark Johnson", "214-555-0142",
-                 "Dallas", "TX", "Oncor"),
-                ("Rivera Residence (sample)", "Ana Rivera", "713-555-0189",
-                 "Houston", "TX", "CenterPoint Energy"),
+                ("Johnson Residence (sample)", "214-555-0142",
+                 "4512 Bluebonnet Ln, Dallas, TX 75214",
+                 "4512 Bluebonnet Ln, Dallas, TX 75214",
+                 "mjohnson@example.com", "Google search"),
+                ("Rivera Residence (sample)", "713-555-0189",
+                 "902 Heights Blvd, Houston, TX 77008",
+                 "PO Box 2210, Houston, TX 77252",
+                 "", "Neighbor referral — the Ortiz install"),
             ],
         )
         db.commit()
@@ -76,8 +100,10 @@ def home():
 def new_client():
     if request.method == "POST":
         values = {f: request.form.get(f, "").strip() for f in CLIENT_FIELDS}
-        if not values["name"]:
-            flash("Client name is required.", "error")
+        missing = [label for field, label in REQUIRED_CLIENT_FIELDS.items()
+                   if not values[field]]
+        if missing:
+            flash(f"Required: {', '.join(missing)}.", "error")
             return render_template("client_form.html", values=values), 400
         db = get_db()
         cur = db.execute(
