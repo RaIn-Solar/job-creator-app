@@ -2,6 +2,7 @@
 
 Piece 1: Flask skeleton backed by SQLite; home page lists client profiles.
 Piece 2: "New client" form and individual client profile pages.
+Piece 3: job profiles stored under each client.
 
 Run it:
     python -m pip install -r requirements.txt
@@ -30,6 +31,22 @@ REQUIRED_CLIENT_FIELDS = {
     "street_address": "Street address",
     "billing_address": "Billing address",
 }
+
+# Job profile columns (products is stored as a comma-separated list).
+JOB_FIELDS = [
+    "site_location", "county", "electric_loads", "utility_provider",
+    "warranty_type", "cost_method", "tax_credit", "expand_option", "products",
+]
+
+# ECC's main products/services — the multi-select on the job form.
+PRODUCTS = [
+    "PV Systems",
+    "Generators",
+    "Battery Banks",
+    "Well Pumps",
+    "Mini Split Air Conditioners",
+    "Technician Service",
+]
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -68,6 +85,7 @@ def init_db():
     db = sqlite3.connect(DATABASE)
     db.executescript((BASE_DIR / "schema.sql").read_text())
     ensure_columns(db, "clients", CLIENT_FIELDS)
+    ensure_columns(db, "jobs", JOB_FIELDS)
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
         db.executemany(
             "INSERT INTO clients"
@@ -83,6 +101,15 @@ def init_db():
                  "PO Box 2210, Houston, TX 77252",
                  "", "Neighbor referral — the Ortiz install"),
             ],
+        )
+        db.execute(
+            "INSERT INTO jobs (client_id, site_location, county,"
+            " electric_loads, utility_provider, warranty_type, cost_method,"
+            " tax_credit, expand_option, products) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("4512 Bluebonnet Ln, Dallas, TX 75214", "Dallas County",
+             "3-ton AC, well pump, shop sub-panel", "Oncor",
+             "Standard 10-year", "Cash", "Yes", "Yes",
+             "PV Systems, Battery Banks"),
         )
         db.commit()
     db.close()
@@ -119,12 +146,68 @@ def new_client():
 
 @app.route("/clients/<int:client_id>")
 def client_detail(client_id):
-    client = get_db().execute(
+    db = get_db()
+    client = db.execute(
         "SELECT * FROM clients WHERE id = ?", (client_id,)
     ).fetchone()
     if client is None:
         abort(404)
-    return render_template("client_detail.html", client=client)
+    jobs = db.execute(
+        "SELECT * FROM jobs WHERE client_id = ? ORDER BY created_at DESC",
+        (client_id,),
+    ).fetchall()
+    return render_template("client_detail.html", client=client, jobs=jobs)
+
+
+@app.route("/clients/<int:client_id>/jobs/new", methods=["GET", "POST"])
+def new_job(client_id):
+    db = get_db()
+    client = db.execute(
+        "SELECT * FROM clients WHERE id = ?", (client_id,)
+    ).fetchone()
+    if client is None:
+        abort(404)
+    if request.method == "POST":
+        values = {f: request.form.get(f, "").strip() for f in JOB_FIELDS}
+        selected = request.form.getlist("products")
+        values["products"] = ", ".join(p for p in PRODUCTS if p in selected)
+        errors = []
+        if not values["site_location"]:
+            errors.append("Site location is required.")
+        if not values["products"]:
+            errors.append("Select at least one product/service.")
+        if errors:
+            flash(" ".join(errors), "error")
+            return render_template(
+                "job_form.html", client=client, values=values,
+                selected=selected, products=PRODUCTS,
+            ), 400
+        cur = db.execute(
+            f"INSERT INTO jobs (client_id, {', '.join(JOB_FIELDS)})"
+            f" VALUES (?, {', '.join('?' * len(JOB_FIELDS))})",
+            [client_id] + [values[f] for f in JOB_FIELDS],
+        )
+        db.commit()
+        flash(f"Job created under {client['name']}.")
+        return redirect(url_for("job_detail", job_id=cur.lastrowid))
+    return render_template(
+        "job_form.html", client=client,
+        values={"site_location": client["street_address"]},
+        selected=[], products=PRODUCTS,
+    )
+
+
+@app.route("/jobs/<int:job_id>")
+def job_detail(job_id):
+    job = get_db().execute(
+        "SELECT jobs.*, clients.name AS client_name"
+        " FROM jobs JOIN clients ON clients.id = jobs.client_id"
+        " WHERE jobs.id = ?",
+        (job_id,),
+    ).fetchone()
+    if job is None:
+        abort(404)
+    return render_template("job_detail.html", job=job)
 
 
 if __name__ == "__main__":

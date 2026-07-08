@@ -92,6 +92,20 @@
     dl.profile { display: grid; grid-template-columns: 180px 1fr; gap: 0.45rem 1rem; margin: 0; }
     dl.profile dt { color: var(--muted); font-size: 0.85rem; }
     dl.profile dd { margin: 0; }
+    .check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.4rem; }
+    label.check { font-weight: normal; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 0.45rem; }
+    label.check input { width: auto; }
+    .badge {
+      display: inline-block;
+      background: #e7f4ec;
+      border: 1px solid #bfe3cd;
+      color: #14532d;
+      border-radius: 999px;
+      padding: 0.15rem 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin: 0 0.3rem 0.3rem 0;
+    }
   </style>
 </head>
 <body>

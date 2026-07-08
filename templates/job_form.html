@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}New job — {{ client["name"] }}{% endblock %}
+{% block content %}
+<h1>Create a job under “{{ client["name"] }}”</h1>
+<form method="post" class="card">
+  <div class="form-grid">
+    <div class="field wide">
+      <label for="site_location">Site location * <span class="muted">(address or GPS coordinates — .kmz linking coming later)</span></label>
+      <input id="site_location" name="site_location"
+             placeholder="123 County Rd 45, Ector, TX — or 31.8457, -102.3676"
+             value="{{ values.get('site_location', '') }}" required>
+    </div>
+    <div class="field">
+      <label for="county">County</label>
+      <input id="county" name="county" value="{{ values.get('county', '') }}"
+             placeholder="Dallas County">
+    </div>
+    <div class="field">
+      <label for="utility_provider">Utility provider</label>
+      <input id="utility_provider" name="utility_provider"
+             value="{{ values.get('utility_provider', '') }}"
+             placeholder="Oncor, CenterPoint, co-op…">
+    </div>
+    <div class="field wide">
+      <label for="electric_loads">Electric loads</label>
+      <textarea id="electric_loads" name="electric_loads" rows="2"
+                placeholder="3-ton AC, well pump, shop sub-panel…">{{ values.get('electric_loads', '') }}</textarea>
+    </div>
+    <div class="field">
+      <label for="warranty_type">Warranty type</label>
+      <input id="warranty_type" name="warranty_type"
+             value="{{ values.get('warranty_type', '') }}">
+    </div>
+    <div class="field">
+      <label for="cost_method">Cost method</label>
+      <input id="cost_method" name="cost_method"
+             value="{{ values.get('cost_method', '') }}"
+             placeholder="Cash, finance…">
+    </div>
+    <div class="field">
+      <label for="tax_credit">Tax credit</label>
+      <select id="tax_credit" name="tax_credit">
+        <option value="No" {% if values.get('tax_credit', 'No') == 'No' %}selected{% endif %}>No</option>
+        <option value="Yes" {% if values.get('tax_credit') == 'Yes' %}selected{% endif %}>Yes</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="expand_option">Expand option</label>
+      <select id="expand_option" name="expand_option">
+        <option value="No" {% if values.get('expand_option', 'No') == 'No' %}selected{% endif %}>No</option>
+        <option value="Yes" {% if values.get('expand_option') == 'Yes' %}selected{% endif %}>Yes</option>
+      </select>
+    </div>
+    <div class="field wide">
+      <label>Products / services * <span class="muted">(select all that apply)</span></label>
+      <div class="check-grid">
+        {% for p in products %}
+        <label class="check">
+          <input type="checkbox" name="products" value="{{ p }}"
+                 {% if p in selected %}checked{% endif %}>
+          {{ p }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="actions">
+    <button type="submit" class="btn">Create job</button>
+    <a href="{{ url_for('client_detail', client_id=client['id']) }}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

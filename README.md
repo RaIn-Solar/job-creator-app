@@ -32,6 +32,6 @@ Delete that file to start over with a fresh database.
 
 - [x] **Piece 1** — Flask + SQLite skeleton; home page lists clients
 - [x] **Piece 2** — “New client” form and client profile pages
-- [ ] **Piece 3** — Job profiles stored under each client
+- [x] **Piece 3** — Job profiles stored under each client
 - [ ] **Piece 4** — Rules engine: job fields → links/phone numbers
 - [ ] **Piece 5** — Polish (search, editing, statuses)

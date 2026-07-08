@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Job #{{ job["id"] }} — {{ job["client_name"] }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>Job #{{ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
+  <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary">← Client profile</a>
+</div>
+
+<div class="card">
+  <div style="margin-bottom: 0.9rem;">
+    {% for p in job["products"].split(", ") if p %}
+      <span class="badge">{{ p }}</span>
+    {% endfor %}
+  </div>
+  <dl class="profile">
+    <dt>Site location</dt><dd>{{ job["site_location"] or "—" }}</dd>
+    <dt>County</dt><dd>{{ job["county"] or "—" }}</dd>
+    <dt>Electric loads</dt><dd>{{ job["electric_loads"] or "—" }}</dd>
+    <dt>Utility provider</dt><dd>{{ job["utility_provider"] or "—" }}</dd>
+    <dt>Warranty type</dt><dd>{{ job["warranty_type"] or "—" }}</dd>
+    <dt>Cost method</dt><dd>{{ job["cost_method"] or "—" }}</dd>
+    <dt>Tax credit</dt><dd>{{ job["tax_credit"] }}</dd>
+    <dt>Expand option</dt><dd>{{ job["expand_option"] }}</dd>
+    <dt>Created</dt><dd>{{ job["created_at"] }}</dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Job resources</h2>
+  <p class="empty">Links and phone numbers resolved from this job's fields
+  will appear here — coming in Piece 4.</p>
+</div>
+{% endblock %}
