@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}New client{% endblock %}
+{% block content %}
+<h1>Create a client profile</h1>
+<form method="post" class="card">
+  <div class="form-grid">
+    <div class="field wide">
+      <label for="name">Client / job site name *</label>
+      <input id="name" name="name" value="{{ values.get('name', '') }}" required>
+    </div>
+    <div class="field">
+      <label for="contact_name">Contact name</label>
+      <input id="contact_name" name="contact_name" value="{{ values.get('contact_name', '') }}">
+    </div>
+    <div class="field">
+      <label for="phone">Phone</label>
+      <input id="phone" name="phone" value="{{ values.get('phone', '') }}">
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="{{ values.get('email', '') }}">
+    </div>
+    <div class="field wide">
+      <label for="street">Street address</label>
+      <input id="street" name="street" value="{{ values.get('street', '') }}">
+    </div>
+    <div class="field">
+      <label for="city">City</label>
+      <input id="city" name="city" value="{{ values.get('city', '') }}">
+    </div>
+    <div class="field">
+      <label for="state">State</label>
+      <input id="state" name="state" value="{{ values.get('state', 'TX') }}">
+    </div>
+    <div class="field">
+      <label for="zip">ZIP</label>
+      <input id="zip" name="zip" value="{{ values.get('zip', '') }}">
+    </div>
+    <div class="field">
+      <label for="utility_company">Utility company</label>
+      <input id="utility_company" name="utility_company" value="{{ values.get('utility_company', '') }}">
+    </div>
+    <div class="field">
+      <label for="hoa_name">HOA name (leave blank if none)</label>
+      <input id="hoa_name" name="hoa_name" value="{{ values.get('hoa_name', '') }}">
+    </div>
+    <div class="field wide">
+      <label for="notes">Notes (gate codes, pets, preferences…)</label>
+      <textarea id="notes" name="notes" rows="3">{{ values.get('notes', '') }}</textarea>
+    </div>
+  </div>
+  <div class="actions">
+    <button type="submit" class="btn">Create client</button>
+    <a href="{{ url_for('home') }}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

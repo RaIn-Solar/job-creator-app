@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Clients{% endblock %}
 {% block content %}
-<h1>Client profiles</h1>
+<div class="toolbar">
+  <h1>Client profiles</h1>
+  <a href="{{ url_for('new_client') }}" class="btn">＋ New client</a>
+</div>
 <div class="card">
   {% if clients %}
   <table>
@@ -17,7 +20,7 @@
     <tbody>
       {% for c in clients %}
       <tr>
-        <td>{{ c["name"] }}</td>
+        <td><a href="{{ url_for('client_detail', client_id=c['id']) }}">{{ c["name"] }}</a></td>
         <td>{{ c["contact_name"] }}</td>
         <td>{{ c["phone"] }}</td>
         <td>{{ c["city"] }}{% if c["state"] %}, {{ c["state"] }}{% endif %}</td>
@@ -27,10 +30,10 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty">No clients yet.</p>
+  <p class="empty">No clients yet — click “＋ New client” to create the first one.</p>
   {% endif %}
 </div>
-<p class="muted">Piece 1 checkpoint: if you can see this page with the two
-sample clients, the skeleton works. Piece 2 adds the “New client” form and
-client profile pages.</p>
+<p class="muted">Piece 2 checkpoint: create a client with the “＋ New client”
+button, then click any client's name to open their profile. Piece 3 adds job
+profiles inside each client.</p>
 {% endblock %}

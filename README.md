@@ -12,7 +12,7 @@ numbers, docs) based on the job's fields.
 2. First time only, install the one dependency:
 
    ```
-   pip install -r requirements.txt
+   python -m pip install -r requirements.txt
    ```
 
 3. Start the app:
@@ -31,7 +31,7 @@ Delete that file to start over with a fresh database.
 ## Build progress
 
 - [x] **Piece 1** — Flask + SQLite skeleton; home page lists clients
-- [ ] **Piece 2** — “New client” form and client profile pages
+- [x] **Piece 2** — “New client” form and client profile pages
 - [ ] **Piece 3** — Job profiles stored under each client
 - [ ] **Piece 4** — Rules engine: job fields → links/phone numbers
 - [ ] **Piece 5** — Polish (search, editing, statuses)
