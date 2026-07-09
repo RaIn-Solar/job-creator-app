@@ -50,6 +50,15 @@ this directory is for looking things up, not changing them.</p>
         {% endfor %}
       </select>
     </div>
+    <div class="field">
+      <label for="property">Property type</label>
+      <select id="property" name="property">
+        <option value="">Any</option>
+        {% for p in property_types %}
+        <option value="{{ p }}" {% if filters.property == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
   {% if filtering %}
   <div class="actions">
@@ -74,7 +83,10 @@ this directory is for looking things up, not changing them.</p>
         {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
         <br><span class="muted" style="font-size:0.8rem;">when {{ field_labels.get(r["field_name"], r["field_name"]) }}
           {% if r["match_type"] == "contains" %}includes{% else %}is{% endif %}
-          “{{ r["field_value"] }}”</span>
+          “{{ r["field_value"] }}”{% if r["field_name2"] %}
+          and {{ field_labels.get(r["field_name2"], r["field_name2"]) }}
+          {% if r["match_type2"] == "contains" %}includes{% else %}is{% endif %}
+          “{{ r["field_value2"] }}”{% endif %}</span>
       </li>
       {% endfor %}
     </ul>

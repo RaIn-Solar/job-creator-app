@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     generator_utility_connection TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
     battery_utility_connection   TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
     service_type     TEXT DEFAULT '',   -- General service / Warranty service
+    property_type    TEXT DEFAULT 'Residential',  -- Residential / Commercial
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -58,5 +59,10 @@ CREATE TABLE IF NOT EXISTS resource_rules (
     url         TEXT DEFAULT '',
     phone       TEXT DEFAULT '',
     notes       TEXT DEFAULT '',
+    -- Optional second condition (AND): e.g. products includes Battery Banks
+    -- AND property_type is Commercial.
+    field_name2  TEXT DEFAULT '',
+    field_value2 TEXT DEFAULT '',
+    match_type2  TEXT DEFAULT 'equals',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );

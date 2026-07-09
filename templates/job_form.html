@@ -57,6 +57,19 @@
         <option value="Yes" {% if values.get('expand_option') == 'Yes' %}selected{% endif %}>Yes</option>
       </select>
     </div>
+    <div class="field">
+      <label>Property type</label>
+      <label class="check">
+        <input type="radio" name="property_type" value="Residential"
+               {% if values.get('property_type', 'Residential') != 'Commercial' %}checked{% endif %}>
+        Residential
+      </label>
+      <label class="check">
+        <input type="radio" name="property_type" value="Commercial"
+               {% if values.get('property_type') == 'Commercial' %}checked{% endif %}>
+        Commercial
+      </label>
+    </div>
     <div class="field wide">
       <label>Products / services * <span class="muted">(select all that apply)</span></label>
       <div class="check-grid">

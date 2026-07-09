@@ -43,6 +43,7 @@ JOB_FIELDS = [
     "warranty_type", "cost_method", "tax_credit", "expand_option", "products",
     "pv_utility_connection", "pv_mounting_type", "pv_manufactured_house",
     "generator_utility_connection", "battery_utility_connection", "service_type",
+    "property_type",
 ]
 
 # Labels used on the report and anywhere a field needs a human name.
@@ -58,11 +59,13 @@ JOB_FIELD_LABELS = {
     "generator_utility_connection": "Generator — utility connection",
     "battery_utility_connection": "Battery bank — utility connection",
     "service_type": "Service type",
+    "property_type": "Property type",
 }
 
 UTILITY_CONNECTIONS = ["Off-grid", "Grid-tie", "Backup system"]
 MOUNTING_TYPES = ["Roof mounted", "Ground mount"]
 SERVICE_TYPES = ["General service", "Warranty service"]
+PROPERTY_TYPES = ["Residential", "Commercial"]
 
 # Which variant fields belong to which product — used by the rule
 # directory so filtering by job type also scopes its variants.
@@ -167,7 +170,55 @@ SEED_RULES_V3 = [
     ("pv_utility_connection", "Backup system", "equals", "Compliance", "Utility Final Inspection + Anti-Island", "follows grid-tie rules for now"),
 ]
 
-SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3}
+# Batch 4 — Battery Banks matrix (Res. Solar+Bat / Off-Grid / Grid-Tied /
+# Commercial). 9-item rows carry a second AND condition. Backup system
+# mirrors grid-tie per the ECC general rule (battery table has no
+# standby column).
+SEED_RULES_V4 = [
+    ("products", "Battery Banks", "contains", "Compliance", "Fire Authority Plan Review", "situational", "property_type", "Residential", "equals"),
+    ("products", "Battery Banks", "contains", "Compliance", "Fire Authority Plan Review", "likely required", "property_type", "Commercial", "equals"),
+    ("products", "Battery Banks", "contains", "Compliance", "Hazard Mitigation Analysis (HMA)", "confirm with AHJ", "property_type", "Residential", "equals"),
+    ("products", "Battery Banks", "contains", "Compliance", "Hazard Mitigation Analysis (HMA)", "likely required", "property_type", "Commercial", "equals"),
+    ("battery_utility_connection", "Grid-tie", "equals", "Compliance", "Utility Interconnection Update", "if export"),
+    ("battery_utility_connection", "Backup system", "equals", "Compliance", "Utility Interconnection Update", "if export; follows grid-tie rules for now"),
+    ("battery_utility_connection", "Grid-tie", "equals", "Compliance", "NEC 705 Interconnection (multi-source)", ""),
+    ("battery_utility_connection", "Backup system", "equals", "Compliance", "NEC 705 Interconnection (multi-source)", "follows grid-tie rules for now"),
+    ("battery_utility_connection", "Off-grid", "equals", "Compliance", "NEC 705 Interconnection (multi-source)", "if generator coupled"),
+    ("battery_utility_connection", "Grid-tie", "equals", "Compliance", "Arc Flash Label", "commercial"),
+    ("battery_utility_connection", "Backup system", "equals", "Compliance", "Arc Flash Label", "commercial; follows grid-tie rules for now"),
+    ("products", "Battery Banks", "contains", "Compliance", "Arc Flash Label", "", "property_type", "Commercial", "equals"),
+    ("products", "Battery Banks", "contains", "Compliance", "SMDTC 20% Credit", "client files; if with solar", "products", "PV Systems", "contains"),
+    ("battery_utility_connection", "Grid-tie", "equals", "Compliance", "GRT Exemption on Invoice", "confirm"),
+]
+
+# Batch 5 — Generators matrix (Off-Grid / Standby / Grid-Tied). Their
+# "Standby" is our "Backup system". Note: per the table, standby
+# generators do NOT get the grid-tie interconnection items — the table
+# overrides the backup-follows-grid-tie general rule for generators.
+SEED_RULES_V5 = [
+    ("products", "Generators", "contains", "License", "LP-4/LP-5 or MM-2 Gas License", "if gas-fueled"),
+    ("products", "Generators", "contains", "Compliance", "NFPA 37 Clearances", ""),
+    ("generator_utility_connection", "Backup system", "equals", "Compliance", "Transfer Switch (NEC 702)", ""),
+    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Transfer Switch (NEC 702)", ""),
+    ("generator_utility_connection", "Grid-tie", "equals", "Permit", "Utility Interconnection Application", ""),
+    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "NMPRC Rule 568 Compliance", ""),
+    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Utility-Accessible Lockable Disconnect", ""),
+    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Signed Interconnection Agreement", ""),
+    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "NM PE Stamp", "if >10 kVA grid-tied"),
+    ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Utility Interconnection Inspection", ""),
+]
+
+SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4, 5: SEED_RULES_V5}
+
+# One-off SQL applied alongside a batch (same once-only guarantee).
+SEED_BATCH_SQL = {
+    # Exterior Emergency Shutdown is residential-only per the battery
+    # matrix; scope the original unconditional rule.
+    4: ["UPDATE resource_rules SET field_name2 = 'property_type',"
+        " field_value2 = 'Residential', match_type2 = 'equals'"
+        " WHERE field_name = 'products' AND field_value = 'Battery Banks'"
+        " AND label = 'Exterior Emergency Shutdown' AND field_name2 = ''"],
+}
 
 # ECC's main products/services — the multi-select on the job form.
 PRODUCTS = [
@@ -181,7 +232,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 4.4"
+VERSION = "Piece 4.5"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -230,6 +281,7 @@ def init_db():
         db.execute("ALTER TABLE clients RENAME COLUMN street_address TO mailing_address")
     ensure_columns(db, "clients", CLIENT_FIELDS)
     ensure_columns(db, "jobs", JOB_FIELDS)
+    ensure_columns(db, "resource_rules", ["field_name2", "field_value2", "match_type2"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
         db.executemany(
             "INSERT INTO clients"
@@ -250,23 +302,18 @@ def init_db():
             "INSERT INTO jobs (client_id, job_name, site_location, county,"
             " electric_loads, utility_provider, warranty_type, cost_method,"
             " tax_credit, expand_option, products, pv_utility_connection,"
-            " pv_mounting_type, battery_utility_connection)"
-            " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " pv_mounting_type, battery_utility_connection, property_type)"
+            " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("Johnson PV + Battery (sample)",
              "4512 Juniper Rd NE, Albuquerque, NM 87111", "Bernalillo County",
              "3-ton AC, well pump, shop sub-panel", "PNM",
              "Standard 10-year", "Cash", "Yes", "Yes",
              "PV Systems, Battery Banks",
-             "Grid-tie", "Roof mounted", "Backup system"),
+             "Grid-tie", "Roof mounted", "Grid-tie", "Residential"),
         )
         db.commit()
     if db.execute("SELECT COUNT(*) FROM resource_rules").fetchone()[0] == 0:
-        db.executemany(
-            "INSERT INTO resource_rules"
-            " (field_name, field_value, match_type, category, label, notes)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            SEED_RULES,
-        )
+        insert_seed_rules(db, SEED_RULES)
         db.commit()
     # Later rule batches apply exactly once per database, so existing
     # installs receive new rules without duplicates — and rules someone
@@ -275,12 +322,9 @@ def init_db():
     seed_version = int(row[0]) if row else 1
     for batch_number in sorted(SEED_BATCHES):
         if batch_number > seed_version:
-            db.executemany(
-                "INSERT INTO resource_rules"
-                " (field_name, field_value, match_type, category, label, notes)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                SEED_BATCHES[batch_number],
-            )
+            insert_seed_rules(db, SEED_BATCHES[batch_number])
+            for statement in SEED_BATCH_SQL.get(batch_number, []):
+                db.execute(statement)
             seed_version = batch_number
     db.execute(
         "INSERT INTO meta (key, value) VALUES ('seed_version', ?)"
@@ -291,24 +335,52 @@ def init_db():
     db.close()
 
 
+def insert_seed_rules(db, rows):
+    """Insert seed rows; 6-item rows are single-condition, 9-item rows
+    carry a second AND condition."""
+    normalized = []
+    for row in rows:
+        row = list(row)
+        if len(row) == 6:
+            row += ["", "", "equals"]
+        normalized.append(row)
+    db.executemany(
+        "INSERT INTO resource_rules"
+        " (field_name, field_value, match_type, category, label, notes,"
+        "  field_name2, field_value2, match_type2)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        normalized,
+    )
+
+
+def condition_met(job, field, value, match_type):
+    """One rule condition: the job's field equals the value
+    (case-insensitive), or — for 'contains' — the value appears in the
+    field's comma-separated list (used for products)."""
+    if field not in job.keys():
+        return False
+    actual = str(job[field] or "").strip()
+    if not actual:
+        return False
+    target = value.strip().lower()
+    if match_type == "contains":
+        return target in [p.strip().lower() for p in actual.split(",")]
+    return actual.lower() == target
+
+
 def match_rules(job, rules):
-    """A rule matches when the job's field equals the rule's value
-    (case-insensitive), or — for 'contains' rules — when the value appears
-    in the field's comma-separated list (used for products)."""
+    """A rule matches when its condition holds — and, for compound rules,
+    when the second condition holds too."""
     hits = []
     for rule in rules:
-        if rule["field_name"] not in job.keys():
+        if not condition_met(job, rule["field_name"], rule["field_value"],
+                             rule["match_type"]):
             continue
-        value = str(job[rule["field_name"]] or "").strip()
-        if not value:
+        if rule["field_name2"] and not condition_met(
+                job, rule["field_name2"], rule["field_value2"],
+                rule["match_type2"] or "equals"):
             continue
-        target = rule["field_value"].strip().lower()
-        if rule["match_type"] == "contains":
-            matched = target in [p.strip().lower() for p in value.split(",")]
-        else:
-            matched = value.lower() == target
-        if matched:
-            hits.append(rule)
+        hits.append(rule)
     return hits
 
 
@@ -560,21 +632,29 @@ def add_rule():
     field_value = request.form.get("field_value", "").strip()
     label = request.form.get("label", "").strip()
     from_job = request.form.get("from_job") or None
+    field_name2 = request.form.get("field_name2", "").strip()
+    field_value2 = request.form.get("field_value2", "").strip()
     if field_name not in JOB_FIELDS or not field_value or not label:
         flash("A rule needs a job field, a value to match, and a label.", "error")
+        return redirect(url_for("rules_page", from_job=from_job))
+    if field_name2 and (field_name2 not in JOB_FIELDS or not field_value2):
+        flash("The second condition needs both a field and a value.", "error")
         return redirect(url_for("rules_page", from_job=from_job))
     db = get_db()
     db.execute(
         "INSERT INTO resource_rules"
-        " (field_name, field_value, match_type, category, label, url, phone, notes)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        " (field_name, field_value, match_type, category, label, url, phone, notes,"
+        "  field_name2, field_value2, match_type2)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (field_name, field_value,
          "contains" if field_name == "products" else "equals",
          request.form.get("category", "Compliance"),
          label,
          request.form.get("url", "").strip(),
          request.form.get("phone", "").strip(),
-         request.form.get("notes", "").strip()),
+         request.form.get("notes", "").strip(),
+         field_name2, field_value2,
+         "contains" if field_name2 == "products" else "equals"),
     )
     db.commit()
     flash(f"Rule added: {label}")
@@ -590,19 +670,11 @@ def rule_directory():
     mounting = request.args.get("mounting", "")
     manufactured = request.args.get("manufactured", "")
     service = request.args.get("service", "")
+    property_type = request.args.get("property", "")
 
-    def visible(rule):
-        field, value = rule["field_name"], rule["field_value"].strip().lower()
-        if product:
-            # Only this product's own rules and its variants' rules.
-            if field == "products":
-                if value != product.lower():
-                    return False
-            elif field in VARIANT_OWNERS:
-                if VARIANT_OWNERS[field] != product:
-                    return False
-            else:
-                return False
+    def value_ok(field, value):
+        """One condition against the variant filters."""
+        value = value.strip().lower()
         if connection and field in CONNECTION_FIELDS and value != connection.lower():
             return False
         if mounting and field == "pv_mounting_type" and value != mounting.lower():
@@ -611,6 +683,25 @@ def rule_directory():
             return False
         if service and field == "service_type" and value != service.lower():
             return False
+        if property_type and field == "property_type" and value != property_type.lower():
+            return False
+        return True
+
+    def visible(rule):
+        conditions = [(rule["field_name"], rule["field_value"])]
+        if rule["field_name2"]:
+            conditions.append((rule["field_name2"], rule["field_value2"]))
+        if not all(value_ok(f, v) for f, v in conditions):
+            return False
+        if product:
+            # At least one condition must tie the rule to the chosen
+            # job type (its product row or one of its variant fields).
+            tied = any(
+                (f == "products" and v.strip().lower() == product.lower())
+                or (f in VARIANT_OWNERS and VARIANT_OWNERS[f] == product)
+                for f, v in conditions)
+            if not tied:
+                return False
         return True
 
     rules = [r for r in get_db().execute(
@@ -623,10 +714,12 @@ def rule_directory():
         field_labels=JOB_FIELD_LABELS,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
+        property_types=PROPERTY_TYPES,
         filters={"product": product, "connection": connection,
                  "mounting": mounting, "manufactured": manufactured,
-                 "service": service},
-        filtering=any([product, connection, mounting, manufactured, service]),
+                 "service": service, "property": property_type},
+        filtering=any([product, connection, mounting, manufactured,
+                       service, property_type]),
     )
 
 
