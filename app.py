@@ -157,7 +157,17 @@ SEED_RULES_V2 = [
     ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "Utility Final Inspection + Anti-Island", ""),
 ]
 
-SEED_BATCHES = {2: SEED_RULES_V2}
+# Batch 3 — backup systems follow grid-tie rules (per ECC general rule;
+# specifics to be refined later, hence the note on each).
+SEED_RULES_V3 = [
+    ("pv_utility_connection", "Backup system", "equals", "Permit", "Utility Interconnection Application", "follows grid-tie rules for now"),
+    ("pv_utility_connection", "Backup system", "equals", "Compliance", "IEEE 1547-2018 Inverter Listing", "follows grid-tie rules for now"),
+    ("pv_utility_connection", "Backup system", "equals", "Compliance", "Lockable Load-Break Disconnect", "follows grid-tie rules for now"),
+    ("pv_utility_connection", "Backup system", "equals", "Compliance", "Signed Interconnection Agreement", "follows grid-tie rules for now"),
+    ("pv_utility_connection", "Backup system", "equals", "Compliance", "Utility Final Inspection + Anti-Island", "follows grid-tie rules for now"),
+]
+
+SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3}
 
 # ECC's main products/services — the multi-select on the job form.
 PRODUCTS = [
@@ -171,7 +181,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 4.3"
+VERSION = "Piece 4.4"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -226,13 +236,13 @@ def init_db():
             " (name, phone, mailing_address, billing_address, email, referral_source)"
             " VALUES (?, ?, ?, ?, ?, ?)",
             [
-                ("Johnson Residence (sample)", "214-555-0142",
-                 "4512 Bluebonnet Ln, Dallas, TX 75214",
-                 "4512 Bluebonnet Ln, Dallas, TX 75214",
+                ("Johnson Residence (sample)", "505-555-0142",
+                 "4512 Juniper Rd NE, Albuquerque, NM 87111",
+                 "4512 Juniper Rd NE, Albuquerque, NM 87111",
                  "mjohnson@example.com", "Google search"),
-                ("Rivera Residence (sample)", "713-555-0189",
-                 "902 Heights Blvd, Houston, TX 77008",
-                 "PO Box 2210, Houston, TX 77252",
+                ("Rivera Residence (sample)", "575-555-0189",
+                 "902 Mesa Verde Dr, Las Cruces, NM 88011",
+                 "PO Box 2210, Las Cruces, NM 88004",
                  "", "Neighbor referral — the Ortiz install"),
             ],
         )
@@ -243,8 +253,8 @@ def init_db():
             " pv_mounting_type, battery_utility_connection)"
             " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("Johnson PV + Battery (sample)",
-             "4512 Bluebonnet Ln, Dallas, TX 75214", "Dallas County",
-             "3-ton AC, well pump, shop sub-panel", "Oncor",
+             "4512 Juniper Rd NE, Albuquerque, NM 87111", "Bernalillo County",
+             "3-ton AC, well pump, shop sub-panel", "PNM",
              "Standard 10-year", "Cash", "Yes", "Yes",
              "PV Systems, Battery Banks",
              "Grid-tie", "Roof mounted", "Backup system"),

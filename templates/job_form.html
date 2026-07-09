@@ -13,19 +13,19 @@
     <div class="field wide">
       <label for="site_location">Site location * <span class="muted">(address or GPS coordinates — .kmz linking coming later)</span></label>
       <input id="site_location" name="site_location"
-             placeholder="123 County Rd 45, Ector, TX — or 31.8457, -102.3676"
+             placeholder="123 County Rd 45, Estancia, NM — or 35.0844, -106.6504"
              value="{{ values.get('site_location', '') }}" required>
     </div>
     <div class="field">
       <label for="county">County</label>
       <input id="county" name="county" value="{{ values.get('county', '') }}"
-             placeholder="Dallas County">
+             placeholder="Bernalillo County">
     </div>
     <div class="field">
       <label for="utility_provider">Utility provider</label>
       <input id="utility_provider" name="utility_provider"
              value="{{ values.get('utility_provider', '') }}"
-             placeholder="Oncor, CenterPoint, co-op…">
+             placeholder="PNM, El Paso Electric, co-op…">
     </div>
     <div class="field wide">
       <label for="electric_loads">Electric loads</label>
