@@ -216,8 +216,95 @@ SEED_RULES_V6 = [
      "client files; batteries qualify when paired with solar"),
 ]
 
+# Batch 7 — authoritative links from the "NM Solar Contractor Website
+# Reference List" (June 2026), attached to the rules they support, plus
+# utility-specific interconnection links keyed on the job's utility
+# provider. The source document contains no phone numbers.
+_CID_LICENSING = "https://www.rld.nm.gov/construction-industries-public-works/construction-industries/"
+_CID_PORTAL = "https://nmrld.my.site.com/MHD/s/"
+_NEC = "https://www.nfpa.org/codes-and-standards/nfpa-70-standard-for-electrical-installations/70"
+_IFC = "https://codes.iccsafe.org/content/IFC2021"
+_NFPA855 = "https://www.nfpa.org/codes-and-standards/all-codes-and-standards/list-of-codes-and-standards/detail?code=855"
+_PE_BOARD = "https://www.rld.nm.gov/engineering-and-land-surveying/"
+_PNM_SOLAR = "https://www.pnm.com/solar"
+_PNM_INTERCONNECT = "https://www.pnm.com/interconnection"
+
+# (label, url, optional field_name filter for labels shared across products)
+RULE_LINKS = [
+    ("MM-2 or MM-3 Contractor License", _CID_LICENSING, None),
+    ("Journeyman HVAC (JH) Certificate", _CID_LICENSING, None),
+    ("EE-98 or ER-1 Electrical License", _CID_LICENSING, None),
+    ("ES-10R Contractor License", _CID_LICENSING, None),
+    ("ES-10RJ Journeyman", _CID_LICENSING, None),
+    ("EE-98 Contractor License", _CID_LICENSING, None),
+    ("EE-98J Journeyman", _CID_LICENSING, None),
+    ("LP-4/LP-5 or MM-2 Gas License", "https://www.rld.nm.gov/lp-gas/", None),
+    ("EPA Section 608 — Type II or Universal", "https://www.epa.gov/section608", None),
+    ("AIM Act refrigerant (R-454B or R-32)", "https://www.epa.gov/climate-hfcs-reduction", None),
+    ("Mechanical permit", _CID_PORTAL, None),
+    ("Electrical permit", _CID_PORTAL, None),
+    ("Building Permit (structural)", _CID_PORTAL, None),
+    ("Rough-in Inspection", _CID_PORTAL, None),
+    ("Final Inspection", _CID_PORTAL, None),
+    ("Electrical Inspection", _CID_PORTAL, None),
+    ("MHD Permit", "https://www.rld.nm.gov/manufactured-housing/", None),
+    ("Transfer Switch (NEC 702)", _NEC, None),
+    ("NFPA 37 Clearances", "https://www.nfpa.org/codes-and-standards/all-codes-and-standards/list-of-codes-and-standards/detail?code=37", None),
+    ("Full NEC 690 One-Line Package", _NEC, None),
+    ("Rapid Shutdown (NEC 690.12)", _NEC, None),
+    ("Rapid Shutdown (NEC 690.12) — exception", _NEC, None),
+    ("Underground Wiring Plan + Depths", _NEC, None),
+    ("Updated One-Line w/ ESS Disconnect", _NEC, None),
+    ("NEC 706 Disconnect + Labeling", _NEC, None),
+    ("Exterior Emergency Shutdown", _NEC, None),
+    ("NEC 705 Interconnection (multi-source)", _NEC, None),
+    ("Arc Flash Label", _NEC, None),
+    ("Structural Analysis / NM PE Letter", _PE_BOARD, None),
+    ("NM PE Stamp", _PE_BOARD, None),
+    ("Fire Code Roof Access Clearances", _IFC, None),
+    ("IFC Chapter 12 / Fire Code", _IFC, None),
+    ("Smoke/Heat Detection (if enclosed)", _IFC, None),
+    ("NFPA 855 Clearances + Spacing", _NFPA855, None),
+    ("Ventilation Plan", _NFPA855, None),
+    ("Hazard Mitigation Analysis (HMA)", _NFPA855, None),
+    ("Fire Authority Plan Review", "https://www.dhsem.nm.gov/state-fire-marshal/", None),
+    ("UL 9540 Equipment Listing", "https://www.ul.com/resources/ul-9540-standard-for-energy-storage-systems-and-equipment", None),
+    ("IEEE 1547-2018 Inverter Listing", "https://standards.ieee.org/ieee/1547/6341/", None),
+    ("NMPRC Rule 568 Compliance", "https://www.nmprc.state.nm.us/utilities/elec.html", None),
+    ("SMDTC 20% Credit Application", "https://www.emnrd.nm.gov/sed/renewable-energy/solar-market-development-tax-credit/", None),
+    ("GRT Exemption on Invoice", "https://www.tax.newmexico.gov/businesses/gross-receipts-tax/", None),
+    # Shared labels: PV items point at PNM's solar program, generator
+    # items at PNM's general interconnection page (per the document).
+    ("Utility Interconnection Application", _PNM_SOLAR, "pv_utility_connection"),
+    ("Signed Interconnection Agreement", _PNM_SOLAR, "pv_utility_connection"),
+    ("Lockable Load-Break Disconnect", _PNM_SOLAR, "pv_utility_connection"),
+    ("Utility Final Inspection + Anti-Island", _PNM_SOLAR, "pv_utility_connection"),
+    ("Utility Interconnection Application", _PNM_INTERCONNECT, "generator_utility_connection"),
+    ("Signed Interconnection Agreement", _PNM_INTERCONNECT, "generator_utility_connection"),
+    ("Utility-Accessible Lockable Disconnect", _PNM_INTERCONNECT, "generator_utility_connection"),
+    ("Utility Interconnection Inspection", _PNM_INTERCONNECT, "generator_utility_connection"),
+    ("Utility Interconnection Update", _PNM_INTERCONNECT, "battery_utility_connection"),
+]
+
+
+def _link_sql(label, url, field=None):
+    where = f"label = '{label}'"
+    if field:
+        where += f" AND field_name = '{field}'"
+    return f"UPDATE resource_rules SET url = '{url}' WHERE {where}"
+
+
+# Utility-specific portals become Link rules keyed on the job's utility
+# provider (both utilities appear in the document).
+SEED_RULES_V7 = [
+    ("utility_provider", "PNM", "equals", "Link",
+     "PNM — Solar Interconnection & Net Metering", "", "", "", "equals"),
+    ("utility_provider", "Kit Carson Electric Cooperative", "equals", "Link",
+     "Kit Carson Electric Cooperative", "", "", "", "equals"),
+]
+
 SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4,
-                5: SEED_RULES_V5, 6: SEED_RULES_V6}
+                5: SEED_RULES_V5, 6: SEED_RULES_V6, 7: SEED_RULES_V7}
 
 # One-off SQL applied alongside a batch (same once-only guarantee).
 SEED_BATCH_SQL = {
@@ -233,6 +320,11 @@ SEED_BATCH_SQL = {
         " AND field_name = 'battery_utility_connection'",
         "DELETE FROM resource_rules WHERE label = 'SMDTC Application'",
         "DELETE FROM resource_rules WHERE label = 'SMDTC 20% Credit'"],
+    # Attach the June 2026 reference-list links to their rules.
+    7: [_link_sql(label, url, field) for label, url, field in RULE_LINKS] + [
+        _link_sql("PNM — Solar Interconnection & Net Metering", _PNM_SOLAR),
+        _link_sql("Kit Carson Electric Cooperative", "https://www.kitcarson.com"),
+    ],
 }
 
 # ECC's main products/services — the multi-select on the job form.
@@ -247,7 +339,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 5"
+VERSION = "Piece 5.1"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
