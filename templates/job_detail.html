@@ -62,6 +62,6 @@
   <p class="empty">No requirements matched this job's selections.</p>
   {% endif %}
   <p class="muted" style="margin-bottom:0;">Resolved automatically from this
-  job's fields · <a href="{{ url_for('rules_page') }}">manage the rules</a></p>
+  job's fields · <a href="{{ url_for('rules_page', from_job=job['id']) }}">manage the rules</a></p>
 </div>
 {% endblock %}

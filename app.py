@@ -127,7 +127,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 4"
+VERSION = "Piece 4.1"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -460,12 +460,20 @@ def job_report(job_id):
 
 @app.route("/rules")
 def rules_page():
-    rules = get_db().execute(
+    db = get_db()
+    rules = db.execute(
         "SELECT * FROM resource_rules"
         " ORDER BY field_name, field_value, category, label"
     ).fetchall()
+    # When reached from a job page, offer a way back to that job.
+    from_job = None
+    from_job_id = request.args.get("from_job", type=int)
+    if from_job_id:
+        from_job = db.execute(
+            "SELECT id, job_name FROM jobs WHERE id = ?", (from_job_id,)
+        ).fetchone()
     return render_template(
-        "rules.html", rules=rules,
+        "rules.html", rules=rules, from_job=from_job,
         job_fields=[f for f in JOB_FIELDS if f != "job_name"],
         field_labels=JOB_FIELD_LABELS, categories=RULE_CATEGORIES,
     )
@@ -476,9 +484,10 @@ def add_rule():
     field_name = request.form.get("field_name", "").strip()
     field_value = request.form.get("field_value", "").strip()
     label = request.form.get("label", "").strip()
+    from_job = request.form.get("from_job") or None
     if field_name not in JOB_FIELDS or not field_value or not label:
         flash("A rule needs a job field, a value to match, and a label.", "error")
-        return redirect(url_for("rules_page"))
+        return redirect(url_for("rules_page", from_job=from_job))
     db = get_db()
     db.execute(
         "INSERT INTO resource_rules"
@@ -494,7 +503,7 @@ def add_rule():
     )
     db.commit()
     flash(f"Rule added: {label}")
-    return redirect(url_for("rules_page"))
+    return redirect(url_for("rules_page", from_job=from_job))
 
 
 @app.route("/rules/<int:rule_id>/delete", methods=["POST"])
@@ -503,7 +512,8 @@ def delete_rule(rule_id):
     db.execute("DELETE FROM resource_rules WHERE id = ?", (rule_id,))
     db.commit()
     flash("Rule deleted.")
-    return redirect(url_for("rules_page"))
+    return redirect(url_for("rules_page",
+                            from_job=request.form.get("from_job") or None))
 
 
 if __name__ == "__main__":

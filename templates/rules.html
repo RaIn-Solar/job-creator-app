@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Rules{% endblock %}
 {% block content %}
+<div style="margin-bottom: 0.8rem;">
+  {% if from_job %}
+  <a href="{{ url_for('job_detail', job_id=from_job['id']) }}" class="btn btn-secondary">← Back to {{ from_job["job_name"] or "Job #" ~ from_job["id"] }}</a>
+  {% else %}
+  <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to clients</a>
+  {% endif %}
+</div>
 <h1>Requirement &amp; resource rules</h1>
 <p class="muted">Each rule says: when a job's <strong>field</strong> matches a
 <strong>value</strong>, the job needs this license, permit, compliance item,
@@ -8,6 +15,7 @@ link, or phone number. Jobs read these rules live — add a rule here and every
 matching job page updates immediately. No code changes needed.</p>
 
 <form method="post" action="{{ url_for('add_rule') }}" class="card">
+  {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
   <h2 style="margin-top:0; font-size:1.05rem;">Add a rule</h2>
   <div class="form-grid">
     <div class="field">
@@ -76,6 +84,7 @@ matching job page updates immediately. No code changes needed.</p>
         <td>
           <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
                 onsubmit="return confirm('Delete this rule?');" style="margin:0;">
+            {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
         </td>
