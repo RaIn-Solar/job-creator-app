@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Rule directory{% endblock %}
+{% block content %}
+<h1>📖 Rule directory</h1>
+<p class="muted">Browse every requirement and resource rule. Read-only —
+this directory is for looking things up, not changing them.</p>
+
+<form method="get" class="card" id="filter_form">
+  <div class="form-grid">
+    <div class="field">
+      <label for="product">Job type</label>
+      <select id="product" name="product">
+        <option value="">All job types</option>
+        {% for p in products %}
+        <option value="{{ p }}" {% if filters.product == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="connection">Utility connection</label>
+      <select id="connection" name="connection">
+        <option value="">Any</option>
+        {% for c in utility_connections %}
+        <option value="{{ c }}" {% if filters.connection == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="mounting">Mounting type (PV)</label>
+      <select id="mounting" name="mounting">
+        <option value="">Any</option>
+        {% for m in mounting_types %}
+        <option value="{{ m }}" {% if filters.mounting == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="manufactured">Manufactured house (PV)</label>
+      <select id="manufactured" name="manufactured">
+        <option value="">Any</option>
+        <option value="Yes" {% if filters.manufactured == 'Yes' %}selected{% endif %}>Yes</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="service">Service type</label>
+      <select id="service" name="service">
+        <option value="">Any</option>
+        {% for s in service_types %}
+        <option value="{{ s }}" {% if filters.service == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% if filtering %}
+  <div class="actions">
+    <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">Clear filters</a>
+  </div>
+  {% endif %}
+</form>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">
+    {{ total }} rule{{ "s" if total != 1 }}{% if filtering %} matching your filters{% endif %}
+  </h2>
+  {% if groups %}
+    {% for heading, items in groups %}
+    <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:1rem 0 0.3rem;">{{ heading }} ({{ items|length }})</h3>
+    <ul style="margin:0; padding-left:1.2rem;">
+      {% for r in items %}
+      <li style="margin-bottom:0.35rem;">
+        {{ r["label"] }}
+        {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
+        {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">link</a>{% endif %}
+        {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+        <br><span class="muted" style="font-size:0.8rem;">when {{ field_labels.get(r["field_name"], r["field_name"]) }}
+          {% if r["match_type"] == "contains" %}includes{% else %}is{% endif %}
+          “{{ r["field_value"] }}”</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  {% else %}
+  <p class="empty">No rules match these filters.</p>
+  {% endif %}
+</div>
+
+<script>
+  // Re-filter as soon as any dropdown changes.
+  document.querySelectorAll("#filter_form select").forEach(sel => {
+    sel.addEventListener("change", () => document.getElementById("filter_form").submit());
+  });
+</script>
+{% endblock %}

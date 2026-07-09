@@ -64,6 +64,21 @@ UTILITY_CONNECTIONS = ["Off-grid", "Grid-tie", "Backup system"]
 MOUNTING_TYPES = ["Roof mounted", "Ground mount"]
 SERVICE_TYPES = ["General service", "Warranty service"]
 
+# Which variant fields belong to which product — used by the rule
+# directory so filtering by job type also scopes its variants.
+VARIANT_OWNERS = {
+    "pv_utility_connection": "PV Systems",
+    "pv_mounting_type": "PV Systems",
+    "pv_manufactured_house": "PV Systems",
+    "generator_utility_connection": "Generators",
+    "battery_utility_connection": "Battery Banks",
+    "service_type": "Technician Service",
+}
+CONNECTION_FIELDS = {
+    "pv_utility_connection", "generator_utility_connection",
+    "battery_utility_connection",
+}
+
 RULE_CATEGORIES = ["License", "Permit", "Compliance", "Link", "Phone", "Doc"]
 CATEGORY_HEADINGS = {
     "License": "Technician licenses",
@@ -127,7 +142,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 4.1"
+VERSION = "Piece 4.2"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -238,13 +253,14 @@ def match_rules(job, rules):
     return hits
 
 
-def group_rules(matched):
-    """Group matched rules by category in a fixed order, de-duplicating
-    shared requirements (e.g. PV and Battery both need EE-98)."""
+def group_rules(matched, dedupe=True):
+    """Group matched rules by category in a fixed order. On job pages,
+    de-duplicate shared requirements (e.g. PV and Battery both need
+    EE-98); the directory keeps every rule so each trigger is visible."""
     groups, seen = {}, set()
     for rule in matched:
         key = (rule["category"], rule["label"].strip().lower())
-        if key in seen:
+        if dedupe and key in seen:
             continue
         seen.add(key)
         groups.setdefault(rule["category"], []).append(rule)
@@ -504,6 +520,55 @@ def add_rule():
     db.commit()
     flash(f"Rule added: {label}")
     return redirect(url_for("rules_page", from_job=from_job))
+
+
+@app.route("/directory")
+def rule_directory():
+    """Read-only, browsable view of every rule, filterable by job type
+    and by the product variants. No editing happens here."""
+    product = request.args.get("product", "")
+    connection = request.args.get("connection", "")
+    mounting = request.args.get("mounting", "")
+    manufactured = request.args.get("manufactured", "")
+    service = request.args.get("service", "")
+
+    def visible(rule):
+        field, value = rule["field_name"], rule["field_value"].strip().lower()
+        if product:
+            # Only this product's own rules and its variants' rules.
+            if field == "products":
+                if value != product.lower():
+                    return False
+            elif field in VARIANT_OWNERS:
+                if VARIANT_OWNERS[field] != product:
+                    return False
+            else:
+                return False
+        if connection and field in CONNECTION_FIELDS and value != connection.lower():
+            return False
+        if mounting and field == "pv_mounting_type" and value != mounting.lower():
+            return False
+        if manufactured and field == "pv_manufactured_house" and value != manufactured.lower():
+            return False
+        if service and field == "service_type" and value != service.lower():
+            return False
+        return True
+
+    rules = [r for r in get_db().execute(
+        "SELECT * FROM resource_rules ORDER BY category, label"
+    ).fetchall() if visible(r)]
+    groups = group_rules(rules, dedupe=False)
+    total = sum(len(items) for _, items in groups)
+    return render_template(
+        "directory.html", groups=groups, total=total,
+        field_labels=JOB_FIELD_LABELS,
+        products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
+        mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
+        filters={"product": product, "connection": connection,
+                 "mounting": mounting, "manufactured": manufactured,
+                 "service": service},
+        filtering=any([product, connection, mounting, manufactured, service]),
+    )
 
 
 @app.route("/rules/<int:rule_id>/delete", methods=["POST"])
