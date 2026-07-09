@@ -48,9 +48,18 @@ PRODUCTS = [
     "Technician Service",
 ]
 
+# Shown in the footer of every page so it's always obvious which build
+# is running. Bumped with each piece.
+VERSION = "Piece 3"
+
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
 app.secret_key = "ecc-solar-job-creator"
+
+
+@app.context_processor
+def inject_version():
+    return {"version": VERSION}
 
 
 def get_db():
