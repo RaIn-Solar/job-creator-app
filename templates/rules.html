@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Rules{% endblock %}
+{% block content %}
+<h1>Requirement &amp; resource rules</h1>
+<p class="muted">Each rule says: when a job's <strong>field</strong> matches a
+<strong>value</strong>, the job needs this license, permit, compliance item,
+link, or phone number. Jobs read these rules live — add a rule here and every
+matching job page updates immediately. No code changes needed.</p>
+
+<form method="post" action="{{ url_for('add_rule') }}" class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Add a rule</h2>
+  <div class="form-grid">
+    <div class="field">
+      <label for="field_name">When this job field…</label>
+      <select id="field_name" name="field_name">
+        {% for f in job_fields %}
+        <option value="{{ f }}">{{ field_labels[f] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="field_value">…matches this value</label>
+      <input id="field_value" name="field_value" required
+             placeholder="e.g. PV Systems, Ector County, Off-grid">
+    </div>
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        {% for c in categories %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field wide">
+      <label for="label">The job needs… (label) *</label>
+      <input id="label" name="label" required
+             placeholder="e.g. County flood-plain permit">
+    </div>
+    <div class="field">
+      <label for="url">Link (optional)</label>
+      <input id="url" name="url" placeholder="https://…">
+    </div>
+    <div class="field">
+      <label for="phone">Phone (optional)</label>
+      <input id="phone" name="phone">
+    </div>
+    <div class="field">
+      <label for="notes">Notes (optional)</label>
+      <input id="notes" name="notes" placeholder="e.g. per tech on site">
+    </div>
+  </div>
+  <div class="actions">
+    <button type="submit" class="btn">Add rule</button>
+  </div>
+</form>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Current rules ({{ rules|length }})</h2>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead>
+      <tr><th>When</th><th>Matches</th><th>Category</th><th>Requires</th><th>Notes</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in rules %}
+      <tr>
+        <td class="muted">{{ field_labels.get(r["field_name"], r["field_name"]) }}</td>
+        <td>{{ r["field_value"] }}</td>
+        <td><span class="badge">{{ r["category"] }}</span></td>
+        <td>
+          {{ r["label"] }}
+          {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">link</a>{% endif %}
+          {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+        </td>
+        <td class="muted">{{ r["notes"] }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
+                onsubmit="return confirm('Delete this rule?');" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

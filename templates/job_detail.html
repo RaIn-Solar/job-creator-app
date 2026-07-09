@@ -32,13 +32,36 @@
     {% if job["battery_utility_connection"] %}
     <dt>Battery bank — utility connection</dt><dd>{{ job["battery_utility_connection"] }}</dd>
     {% endif %}
+    {% if job["service_type"] %}
+    <dt>Service type</dt><dd>{{ job["service_type"] }}</dd>
+    {% endif %}
     <dt>Created</dt><dd>{{ job["created_at"] }}</dd>
   </dl>
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">Job resources</h2>
-  <p class="empty">Links and phone numbers resolved from this job's fields
-  will appear here — coming in Piece 4.</p>
+  <div class="toolbar" style="margin-bottom: 0.6rem;">
+    <h2 style="margin:0; font-size:1.1rem;">Licenses, permits &amp; compliance</h2>
+    <a href="{{ url_for('job_report', job_id=job['id']) }}" class="btn">⬇ Export report</a>
+  </div>
+  {% if groups %}
+    {% for heading, items in groups %}
+    <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:0.9rem 0 0.3rem;">{{ heading }}</h3>
+    <ul style="margin:0; padding-left:1.2rem;">
+      {% for r in items %}
+      <li style="margin-bottom:0.25rem;">
+        {{ r["label"] }}
+        {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
+        {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">link</a>{% endif %}
+        {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  {% else %}
+  <p class="empty">No requirements matched this job's selections.</p>
+  {% endif %}
+  <p class="muted" style="margin-bottom:0;">Resolved automatically from this
+  job's fields · <a href="{{ url_for('rules_page') }}">manage the rules</a></p>
 </div>
 {% endblock %}

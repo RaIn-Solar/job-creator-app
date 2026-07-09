@@ -132,6 +132,36 @@
         </div>
       </div>
     </fieldset>
+
+    <fieldset class="section" id="service_options" style="grid-column: 1 / -1; display: none;">
+      <legend>🛠️ Technician Service options</legend>
+      {% if existing_jobs %}
+      <div class="field" style="margin-bottom: 0.7rem;">
+        <label for="prefill_select">This client has jobs on the books — pre-fill from one? (optional)</label>
+        <select id="prefill_select">
+          <option value="">— no, start a blank service ticket —</option>
+          {% for ej in existing_jobs %}
+          <option value="{{ ej['id'] }}">{{ ej["job_name"] or "Job #" ~ ej["id"] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="field">
+        <label>Service type *</label>
+        <div class="check-grid">
+          {% for opt in service_types %}
+          <label class="check">
+            <input type="radio" name="service_type" value="{{ opt }}"
+                   {% if values.get('service_type') == opt %}checked{% endif %}>
+            {{ opt }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <p class="muted" style="margin: 0.6rem 0 0;">Then check the products above
+      that describe the part of the system needing service — their options and
+      requirements apply to the ticket.</p>
+    </fieldset>
   </div>
   <div class="actions">
     <button type="submit" class="btn">Create job</button>
@@ -145,6 +175,7 @@
     "PV Systems": "pv_options",
     "Generators": "generator_options",
     "Battery Banks": "battery_options",
+    "Technician Service": "service_options",
   };
   const productBoxes = document.querySelectorAll('input[name="products"]');
   function updateSections() {
@@ -162,5 +193,15 @@
   document.querySelectorAll('input[name="pv_mounting_type"]')
     .forEach(r => r.addEventListener("change", updateSections));
   updateSections();
+
+  // Service pre-fill: reload the form seeded from the chosen existing job.
+  const prefill = document.getElementById("prefill_select");
+  if (prefill) {
+    prefill.addEventListener("change", () => {
+      if (prefill.value) {
+        window.location = "{{ url_for('new_job', client_id=client['id']) }}?prefill=" + prefill.value;
+      }
+    });
+  }
 </script>
 {% endblock %}
