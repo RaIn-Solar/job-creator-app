@@ -130,6 +130,35 @@ SEED_RULES = [
     ("products", "Battery Banks", "contains", "Compliance", "Smoke/Heat Detection (if enclosed)", ""),
 ]
 
+# Batch 2 — PV Systems variant matrix (roof/ground × grid-tie/off-grid).
+# Seed batches are applied once per database via the meta.seed_version key,
+# so existing databases pick up new batches without duplicating rules.
+SEED_RULES_V2 = [
+    # All PV variants
+    ("products", "PV Systems", "contains", "Compliance", "SMDTC Application", "client files"),
+    ("products", "PV Systems", "contains", "Compliance", "GRT Exemption on Invoice", ""),
+    # Roof mounted
+    ("pv_mounting_type", "Roof mounted", "equals", "Compliance", "Rapid Shutdown (NEC 690.12)", ""),
+    ("pv_mounting_type", "Roof mounted", "equals", "Compliance", "Structural Analysis / NM PE Letter", "situational"),
+    ("pv_mounting_type", "Roof mounted", "equals", "Permit", "Building Permit (structural)", "if reinforcement needed"),
+    ("pv_mounting_type", "Roof mounted", "equals", "Compliance", "Fire Code Roof Access Clearances", ""),
+    # Roof mounted on a manufactured house
+    ("pv_manufactured_house", "Yes", "equals", "Permit", "MHD Permit", "manufactured homes"),
+    # Ground mount
+    ("pv_mounting_type", "Ground mount", "equals", "Compliance", "Rapid Shutdown (NEC 690.12) — exception", "ground mounts typically qualify for the exception"),
+    ("pv_mounting_type", "Ground mount", "equals", "Compliance", "Structural Analysis / NM PE Letter", ""),
+    ("pv_mounting_type", "Ground mount", "equals", "Permit", "Building Permit (structural)", ""),
+    ("pv_mounting_type", "Ground mount", "equals", "Compliance", "Underground Wiring Plan + Depths", ""),
+    # Grid-tie (either mounting)
+    ("pv_utility_connection", "Grid-tie", "equals", "Permit", "Utility Interconnection Application", ""),
+    ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "IEEE 1547-2018 Inverter Listing", ""),
+    ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "Lockable Load-Break Disconnect", ""),
+    ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "Signed Interconnection Agreement", ""),
+    ("pv_utility_connection", "Grid-tie", "equals", "Compliance", "Utility Final Inspection + Anti-Island", ""),
+]
+
+SEED_BATCHES = {2: SEED_RULES_V2}
+
 # ECC's main products/services — the multi-select on the job form.
 PRODUCTS = [
     "PV Systems",
@@ -142,7 +171,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 4.2"
+VERSION = "Piece 4.3"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -229,6 +258,26 @@ def init_db():
             SEED_RULES,
         )
         db.commit()
+    # Later rule batches apply exactly once per database, so existing
+    # installs receive new rules without duplicates — and rules someone
+    # deleted on purpose don't come back on restart.
+    row = db.execute("SELECT value FROM meta WHERE key = 'seed_version'").fetchone()
+    seed_version = int(row[0]) if row else 1
+    for batch_number in sorted(SEED_BATCHES):
+        if batch_number > seed_version:
+            db.executemany(
+                "INSERT INTO resource_rules"
+                " (field_name, field_value, match_type, category, label, notes)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                SEED_BATCHES[batch_number],
+            )
+            seed_version = batch_number
+    db.execute(
+        "INSERT INTO meta (key, value) VALUES ('seed_version', ?)"
+        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (str(seed_version),),
+    )
+    db.commit()
     db.close()
 
 

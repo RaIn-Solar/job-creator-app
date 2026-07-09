@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS jobs (
 -- <field_value>, this job needs <label>". Categories group the output
 -- (License / Permit / Compliance / Link / Phone / Doc). match_type
 -- 'contains' is for list fields like products; 'equals' for single values.
+-- App metadata (e.g. which rule seed batches have been applied).
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS resource_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     field_name  TEXT NOT NULL,
