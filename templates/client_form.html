@@ -17,24 +17,24 @@
       <input id="email" name="email" type="email" value="{{ values.get('email', '') }}">
     </div>
     <fieldset class="section wide" style="grid-column: 1 / -1;">
-      <legend>📍 Street address — where the client lives / the job site</legend>
+      <legend>📍 Mailing address — where the client receives mail</legend>
       <div class="field">
-        <label for="street_address">Street address *</label>
-        <input id="street_address" name="street_address"
+        <label for="mailing_address">Mailing address *</label>
+        <input id="mailing_address" name="mailing_address"
                placeholder="123 Main St, Dallas, TX 75201"
-               value="{{ values.get('street_address', '') }}" required>
+               value="{{ values.get('mailing_address', '') }}" required>
       </div>
     </fieldset>
     <fieldset class="section wide" style="grid-column: 1 / -1;">
       <legend>💳 Billing address — where invoices go</legend>
       <label style="font-weight:normal; display:flex; align-items:center; gap:0.35rem; margin-bottom:0.5rem;">
-        <input type="checkbox" id="same_as_street" style="width:auto;">
-        Same as street address
+        <input type="checkbox" id="same_as_mailing" style="width:auto;">
+        Same as mailing address
       </label>
       <div class="field">
         <label for="billing_address">Billing address *</label>
         <input id="billing_address" name="billing_address"
-               placeholder="PO Box, mailing address, or same as street"
+               placeholder="PO Box or other invoice address"
                value="{{ values.get('billing_address', '') }}" required>
       </div>
     </fieldset>
@@ -55,19 +55,19 @@
   </div>
 </form>
 <script>
-  // "Same as street address": mirror the street address into billing while checked.
-  const street = document.getElementById("street_address");
+  // "Same as mailing address": mirror the mailing address into billing while checked.
+  const mailing = document.getElementById("mailing_address");
   const billing = document.getElementById("billing_address");
-  const same = document.getElementById("same_as_street");
+  const same = document.getElementById("same_as_mailing");
   function syncBilling() {
     if (same.checked) {
-      billing.value = street.value;
+      billing.value = mailing.value;
       billing.readOnly = true;
     } else {
       billing.readOnly = false;
     }
   }
   same.addEventListener("change", syncBilling);
-  street.addEventListener("input", syncBilling);
+  mailing.addEventListener("input", syncBilling);
 </script>
 {% endblock %}

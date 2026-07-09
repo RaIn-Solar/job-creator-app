@@ -10,11 +10,11 @@
   <dl class="profile">
     <dt>Phone</dt><dd>{{ client["phone"] or "—" }}</dd>
     <dt>Email</dt><dd>{{ client["email"] or "—" }}</dd>
-    <dt>Street address</dt><dd>{{ client["street_address"] or "—" }}</dd>
+    <dt>Mailing address</dt><dd>{{ client["mailing_address"] or "—" }}</dd>
     <dt>Billing address</dt>
     <dd>
-      {%- if client["billing_address"] == client["street_address"] and client["billing_address"] -%}
-        Same as street address
+      {%- if client["billing_address"] == client["mailing_address"] and client["billing_address"] -%}
+        Same as mailing address
       {%- else -%}
         {{ client["billing_address"] or "—" }}
       {%- endif -%}

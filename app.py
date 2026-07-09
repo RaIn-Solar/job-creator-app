@@ -20,7 +20,7 @@ DATABASE = BASE_DIR / "job_creator.db"
 
 # The columns a user can fill in on the client form, in display order.
 CLIENT_FIELDS = [
-    "name", "phone", "street_address", "billing_address",
+    "name", "phone", "mailing_address", "billing_address",
     "email", "referral_source", "notes",
 ]
 
@@ -28,7 +28,7 @@ CLIENT_FIELDS = [
 REQUIRED_CLIENT_FIELDS = {
     "name": "Client name",
     "phone": "Phone number",
-    "street_address": "Street address",
+    "mailing_address": "Mailing address",
     "billing_address": "Billing address",
 }
 
@@ -50,7 +50,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 3.1"
+VERSION = "Piece 3.2"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -93,12 +93,16 @@ def init_db():
     sample clients the first time so the home page isn't empty."""
     db = sqlite3.connect(DATABASE)
     db.executescript((BASE_DIR / "schema.sql").read_text())
+    # Field renamed after Piece 3.1: carry existing data over.
+    client_cols = {row[1] for row in db.execute("PRAGMA table_info(clients)")}
+    if "street_address" in client_cols and "mailing_address" not in client_cols:
+        db.execute("ALTER TABLE clients RENAME COLUMN street_address TO mailing_address")
     ensure_columns(db, "clients", CLIENT_FIELDS)
     ensure_columns(db, "jobs", JOB_FIELDS)
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
         db.executemany(
             "INSERT INTO clients"
-            " (name, phone, street_address, billing_address, email, referral_source)"
+            " (name, phone, mailing_address, billing_address, email, referral_source)"
             " VALUES (?, ?, ?, ?, ?, ?)",
             [
                 ("Johnson Residence (sample)", "214-555-0142",
@@ -204,7 +208,7 @@ def new_job(client_id):
         return redirect(url_for("job_detail", job_id=cur.lastrowid))
     return render_template(
         "job_form.html", client=client,
-        values={"site_location": client["street_address"]},
+        values={"site_location": client["mailing_address"]},
         selected=[], products=PRODUCTS,
     )
 

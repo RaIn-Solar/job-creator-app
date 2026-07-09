@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS clients (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL,
     phone           TEXT DEFAULT '',
-    street_address  TEXT DEFAULT '',
+    mailing_address TEXT DEFAULT '',
     billing_address TEXT DEFAULT '',
     email           TEXT DEFAULT '',
     referral_source TEXT DEFAULT '',
