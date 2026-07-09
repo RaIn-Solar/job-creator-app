@@ -34,4 +34,5 @@ Delete that file to start over with a fresh database.
 - [x] **Piece 2** — “New client” form and client profile pages
 - [x] **Piece 3** — Job profiles stored under each client
 - [x] **Piece 4** — Rules engine: job selections → licenses, permits, compliance items (editable at /rules); service tickets with pre-fill; exportable job report
-- [ ] **Piece 5** — Polish (search, editing, statuses)
+- [x] **Piece 5** — Edit jobs with version history for recordkeeping
+- [ ] **Piece 6** — Polish (search, statuses, logins)

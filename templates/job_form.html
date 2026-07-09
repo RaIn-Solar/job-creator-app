@@ -1,7 +1,13 @@
 {% extends "base.html" %}
-{% block title %}New job — {{ client["name"] }}{% endblock %}
+{% block title %}{% if editing_job_id %}Edit job{% else %}New job{% endif %} — {{ client["name"] }}{% endblock %}
 {% block content %}
+{% if editing_job_id %}
+<h1>Edit “{{ values.get('job_name') or 'Job #' ~ editing_job_id }}”</h1>
+<p class="muted">Saving keeps the current state as a numbered version for
+recordkeeping.</p>
+{% else %}
 <h1>Create a job under “{{ client["name"] }}”</h1>
+{% endif %}
 <form method="post" class="card">
   <div class="form-grid">
     <div class="field wide">
@@ -10,11 +16,18 @@
              placeholder="e.g. {{ client['name'] }} — 8kW PV + battery"
              value="{{ values.get('job_name', '') }}" required>
     </div>
-    <div class="field wide">
+    <div class="field" style="grid-column: 1 / -2;">
       <label for="site_location">Site location * <span class="muted">(address or GPS coordinates — .kmz linking coming later)</span></label>
       <input id="site_location" name="site_location"
              placeholder="123 County Rd 45, Estancia, NM — or 35.0844, -106.6504"
              value="{{ values.get('site_location', '') }}" required>
+    </div>
+    <div class="field">
+      <label for="property_type">Property type</label>
+      <select id="property_type" name="property_type">
+        <option value="Residential" {% if values.get('property_type', 'Residential') != 'Commercial' %}selected{% endif %}>Residential</option>
+        <option value="Commercial" {% if values.get('property_type') == 'Commercial' %}selected{% endif %}>Commercial</option>
+      </select>
     </div>
     <div class="field">
       <label for="county">County</label>
@@ -56,19 +69,6 @@
         <option value="No" {% if values.get('expand_option', 'No') == 'No' %}selected{% endif %}>No</option>
         <option value="Yes" {% if values.get('expand_option') == 'Yes' %}selected{% endif %}>Yes</option>
       </select>
-    </div>
-    <div class="field">
-      <label>Property type</label>
-      <label class="check">
-        <input type="radio" name="property_type" value="Residential"
-               {% if values.get('property_type', 'Residential') != 'Commercial' %}checked{% endif %}>
-        Residential
-      </label>
-      <label class="check">
-        <input type="radio" name="property_type" value="Commercial"
-               {% if values.get('property_type') == 'Commercial' %}checked{% endif %}>
-        Commercial
-      </label>
     </div>
     <div class="field wide">
       <label>Products / services * <span class="muted">(select all that apply)</span></label>
@@ -177,8 +177,12 @@
     </fieldset>
   </div>
   <div class="actions">
-    <button type="submit" class="btn">Create job</button>
+    <button type="submit" class="btn">{% if editing_job_id %}Save changes{% else %}Create job{% endif %}</button>
+    {% if editing_job_id %}
+    <a href="{{ url_for('job_detail', job_id=editing_job_id) }}" class="btn btn-secondary">Cancel</a>
+    {% else %}
     <a href="{{ url_for('client_detail', client_id=client['id']) }}" class="btn btn-secondary">Cancel</a>
+    {% endif %}
   </div>
 </form>
 <script>

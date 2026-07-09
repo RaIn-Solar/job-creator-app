@@ -43,6 +43,16 @@ CREATE TABLE IF NOT EXISTS jobs (
 -- <field_value>, this job needs <label>". Categories group the output
 -- (License / Permit / Compliance / Link / Phone / Doc). match_type
 -- 'contains' is for list fields like products; 'equals' for single values.
+-- Prior states of edited jobs, kept for recordkeeping. data is a JSON
+-- snapshot of every job field at the moment it was replaced.
+CREATE TABLE IF NOT EXISTS job_versions (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id   INTEGER NOT NULL REFERENCES jobs(id),
+    version  INTEGER NOT NULL,
+    data     TEXT NOT NULL,
+    saved_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- App metadata (e.g. which rule seed batches have been applied).
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,

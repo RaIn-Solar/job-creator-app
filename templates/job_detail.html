@@ -3,7 +3,10 @@
 {% block content %}
 <div class="toolbar">
   <h1>{{ job["job_name"] or "Job #" ~ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
-  <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary">← Client profile</a>
+  <div style="display:flex; gap:0.5rem;">
+    <a href="{{ url_for('edit_job', job_id=job['id']) }}" class="btn">✎ Edit job</a>
+    <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary">← Client profile</a>
+  </div>
 </div>
 
 <div class="card">
@@ -65,4 +68,20 @@
   <p class="muted" style="margin-bottom:0;">Resolved automatically from this
   job's fields · <a href="{{ url_for('rules_page', from_job=job['id']) }}">manage the rules</a></p>
 </div>
+
+{% if versions %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Version history</h2>
+  <p class="muted">Previous states of this job, kept for recordkeeping.
+  The current profile is always the live version above.</p>
+  <ul style="margin:0; padding-left:1.2rem;">
+    {% for v in versions %}
+    <li style="margin-bottom:0.25rem;">
+      <a href="{{ url_for('job_version', job_id=job['id'], version=v['version']) }}">Version {{ v["version"] }}</a>
+      <span class="muted">— replaced {{ v["saved_at"] }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 {% endblock %}

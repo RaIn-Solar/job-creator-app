@@ -12,6 +12,7 @@ Run it:
 then open http://127.0.0.1:5000 in your browser.
 """
 
+import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -208,7 +209,15 @@ SEED_RULES_V5 = [
     ("generator_utility_connection", "Grid-tie", "equals", "Compliance", "Utility Interconnection Inspection", ""),
 ]
 
-SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4, 5: SEED_RULES_V5}
+# Batch 6 — corrections per ECC: Arc Flash is commercial-only, and the
+# two SMDTC rules merge into one.
+SEED_RULES_V6 = [
+    ("products", "PV Systems", "contains", "Compliance", "SMDTC 20% Credit Application",
+     "client files; batteries qualify when paired with solar"),
+]
+
+SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4,
+                5: SEED_RULES_V5, 6: SEED_RULES_V6}
 
 # One-off SQL applied alongside a batch (same once-only guarantee).
 SEED_BATCH_SQL = {
@@ -218,6 +227,12 @@ SEED_BATCH_SQL = {
         " field_value2 = 'Residential', match_type2 = 'equals'"
         " WHERE field_name = 'products' AND field_value = 'Battery Banks'"
         " AND label = 'Exterior Emergency Shutdown' AND field_name2 = ''"],
+    # Residential grid-tie needs no Arc Flash Label (commercial-only
+    # compound rule remains); old SMDTC rules replaced by the merged one.
+    6: ["DELETE FROM resource_rules WHERE label = 'Arc Flash Label'"
+        " AND field_name = 'battery_utility_connection'",
+        "DELETE FROM resource_rules WHERE label = 'SMDTC Application'",
+        "DELETE FROM resource_rules WHERE label = 'SMDTC 20% Credit'"],
 }
 
 # ECC's main products/services — the multi-select on the job form.
@@ -232,7 +247,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 4.5"
+VERSION = "Piece 5"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -459,52 +474,11 @@ def new_job(client_id):
     if client is None:
         abort(404)
     if request.method == "POST":
-        values = {f: request.form.get(f, "").strip() for f in JOB_FIELDS}
-        selected = request.form.getlist("products")
-        values["products"] = ", ".join(p for p in PRODUCTS if p in selected)
-        # Product-specific options only apply when their product is selected
-        # (the browser hides the sections, but never trust hidden inputs).
-        if "PV Systems" not in selected:
-            values["pv_utility_connection"] = ""
-            values["pv_mounting_type"] = ""
-        if values["pv_mounting_type"] != "Roof mounted":
-            values["pv_manufactured_house"] = ""
-        if "Generators" not in selected:
-            values["generator_utility_connection"] = ""
-        if "Battery Banks" not in selected:
-            values["battery_utility_connection"] = ""
-        if "Technician Service" not in selected:
-            values["service_type"] = ""
-        errors = []
-        if not values["job_name"]:
-            errors.append("Job name is required.")
-        if not values["site_location"]:
-            errors.append("Site location is required.")
-        if not values["products"]:
-            errors.append("Select at least one product/service.")
-        if "Technician Service" in selected and not values["service_type"]:
-            errors.append("Specify general or warranty service.")
-        # The utility connection state must match across PV, Generator,
-        # and Battery Bank when more than one of them is on the job.
-        connections = {values[f] for f in (
-            "pv_utility_connection", "generator_utility_connection",
-            "battery_utility_connection") if values[f]}
-        if len(connections) > 1:
-            errors.append(
-                "Utility connection must match across all selected products"
-                f" — currently: {', '.join(sorted(connections))}.")
+        values, selected, errors = read_job_form()
         if errors:
             flash(" ".join(errors), "error")
-            return render_template(
-                "job_form.html", client=client, values=values,
-                selected=selected, products=PRODUCTS,
-                utility_connections=UTILITY_CONNECTIONS,
-                mounting_types=MOUNTING_TYPES,
-                service_types=SERVICE_TYPES,
-                existing_jobs=db.execute(
-                    "SELECT id, job_name FROM jobs WHERE client_id = ?",
-                    (client_id,)).fetchall(),
-            ), 400
+            return render_job_form(client, values, selected,
+                                   existing_jobs=True), 400
         cur = db.execute(
             f"INSERT INTO jobs (client_id, {', '.join(JOB_FIELDS)})"
             f" VALUES (?, {', '.join('?' * len(JOB_FIELDS))})",
@@ -529,16 +503,113 @@ def new_job(client_id):
             selected = [p.strip() for p in source["products"].split(",") if p.strip()]
             if "Technician Service" not in selected:
                 selected.append("Technician Service")
-    return render_template(
-        "job_form.html", client=client,
-        values=values,
-        selected=selected, products=PRODUCTS,
-        utility_connections=UTILITY_CONNECTIONS,
-        mounting_types=MOUNTING_TYPES,
-        service_types=SERVICE_TYPES,
-        existing_jobs=db.execute(
+    return render_job_form(client, values, selected, existing_jobs=True)
+
+
+def read_job_form():
+    """Validate and normalize a submitted job form (create or edit)."""
+    values = {f: request.form.get(f, "").strip() for f in JOB_FIELDS}
+    selected = request.form.getlist("products")
+    values["products"] = ", ".join(p for p in PRODUCTS if p in selected)
+    # Product-specific options only apply when their product is selected
+    # (the browser hides the sections, but never trust hidden inputs).
+    if "PV Systems" not in selected:
+        values["pv_utility_connection"] = ""
+        values["pv_mounting_type"] = ""
+    if values["pv_mounting_type"] != "Roof mounted":
+        values["pv_manufactured_house"] = ""
+    if "Generators" not in selected:
+        values["generator_utility_connection"] = ""
+    if "Battery Banks" not in selected:
+        values["battery_utility_connection"] = ""
+    if "Technician Service" not in selected:
+        values["service_type"] = ""
+    errors = []
+    if not values["job_name"]:
+        errors.append("Job name is required.")
+    if not values["site_location"]:
+        errors.append("Site location is required.")
+    if not values["products"]:
+        errors.append("Select at least one product/service.")
+    if "Technician Service" in selected and not values["service_type"]:
+        errors.append("Specify general or warranty service.")
+    # The utility connection state must match across PV, Generator,
+    # and Battery Bank when more than one of them is on the job.
+    connections = {values[f] for f in (
+        "pv_utility_connection", "generator_utility_connection",
+        "battery_utility_connection") if values[f]}
+    if len(connections) > 1:
+        errors.append(
+            "Utility connection must match across all selected products"
+            f" — currently: {', '.join(sorted(connections))}.")
+    return values, selected, errors
+
+
+def render_job_form(client, values, selected, existing_jobs=False,
+                    editing_job_id=None):
+    jobs_on_books = []
+    if existing_jobs and not editing_job_id:
+        jobs_on_books = get_db().execute(
             "SELECT id, job_name FROM jobs WHERE client_id = ?",
-            (client_id,)).fetchall(),
+            (client["id"],)).fetchall()
+    return render_template(
+        "job_form.html", client=client, values=values, selected=selected,
+        products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
+        mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
+        existing_jobs=jobs_on_books, editing_job_id=editing_job_id,
+    )
+
+
+@app.route("/jobs/<int:job_id>/edit", methods=["GET", "POST"])
+def edit_job(job_id):
+    db = get_db()
+    job = fetch_job(job_id)
+    client = db.execute(
+        "SELECT * FROM clients WHERE id = ?", (job["client_id"],)
+    ).fetchone()
+    if request.method == "POST":
+        values, selected, errors = read_job_form()
+        if errors:
+            flash(" ".join(errors), "error")
+            return render_job_form(client, values, selected,
+                                   editing_job_id=job_id), 400
+        # Keep the outgoing state for recordkeeping before overwriting.
+        snapshot = {f: job[f] for f in JOB_FIELDS}
+        version = db.execute(
+            "SELECT COALESCE(MAX(version), 0) + 1 FROM job_versions"
+            " WHERE job_id = ?", (job_id,)).fetchone()[0]
+        db.execute(
+            "INSERT INTO job_versions (job_id, version, data) VALUES (?, ?, ?)",
+            (job_id, version, json.dumps(snapshot)),
+        )
+        db.execute(
+            f"UPDATE jobs SET {', '.join(f + ' = ?' for f in JOB_FIELDS)}"
+            " WHERE id = ?",
+            [values[f] for f in JOB_FIELDS] + [job_id],
+        )
+        db.commit()
+        flash(f"Job updated — the previous state was kept as version {version}.")
+        return redirect(url_for("job_detail", job_id=job_id))
+    values = {f: job[f] for f in JOB_FIELDS}
+    selected = [p.strip() for p in job["products"].split(",") if p.strip()]
+    return render_job_form(client, values, selected, editing_job_id=job_id)
+
+
+@app.route("/jobs/<int:job_id>/versions/<int:version>")
+def job_version(job_id, version):
+    job = fetch_job(job_id)
+    row = get_db().execute(
+        "SELECT * FROM job_versions WHERE job_id = ? AND version = ?",
+        (job_id, version),
+    ).fetchone()
+    if row is None:
+        abort(404)
+    data = json.loads(row["data"])
+    rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
+    groups = group_rules(match_rules(data, rules))
+    return render_template(
+        "job_version.html", job=job, version=row, data=data,
+        groups=groups, field_labels=JOB_FIELD_LABELS, job_fields=JOB_FIELDS,
     )
 
 
@@ -557,9 +628,15 @@ def fetch_job(job_id):
 @app.route("/jobs/<int:job_id>")
 def job_detail(job_id):
     job = fetch_job(job_id)
-    rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
+    db = get_db()
+    rules = db.execute("SELECT * FROM resource_rules").fetchall()
     groups = group_rules(match_rules(job, rules))
-    return render_template("job_detail.html", job=job, groups=groups)
+    versions = db.execute(
+        "SELECT version, saved_at FROM job_versions WHERE job_id = ?"
+        " ORDER BY version DESC", (job_id,)
+    ).fetchall()
+    return render_template("job_detail.html", job=job, groups=groups,
+                           versions=versions)
 
 
 @app.route("/jobs/<int:job_id>/report")
