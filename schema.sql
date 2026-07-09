@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS clients (
 CREATE TABLE IF NOT EXISTS jobs (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     client_id        INTEGER NOT NULL REFERENCES clients(id),
+    job_name         TEXT DEFAULT '',   -- the name used in bookkeeping records
     site_location    TEXT DEFAULT '',   -- address or GPS coordinates; .kmz link planned
     county           TEXT DEFAULT '',
     electric_loads   TEXT DEFAULT '',

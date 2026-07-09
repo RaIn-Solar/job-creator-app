@@ -34,7 +34,7 @@ REQUIRED_CLIENT_FIELDS = {
 
 # Job profile columns (products is stored as a comma-separated list).
 JOB_FIELDS = [
-    "site_location", "county", "electric_loads", "utility_provider",
+    "job_name", "site_location", "county", "electric_loads", "utility_provider",
     "warranty_type", "cost_method", "tax_credit", "expand_option", "products",
 ]
 
@@ -50,7 +50,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 3"
+VERSION = "Piece 3.1"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -112,10 +112,11 @@ def init_db():
             ],
         )
         db.execute(
-            "INSERT INTO jobs (client_id, site_location, county,"
+            "INSERT INTO jobs (client_id, job_name, site_location, county,"
             " electric_loads, utility_provider, warranty_type, cost_method,"
-            " tax_credit, expand_option, products) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("4512 Bluebonnet Ln, Dallas, TX 75214", "Dallas County",
+            " tax_credit, expand_option, products) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("Johnson PV + Battery (sample)",
+             "4512 Bluebonnet Ln, Dallas, TX 75214", "Dallas County",
              "3-ton AC, well pump, shop sub-panel", "Oncor",
              "Standard 10-year", "Cash", "Yes", "Yes",
              "PV Systems, Battery Banks"),
@@ -181,6 +182,8 @@ def new_job(client_id):
         selected = request.form.getlist("products")
         values["products"] = ", ".join(p for p in PRODUCTS if p in selected)
         errors = []
+        if not values["job_name"]:
+            errors.append("Job name is required.")
         if not values["site_location"]:
             errors.append("Site location is required.")
         if not values["products"]:
@@ -197,7 +200,7 @@ def new_job(client_id):
             [client_id] + [values[f] for f in JOB_FIELDS],
         )
         db.commit()
-        flash(f"Job created under {client['name']}.")
+        flash(f"Job created under {client['name']}: {values['job_name']}")
         return redirect(url_for("job_detail", job_id=cur.lastrowid))
     return render_template(
         "job_form.html", client=client,

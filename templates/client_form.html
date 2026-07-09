@@ -16,21 +16,28 @@
       <label for="email">Email address (optional)</label>
       <input id="email" name="email" type="email" value="{{ values.get('email', '') }}">
     </div>
-    <div class="field wide">
-      <label for="street_address">Street address *</label>
-      <input id="street_address" name="street_address"
-             placeholder="123 Main St, Dallas, TX 75201"
-             value="{{ values.get('street_address', '') }}" required>
-    </div>
-    <div class="field wide">
-      <label for="billing_address">Billing address *</label>
-      <input id="billing_address" name="billing_address"
-             value="{{ values.get('billing_address', '') }}" required>
-      <label style="font-weight:normal; display:flex; align-items:center; gap:0.35rem;">
+    <fieldset class="section wide" style="grid-column: 1 / -1;">
+      <legend>📍 Street address — where the client lives / the job site</legend>
+      <div class="field">
+        <label for="street_address">Street address *</label>
+        <input id="street_address" name="street_address"
+               placeholder="123 Main St, Dallas, TX 75201"
+               value="{{ values.get('street_address', '') }}" required>
+      </div>
+    </fieldset>
+    <fieldset class="section wide" style="grid-column: 1 / -1;">
+      <legend>💳 Billing address — where invoices go</legend>
+      <label style="font-weight:normal; display:flex; align-items:center; gap:0.35rem; margin-bottom:0.5rem;">
         <input type="checkbox" id="same_as_street" style="width:auto;">
         Same as street address
       </label>
-    </div>
+      <div class="field">
+        <label for="billing_address">Billing address *</label>
+        <input id="billing_address" name="billing_address"
+               placeholder="PO Box, mailing address, or same as street"
+               value="{{ values.get('billing_address', '') }}" required>
+      </div>
+    </fieldset>
     <div class="field wide">
       <label for="referral_source">Referral source (optional)</label>
       <input id="referral_source" name="referral_source"

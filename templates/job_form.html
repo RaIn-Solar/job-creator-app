@@ -5,6 +5,12 @@
 <form method="post" class="card">
   <div class="form-grid">
     <div class="field wide">
+      <label for="job_name">Job name * <span class="muted">(used in bookkeeping records)</span></label>
+      <input id="job_name" name="job_name"
+             placeholder="e.g. {{ client['name'] }} — 8kW PV + battery"
+             value="{{ values.get('job_name', '') }}" required>
+    </div>
+    <div class="field wide">
       <label for="site_location">Site location * <span class="muted">(address or GPS coordinates — .kmz linking coming later)</span></label>
       <input id="site_location" name="site_location"
              placeholder="123 County Rd 45, Ector, TX — or 31.8457, -102.3676"

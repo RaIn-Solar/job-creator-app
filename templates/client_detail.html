@@ -38,7 +38,7 @@
     <tbody>
       {% for j in jobs %}
       <tr>
-        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">Job #{{ j["id"] }}</a></td>
+        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
         <td>{{ j["products"] }}</td>
         <td>{{ j["county"] }}</td>
         <td>{{ j["created_at"] }}</td>

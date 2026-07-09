@@ -2,7 +2,7 @@
 {% block title %}Job #{{ job["id"] }} — {{ job["client_name"] }}{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <h1>Job #{{ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
+  <h1>{{ job["job_name"] or "Job #" ~ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
   <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary">← Client profile</a>
 </div>
 
