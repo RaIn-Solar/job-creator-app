@@ -28,5 +28,11 @@ CREATE TABLE IF NOT EXISTS jobs (
     tax_credit       TEXT DEFAULT 'No',
     expand_option    TEXT DEFAULT 'No',
     products         TEXT DEFAULT '',   -- comma-separated selections
+    -- Product-specific options; blank unless the product is selected.
+    pv_utility_connection        TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
+    pv_mounting_type             TEXT DEFAULT '',  -- Roof mounted / Ground mount
+    pv_manufactured_house        TEXT DEFAULT '',  -- Yes when roof mounted on a manufactured house
+    generator_utility_connection TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
+    battery_utility_connection   TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );

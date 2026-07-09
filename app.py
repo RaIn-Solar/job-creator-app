@@ -36,7 +36,12 @@ REQUIRED_CLIENT_FIELDS = {
 JOB_FIELDS = [
     "job_name", "site_location", "county", "electric_loads", "utility_provider",
     "warranty_type", "cost_method", "tax_credit", "expand_option", "products",
+    "pv_utility_connection", "pv_mounting_type", "pv_manufactured_house",
+    "generator_utility_connection", "battery_utility_connection",
 ]
+
+UTILITY_CONNECTIONS = ["Off-grid", "Grid-tie", "Backup system"]
+MOUNTING_TYPES = ["Roof mounted", "Ground mount"]
 
 # ECC's main products/services — the multi-select on the job form.
 PRODUCTS = [
@@ -50,7 +55,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 3.2"
+VERSION = "Piece 3.3"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -118,12 +123,15 @@ def init_db():
         db.execute(
             "INSERT INTO jobs (client_id, job_name, site_location, county,"
             " electric_loads, utility_provider, warranty_type, cost_method,"
-            " tax_credit, expand_option, products) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " tax_credit, expand_option, products, pv_utility_connection,"
+            " pv_mounting_type, battery_utility_connection)"
+            " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("Johnson PV + Battery (sample)",
              "4512 Bluebonnet Ln, Dallas, TX 75214", "Dallas County",
              "3-ton AC, well pump, shop sub-panel", "Oncor",
              "Standard 10-year", "Cash", "Yes", "Yes",
-             "PV Systems, Battery Banks"),
+             "PV Systems, Battery Banks",
+             "Grid-tie", "Roof mounted", "Backup system"),
         )
         db.commit()
     db.close()
@@ -185,6 +193,17 @@ def new_job(client_id):
         values = {f: request.form.get(f, "").strip() for f in JOB_FIELDS}
         selected = request.form.getlist("products")
         values["products"] = ", ".join(p for p in PRODUCTS if p in selected)
+        # Product-specific options only apply when their product is selected
+        # (the browser hides the sections, but never trust hidden inputs).
+        if "PV Systems" not in selected:
+            values["pv_utility_connection"] = ""
+            values["pv_mounting_type"] = ""
+        if values["pv_mounting_type"] != "Roof mounted":
+            values["pv_manufactured_house"] = ""
+        if "Generators" not in selected:
+            values["generator_utility_connection"] = ""
+        if "Battery Banks" not in selected:
+            values["battery_utility_connection"] = ""
         errors = []
         if not values["job_name"]:
             errors.append("Job name is required.")
@@ -197,6 +216,8 @@ def new_job(client_id):
             return render_template(
                 "job_form.html", client=client, values=values,
                 selected=selected, products=PRODUCTS,
+                utility_connections=UTILITY_CONNECTIONS,
+                mounting_types=MOUNTING_TYPES,
             ), 400
         cur = db.execute(
             f"INSERT INTO jobs (client_id, {', '.join(JOB_FIELDS)})"
@@ -210,6 +231,8 @@ def new_job(client_id):
         "job_form.html", client=client,
         values={"site_location": client["mailing_address"]},
         selected=[], products=PRODUCTS,
+        utility_connections=UTILITY_CONNECTIONS,
+        mounting_types=MOUNTING_TYPES,
     )
 
 

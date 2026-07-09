@@ -21,6 +21,17 @@
     <dt>Cost method</dt><dd>{{ job["cost_method"] or "—" }}</dd>
     <dt>Tax credit</dt><dd>{{ job["tax_credit"] }}</dd>
     <dt>Expand option</dt><dd>{{ job["expand_option"] }}</dd>
+    {% if job["pv_utility_connection"] or job["pv_mounting_type"] %}
+    <dt>PV — utility connection</dt><dd>{{ job["pv_utility_connection"] or "—" }}</dd>
+    <dt>PV — mounting type</dt>
+    <dd>{{ job["pv_mounting_type"] or "—" }}{% if job["pv_manufactured_house"] == "Yes" %} · manufactured house{% endif %}</dd>
+    {% endif %}
+    {% if job["generator_utility_connection"] %}
+    <dt>Generator — utility connection</dt><dd>{{ job["generator_utility_connection"] }}</dd>
+    {% endif %}
+    {% if job["battery_utility_connection"] %}
+    <dt>Battery bank — utility connection</dt><dd>{{ job["battery_utility_connection"] }}</dd>
+    {% endif %}
     <dt>Created</dt><dd>{{ job["created_at"] }}</dd>
   </dl>
 </div>
