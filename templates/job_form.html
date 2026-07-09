@@ -32,13 +32,19 @@ recordkeeping.</p>
     <div class="field">
       <label for="county">County</label>
       <input id="county" name="county" value="{{ values.get('county', '') }}"
-             placeholder="Bernalillo County">
+             list="county_list" placeholder="Mora County">
+      <datalist id="county_list">
+        {% for c in counties %}<option value="{{ c }}">{% endfor %}
+      </datalist>
     </div>
     <div class="field">
       <label for="utility_provider">Utility provider</label>
       <input id="utility_provider" name="utility_provider"
              value="{{ values.get('utility_provider', '') }}"
-             placeholder="PNM, El Paso Electric, co-op…">
+             list="utility_list" placeholder="MSMEC, KCEC, PNM…">
+      <datalist id="utility_list">
+        {% for u in utilities %}<option value="{{ u }}">{% endfor %}
+      </datalist>
     </div>
     <div class="field wide">
       <label for="electric_loads">Electric loads</label>

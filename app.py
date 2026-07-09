@@ -303,8 +303,102 @@ SEED_RULES_V7 = [
      "Kit Carson Electric Cooperative", "", "", "", "equals"),
 ]
 
+# Canonical values suggested on the job form so free-typed utilities and
+# counties actually match the rules below.
+UTILITIES = ["MSMEC", "KCEC", "Springer Electric", "JMEC", "PNM"]
+COUNTIES = ["Mora County", "San Miguel County", "Taos County", "Colfax County",
+            "Harding County", "Guadalupe County", "Rio Arriba County",
+            "Santa Fe County"]
+
+# Batch 8 — from the Utility Interconnection Forms & AHJ Building Permit
+# Forms documents (June 2026): per-utility forms/contacts and quirks,
+# per-county AHJ permits, and new-well drilling subcontract notes.
+SEED_RULES_V8 = [
+    # --- Utility contacts & forms (fire on the job's utility provider) ---
+    dict(field_name="utility_provider", field_value="MSMEC", category="Link",
+         label="MSMEC — Interconnection Forms Hub",
+         url="https://morasanmiguel.coop/forms",
+         phone="575-383-4270 / 800-421-6773",
+         notes="two tiers (≤10 kW / >10 kW); customer signs; approval before construction; rebates: thernandez@morasanmiguel.coop"),
+    dict(field_name="utility_provider", field_value="KCEC", category="Compliance",
+         label="KCEC Solar Net-Metering Pre-Screening — required FIRST",
+         url="https://kitcarson.com/solar-net-metering-pre-screening-application",
+         phone="575-758-2258",
+         notes="mandatory first gate before the full application; systems >25 kW: email rmartinez@kitcarson.com"),
+    dict(field_name="utility_provider", field_value="KCEC", category="Link",
+         label="KCEC — Net-Metering Hub & Applications",
+         url="https://kitcarson.com/electric/electric-info/net-metering/",
+         phone="575-758-2258",
+         notes="full application after pre-screening approval; NM Interconnection Manual p.24"),
+    dict(field_name="utility_provider", field_value="Springer Electric", category="Link",
+         label="Springer Electric — Forms Hub",
+         url="https://www.springercoop.com/service-application-and-forms",
+         phone="575-483-2421 / 800-288-1353",
+         notes="submit by mail (PO Box 698, Springer) or fax 575-483-2692; closed Fridays; site blocks automated access — navigate from hub"),
+    dict(field_name="utility_provider", field_value="JMEC", category="Link",
+         label="JMEC — Solar Applications & Requirements Packet",
+         url="https://www.jemezcoop.org/sites/default/files/2025-07/solar-applications-and-requirements.pdf",
+         phone="505-753-2105 / 888-755-2105",
+         notes="all-in-one packet; net metering up to 30 kW, April settle-up"),
+    dict(field_name="utility_provider", field_value="JMEC", category="Compliance",
+         label="JMEC Letter of Compliance (electrician closeout)",
+         url="https://www.jemezcoop.org/forms",
+         phone="888-755-2105",
+         notes="JMEC-specific: licensed electrician's letter required before written authorization"),
+    dict(field_name="utility_provider", field_value="PNM", category="Compliance",
+         label="PNM portal application — customer-signed, $50 fee (<100 kW)",
+         url="https://www.pnm.com/interconnection",
+         phone="888-342-5766",
+         notes="visible-air-gap lockable disconnect required (breakers/software modes do not qualify); permanent weatherproof one-line at point of service"),
+    # --- AHJ building/structural permits (fire on the job's county) ---
+    dict(field_name="county", field_value="Santa Fe County", category="Permit",
+         label="Santa Fe County Development Permit (PV Solar)",
+         url="https://www.santafecountynm.gov/growth-management/building-development/permitpackets",
+         phone="505-986-6225",
+         notes="unincorporated county: required for PV even without structural work; online via geocivix; expedited ~5 days; David Ruiz 505-986-6371",
+         field_name2="products", field_value2="PV Systems", match_type2="contains"),
+    dict(field_name="county", field_value="Taos County", category="Permit",
+         label="Taos County Solar Array Zoning Clearance — FIRST",
+         url="https://www.taoscounty.org/DocumentCenter/View/1914/Solar--Building-Permit-Application",
+         phone="575-737-6300",
+         notes="unincorporated county: required before the building permit; call office after online submittal; $80 re-inspection fee",
+         field_name2="products", field_value2="PV Systems", match_type2="contains"),
+    dict(field_name="county", field_value="Taos County", category="Permit",
+         label="Taos County Building Permit (after zoning clearance)",
+         url="https://www.taoscounty.org/DocumentCenter/View/2927/Building-Permit-Application",
+         phone="575-737-6300",
+         notes="use the 2024 revision",
+         field_name2="products", field_value2="PV Systems", match_type2="contains"),
+    dict(field_name="county", field_value="Rio Arriba County", category="Permit",
+         label="Rio Arriba County Development Permit",
+         url="https://www.rio-arriba.org/Departments/Departments-Divisions/Planning-and-Zoning/Forms-and-Permit-Applications",
+         phone="505-685-8000",
+         notes="single form covers solar/residential; 3–5 days; site visit arranged; NMDOT access permit if state road involved"),
+] + [
+    dict(field_name="county", field_value=county, category="Link",
+         label="CID is your AHJ — structural permits via CID portal",
+         url="https://nmrld.my.site.com/MHD/s/",
+         phone="505-476-4700 / 877-CID-0979",
+         notes="unincorporated areas; within city limits confirm the municipal building dept (Las Vegas 505-454-1401, Raton 575-445-9551)")
+    for county in ("Mora County", "San Miguel County", "Colfax County",
+                   "Harding County", "Guadalupe County")
+] + [
+    # --- New wells: drilling is subcontracted, outside ECC scope ---
+    dict(field_name="products", field_value="Well Pumps", match_type="contains",
+         category="Compliance",
+         label="New well? OSE well drilling permit — SUBCONTRACT",
+         url="https://www.ose.nm.gov/WR/well_drilling.php",
+         notes="well drilling is outside ECC scope — subcontract to an OSE-licensed driller; applies to new wells only, not pump replacement"),
+    dict(field_name="products", field_value="Well Pumps", match_type="contains",
+         category="Compliance",
+         label="New well? NMED water quality testing — subcontracted scope",
+         url="https://www.env.nm.gov/drinking-water/",
+         notes="new wells only; belongs to the drilling contractor's scope"),
+]
+
 SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4,
-                5: SEED_RULES_V5, 6: SEED_RULES_V6, 7: SEED_RULES_V7}
+                5: SEED_RULES_V5, 6: SEED_RULES_V6, 7: SEED_RULES_V7,
+                8: SEED_RULES_V8}
 
 # One-off SQL applied alongside a batch (same once-only guarantee).
 SEED_BATCH_SQL = {
@@ -325,6 +419,23 @@ SEED_BATCH_SQL = {
         _link_sql("PNM — Solar Interconnection & Net Metering", _PNM_SOLAR),
         _link_sql("Kit Carson Electric Cooperative", "https://www.kitcarson.com"),
     ],
+    # The generic interconnection rules were PNM-linked but apply to all
+    # six providers: point them at governing NMPRC Rule 568 instead; the
+    # serving utility's own forms come from the utility_provider rules.
+    # Also normalize the batch-7 utility Link rules to canonical values.
+    8: [_link_sql(label, "https://www.nmprc.state.nm.us/utilities/elec.html")
+        for label in ("Utility Interconnection Application",
+                      "Signed Interconnection Agreement",
+                      "Lockable Load-Break Disconnect",
+                      "Utility-Accessible Lockable Disconnect",
+                      "Utility Final Inspection + Anti-Island",
+                      "Utility Interconnection Inspection",
+                      "Utility Interconnection Update")] + [
+        "UPDATE resource_rules SET field_value = 'KCEC', phone = '575-758-2258'"
+        " WHERE label = 'Kit Carson Electric Cooperative'",
+        "UPDATE resource_rules SET phone = '888-342-5766'"
+        " WHERE label = 'PNM — Solar Interconnection & Net Metering'",
+    ],
 }
 
 # ECC's main products/services — the multi-select on the job form.
@@ -339,7 +450,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 5.1"
+VERSION = "Piece 5.2"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -395,13 +506,13 @@ def init_db():
             " (name, phone, mailing_address, billing_address, email, referral_source)"
             " VALUES (?, ?, ?, ?, ?, ?)",
             [
-                ("Johnson Residence (sample)", "505-555-0142",
-                 "4512 Juniper Rd NE, Albuquerque, NM 87111",
-                 "4512 Juniper Rd NE, Albuquerque, NM 87111",
+                ("Johnson Residence (sample)", "575-555-0142",
+                 "1247 Highway 518, Mora, NM 87732",
+                 "1247 Highway 518, Mora, NM 87732",
                  "mjohnson@example.com", "Google search"),
-                ("Rivera Residence (sample)", "575-555-0189",
-                 "902 Mesa Verde Dr, Las Cruces, NM 88011",
-                 "PO Box 2210, Las Cruces, NM 88004",
+                ("Rivera Residence (sample)", "505-555-0189",
+                 "902 Mesa Verde Dr, Las Vegas, NM 87701",
+                 "PO Box 2210, Las Vegas, NM 87701",
                  "", "Neighbor referral — the Ortiz install"),
             ],
         )
@@ -412,8 +523,8 @@ def init_db():
             " pv_mounting_type, battery_utility_connection, property_type)"
             " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("Johnson PV + Battery (sample)",
-             "4512 Juniper Rd NE, Albuquerque, NM 87111", "Bernalillo County",
-             "3-ton AC, well pump, shop sub-panel", "PNM",
+             "1247 Highway 518, Mora, NM 87732", "Mora County",
+             "3-ton AC, well pump, shop sub-panel", "MSMEC",
              "Standard 10-year", "Cash", "Yes", "Yes",
              "PV Systems, Battery Banks",
              "Grid-tie", "Roof mounted", "Grid-tie", "Residential"),
@@ -442,20 +553,31 @@ def init_db():
     db.close()
 
 
+RULE_COLUMNS = ["field_name", "field_value", "match_type", "category", "label",
+                "notes", "url", "phone", "field_name2", "field_value2",
+                "match_type2"]
+
+
 def insert_seed_rules(db, rows):
-    """Insert seed rows; 6-item rows are single-condition, 9-item rows
-    carry a second AND condition."""
+    """Insert seed rows. Tuples: 6 items = single condition, 9 items =
+    compound. Dicts may set any rule column (url, phone, ...)."""
     normalized = []
     for row in rows:
-        row = list(row)
-        if len(row) == 6:
-            row += ["", "", "equals"]
-        normalized.append(row)
+        if isinstance(row, dict):
+            r = [row.get(c, "") for c in RULE_COLUMNS]
+        else:
+            row = list(row)
+            if len(row) == 6:
+                row += ["", "", "equals"]
+            r = row[:6] + ["", ""] + row[6:]
+        if not r[2]:
+            r[2] = "equals"
+        if not r[10]:
+            r[10] = "equals"
+        normalized.append(r)
     db.executemany(
-        "INSERT INTO resource_rules"
-        " (field_name, field_value, match_type, category, label, notes,"
-        "  field_name2, field_value2, match_type2)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO resource_rules ({', '.join(RULE_COLUMNS)})"
+        f" VALUES ({', '.join('?' * len(RULE_COLUMNS))})",
         normalized,
     )
 
@@ -648,6 +770,7 @@ def render_job_form(client, values, selected, existing_jobs=False,
         "job_form.html", client=client, values=values, selected=selected,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
+        utilities=UTILITIES, counties=COUNTIES,
         existing_jobs=jobs_on_books, editing_job_id=editing_job_id,
     )
 
