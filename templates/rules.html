@@ -63,6 +63,10 @@ matching job page updates immediately. No code changes needed.</p>
       <input id="url" name="url" placeholder="https://…">
     </div>
     <div class="field">
+      <label for="link_text">Link display name (optional)</label>
+      <input id="link_text" name="link_text" placeholder="e.g. NM CID Permit Portal">
+    </div>
+    <div class="field">
       <label for="phone">Phone (optional)</label>
       <input id="phone" name="phone">
     </div>
@@ -91,7 +95,7 @@ matching job page updates immediately. No code changes needed.</p>
         <td><span class="badge">{{ r["category"] }}</span></td>
         <td>
           {{ r["label"] }}
-          {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">link</a>{% endif %}
+          {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
           {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
         </td>
         <td class="muted">{{ r["notes"] }}</td>

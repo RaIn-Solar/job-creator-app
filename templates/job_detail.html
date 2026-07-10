@@ -50,17 +50,22 @@
   </div>
   {% if groups %}
     {% for heading, items in groups %}
-    <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:0.9rem 0 0.3rem;">{{ heading }}</h3>
-    <ul style="margin:0; padding-left:1.2rem;">
-      {% for r in items %}
-      <li style="margin-bottom:0.25rem;">
-        {{ r["label"] }}
-        {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
-        {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">link</a>{% endif %}
-        {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
-      </li>
-      {% endfor %}
-    </ul>
+    <details class="req-group" open>
+      <summary>
+        <span>{{ heading }}</span>
+        <span class="count-badge">{{ items|length }}</span>
+      </summary>
+      <ul style="margin:0.4rem 0 0; padding-left:1.2rem;">
+        {% for r in items %}
+        <li style="margin-bottom:0.3rem;">
+          {{ r["label"] }}
+          {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
+          {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
+          {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
     {% endfor %}
   {% else %}
   <p class="empty">No requirements matched this job's selections.</p>

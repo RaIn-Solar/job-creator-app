@@ -74,5 +74,7 @@ CREATE TABLE IF NOT EXISTS resource_rules (
     field_name2  TEXT DEFAULT '',
     field_value2 TEXT DEFAULT '',
     match_type2  TEXT DEFAULT 'equals',
+    link_text    TEXT DEFAULT '',      -- display name for the url
+
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );

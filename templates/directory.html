@@ -79,7 +79,7 @@ this directory is for looking things up, not changing them.</p>
       <li style="margin-bottom:0.35rem;">
         {{ r["label"] }}
         {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
-        {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">link</a>{% endif %}
+        {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
         {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
         <br><span class="muted" style="font-size:0.8rem;">when {{ field_labels.get(r["field_name"], r["field_name"]) }}
           {% if r["match_type"] == "contains" %}includes{% else %}is{% endif %}

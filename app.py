@@ -88,7 +88,7 @@ CATEGORY_HEADINGS = {
     "License": "Technician licenses",
     "Permit": "Permits",
     "Compliance": "Compliance notes",
-    "Link": "Links",
+    "Link": "Online Portals",
     "Phone": "Phone numbers",
     "Doc": "Documents",
 }
@@ -396,9 +396,51 @@ SEED_RULES_V8 = [
          notes="new wells only; belongs to the drilling contractor's scope"),
 ]
 
+# Batch 9 — named link sources, and state-run pages preferred: NEC and
+# IFC rules point at New Mexico's own code-adoption pages (NMAC) instead
+# of the publishers; standards bodies (UL/IEEE/NFPA) and utility/county
+# sites remain the original sources.
+_NMAC_NEC = "https://www.srca.nm.gov/parts/title14/14.010.0004.htm"
+_NMAC_IFC = "https://www.srca.nm.gov/parts/title10/10.025.0005.htm"
+
+LINK_TEXTS = {
+    _CID_LICENSING: "NM CID — Contractor & Journeyman Licensing",
+    _CID_PORTAL: "NM CID Online Permit Portal",
+    "https://www.rld.nm.gov/lp-gas/": "NM RLD — LP Gas Bureau",
+    "https://www.epa.gov/section608": "EPA Section 608 Certification",
+    "https://www.epa.gov/climate-hfcs-reduction": "EPA AIM Act — HFC Phasedown",
+    "https://www.rld.nm.gov/manufactured-housing/": "NM Manufactured Housing Division",
+    _NMAC_NEC: "NMAC 14.10.4 — NM Adoption of NEC 2020",
+    _NMAC_IFC: "NMAC 10.25.5 — NM Adoption of IFC 2021",
+    "https://www.nfpa.org/codes-and-standards/all-codes-and-standards/list-of-codes-and-standards/detail?code=37": "NFPA 37 — Stationary Combustion Engines",
+    _NFPA855: "NFPA 855 — Stationary Energy Storage Systems",
+    _PE_BOARD: "NM PE Board — Engineering & Surveying",
+    "https://www.dhsem.nm.gov/state-fire-marshal/": "NM State Fire Marshal Office",
+    "https://www.ul.com/resources/ul-9540-standard-for-energy-storage-systems-and-equipment": "UL 9540 — Energy Storage Systems Standard",
+    "https://standards.ieee.org/ieee/1547/6341/": "IEEE 1547-2018 Standard",
+    "https://www.nmprc.state.nm.us/utilities/elec.html": "NMPRC — Electric Utility Rules (17.9.568)",
+    "https://www.emnrd.nm.gov/sed/renewable-energy/solar-market-development-tax-credit/": "NM EMNRD — Solar Market Development Tax Credit",
+    "https://www.tax.newmexico.gov/businesses/gross-receipts-tax/": "NM Taxation & Revenue — Gross Receipts Tax",
+    _PNM_SOLAR: "PNM — Solar & Net Metering",
+    _PNM_INTERCONNECT: "PNM Interconnection Portal",
+    "https://www.kitcarson.com": "Kit Carson Electric Cooperative",
+    "https://morasanmiguel.coop/forms": "MSMEC Forms Hub",
+    "https://kitcarson.com/solar-net-metering-pre-screening-application": "KCEC Pre-Screening Application",
+    "https://kitcarson.com/electric/electric-info/net-metering/": "KCEC Net-Metering Hub",
+    "https://www.springercoop.com/service-application-and-forms": "Springer Electric Forms Hub",
+    "https://www.jemezcoop.org/sites/default/files/2025-07/solar-applications-and-requirements.pdf": "JMEC Solar Applications Packet (PDF)",
+    "https://www.jemezcoop.org/forms": "JMEC Forms Hub",
+    "https://www.santafecountynm.gov/growth-management/building-development/permitpackets": "Santa Fe County Permit Packets",
+    "https://www.taoscounty.org/DocumentCenter/View/1914/Solar--Building-Permit-Application": "Taos County Zoning Clearance Application (PDF)",
+    "https://www.taoscounty.org/DocumentCenter/View/2927/Building-Permit-Application": "Taos County Building Permit Application (PDF)",
+    "https://www.rio-arriba.org/Departments/Departments-Divisions/Planning-and-Zoning/Forms-and-Permit-Applications": "Rio Arriba County Planning & Zoning Forms",
+    "https://www.ose.nm.gov/WR/well_drilling.php": "NM OSE — Well Drilling & Licensing",
+    "https://www.env.nm.gov/drinking-water/": "NMED Drinking Water Bureau",
+}
+
 SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4,
                 5: SEED_RULES_V5, 6: SEED_RULES_V6, 7: SEED_RULES_V7,
-                8: SEED_RULES_V8}
+                8: SEED_RULES_V8, 9: []}
 
 # One-off SQL applied alongside a batch (same once-only guarantee).
 SEED_BATCH_SQL = {
@@ -436,6 +478,13 @@ SEED_BATCH_SQL = {
         "UPDATE resource_rules SET phone = '888-342-5766'"
         " WHERE label = 'PNM — Solar Interconnection & Net Metering'",
     ],
+    # State-run code pages replace publisher links, then every known url
+    # gets its display name.
+    9: [f"UPDATE resource_rules SET url = '{_NMAC_NEC}' WHERE url = '{_NEC}'",
+        f"UPDATE resource_rules SET url = '{_NMAC_IFC}' WHERE url = '{_IFC}'"] + [
+        f"UPDATE resource_rules SET link_text = '{text}' WHERE url = '{url}'"
+        for url, text in LINK_TEXTS.items()
+    ],
 }
 
 # ECC's main products/services — the multi-select on the job form.
@@ -450,7 +499,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 5.2"
+VERSION = "Piece 5.3"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -499,7 +548,8 @@ def init_db():
         db.execute("ALTER TABLE clients RENAME COLUMN street_address TO mailing_address")
     ensure_columns(db, "clients", CLIENT_FIELDS)
     ensure_columns(db, "jobs", JOB_FIELDS)
-    ensure_columns(db, "resource_rules", ["field_name2", "field_value2", "match_type2"])
+    ensure_columns(db, "resource_rules",
+                   ["field_name2", "field_value2", "match_type2", "link_text"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
         db.executemany(
             "INSERT INTO clients"
@@ -555,7 +605,7 @@ def init_db():
 
 RULE_COLUMNS = ["field_name", "field_value", "match_type", "category", "label",
                 "notes", "url", "phone", "field_name2", "field_value2",
-                "match_type2"]
+                "match_type2", "link_text"]
 
 
 def insert_seed_rules(db, rows):
@@ -570,6 +620,8 @@ def insert_seed_rules(db, rows):
             if len(row) == 6:
                 row += ["", "", "equals"]
             r = row[:6] + ["", ""] + row[6:]
+        while len(r) < len(RULE_COLUMNS):
+            r.append("")
         if not r[2]:
             r[2] = "equals"
         if not r[10]:
@@ -876,14 +928,15 @@ def job_report(job_id):
         if value:
             lines.append(f"{JOB_FIELD_LABELS[field] + ':':34}{value}")
     for heading, items in groups:
-        lines += ["", heading.upper(), "-" * 64]
+        lines += ["", f"{heading.upper()} ({len(items)} ITEM{'S' if len(items) != 1 else ''})", "-" * 64]
         for rule in items:
             entry = f"[ ] {rule['label']}"
             if rule["notes"]:
                 entry += f"  ({rule['notes']})"
             lines.append(entry)
             if rule["url"]:
-                lines.append(f"      link:  {rule['url']}")
+                source = rule["link_text"] or ""
+                lines.append(f"      {source + ': ' if source else 'link:  '}{rule['url']}")
             if rule["phone"]:
                 lines.append(f"      phone: {rule['phone']}")
     if not groups:
@@ -936,8 +989,8 @@ def add_rule():
     db.execute(
         "INSERT INTO resource_rules"
         " (field_name, field_value, match_type, category, label, url, phone, notes,"
-        "  field_name2, field_value2, match_type2)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "  field_name2, field_value2, match_type2, link_text)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (field_name, field_value,
          "contains" if field_name == "products" else "equals",
          request.form.get("category", "Compliance"),
@@ -946,7 +999,8 @@ def add_rule():
          request.form.get("phone", "").strip(),
          request.form.get("notes", "").strip(),
          field_name2, field_value2,
-         "contains" if field_name2 == "products" else "equals"),
+         "contains" if field_name2 == "products" else "equals",
+         request.form.get("link_text", "").strip()),
     )
     db.commit()
     flash(f"Rule added: {label}")

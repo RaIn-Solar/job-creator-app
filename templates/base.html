@@ -119,6 +119,32 @@
       font-weight: 600;
       margin: 0 0.3rem 0.3rem 0;
     }
+    details.req-group { border-bottom: 1px solid var(--border); padding: 0.45rem 0; }
+    details.req-group:last-of-type { border-bottom: none; }
+    details.req-group summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      list-style: none;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    details.req-group summary::before { content: "▸ "; margin-right: 0.35rem; }
+    details.req-group[open] summary::before { content: "▾ "; }
+    details.req-group summary::-webkit-details-marker { display: none; }
+    .count-badge {
+      background: var(--brand);
+      color: white;
+      border-radius: 999px;
+      min-width: 1.6rem;
+      text-align: center;
+      padding: 0.1rem 0.5rem;
+      font-size: 0.8rem;
+    }
   </style>
 </head>
 <body>
