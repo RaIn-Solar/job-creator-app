@@ -21,6 +21,8 @@ from flask import (
     Flask, Response, abort, flash, g, redirect, render_template, request, url_for,
 )
 
+from bpmn_export import build_job_bpmn
+
 BASE_DIR = Path(__file__).parent
 DATABASE = BASE_DIR / "job_creator.db"
 
@@ -499,7 +501,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 5.3"
+VERSION = "Piece 6"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -948,6 +950,26 @@ def job_report(job_id):
         headers={"Content-Disposition":
                  f"attachment; filename=job_{job_id}_report.txt"},
     )
+
+
+@app.route("/jobs/<int:job_id>/bpmn")
+def job_bpmn(job_id):
+    """Download this job's process as a BPMN 2.0 file: the master
+    pipeline instantiated with the job's resolved permits and variables."""
+    job = fetch_job(job_id)
+    rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
+    xml = build_job_bpmn(job, match_rules(job, rules))
+    return Response(
+        xml, mimetype="application/xml",
+        headers={"Content-Disposition":
+                 f"attachment; filename=job_{job_id}_process.bpmn"},
+    )
+
+
+@app.route("/jobs/<int:job_id>/bpmn/view")
+def job_bpmn_view(job_id):
+    job = fetch_job(job_id)
+    return render_template("bpmn_view.html", job=job)
 
 
 @app.route("/rules")

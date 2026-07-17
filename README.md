@@ -1,6 +1,6 @@
-# ☀️ Job Creator
+# ☀️ Solbiz
 
-ECC Solar's internal tool: build client profiles, create job profiles under
+**Solbiz** — ECC Solar's internal tool: build client profiles, create job profiles under
 each client, and automatically pull up the right resources (links, phone
 numbers, docs) based on the job's fields.
 
@@ -35,4 +35,5 @@ Delete that file to start over with a fresh database.
 - [x] **Piece 3** — Job profiles stored under each client
 - [x] **Piece 4** — Rules engine: job selections → licenses, permits, compliance items (editable at /rules); service tickets with pre-fill; exportable job report
 - [x] **Piece 5** — Edit jobs with version history for recordkeeping
-- [ ] **Piece 6** — Polish (search, statuses, logins)
+- [x] **Piece 6** — Per-job BPMN process charts (in-app viewer + .bpmn export)
+- [ ] **Piece 7** — Per-rule document uploads; polish (search, statuses, logins)

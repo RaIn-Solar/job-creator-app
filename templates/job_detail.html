@@ -5,6 +5,7 @@
   <h1>{{ job["job_name"] or "Job #" ~ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
   <div style="display:flex; gap:0.5rem;">
     <a href="{{ url_for('edit_job', job_id=job['id']) }}" class="btn">✎ Edit job</a>
+    <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn">🗺 Process chart</a>
     <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary">← Client profile</a>
   </div>
 </div>

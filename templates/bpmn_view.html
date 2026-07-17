@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Process chart — {{ job["job_name"] }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>Process chart <span class="muted">· {{ job["job_name"] or "Job #" ~ job["id"] }}</span></h1>
+  <div style="display:flex; gap:0.5rem;">
+    <a href="{{ url_for('job_bpmn', job_id=job['id']) }}" class="btn">⬇ Download .bpmn</a>
+    <a href="{{ url_for('job_detail', job_id=job['id']) }}" class="btn btn-secondary">← Job</a>
+  </div>
+</div>
+<p class="muted">The master ECC pipeline instantiated for this job — its
+resolved permits expand the permitting phase, and off-grid jobs drop the
+interconnection steps. The .bpmn file also opens in
+<a href="https://demo.bpmn.io" target="_blank">demo.bpmn.io</a> or Camunda
+Modeler.</p>
+
+<div class="card" style="padding:0.4rem;">
+  <div id="canvas" style="height: 72vh;"></div>
+  <div id="fallback" class="empty" style="display:none; padding:1rem;">
+    The viewer failed to load. Use <strong>⬇ Download .bpmn</strong> and open
+    the file at <a href="https://demo.bpmn.io" target="_blank">demo.bpmn.io</a>
+    instead.
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='bpmn-viewer.min.js') }}"
+        onerror="document.getElementById('fallback').style.display='block'"></script>
+<script>
+  window.addEventListener("load", async () => {
+    if (typeof BpmnJS === "undefined") {
+      document.getElementById("fallback").style.display = "block";
+      return;
+    }
+    try {
+      const xml = await (await fetch("{{ url_for('job_bpmn', job_id=job['id']) }}")).text();
+      const viewer = new BpmnJS({ container: "#canvas" });
+      await viewer.importXML(xml);
+      viewer.get("canvas").zoom("fit-viewport");
+    } catch (err) {
+      document.getElementById("fallback").style.display = "block";
+      console.error(err);
+    }
+  });
+</script>
+{% endblock %}
