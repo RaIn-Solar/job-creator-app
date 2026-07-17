@@ -22,6 +22,9 @@ from flask import (
 )
 
 from bpmn_export import build_job_bpmn
+from nm_directory import (
+    COUNTIES_ALL, CORRECTIONS_V10, NEW_RULES_V10, UTILITIES_ALL,
+)
 
 BASE_DIR = Path(__file__).parent
 DATABASE = BASE_DIR / "job_creator.db"
@@ -307,7 +310,7 @@ SEED_RULES_V7 = [
 
 # Canonical values suggested on the job form so free-typed utilities and
 # counties actually match the rules below.
-UTILITIES = ["MSMEC", "KCEC", "Springer Electric", "JMEC", "PNM", "N/A"]
+UTILITIES = UTILITIES_ALL
 
 # These products share one utility-connection choice on the job form.
 GRID_PRODUCTS = ["PV Systems", "Battery Banks", "Generators"]
@@ -316,9 +319,7 @@ GRID_CONNECTION_FIELDS = {
     "Generators": "generator_utility_connection",
     "Battery Banks": "battery_utility_connection",
 }
-COUNTIES = ["Mora County", "San Miguel County", "Taos County", "Colfax County",
-            "Harding County", "Guadalupe County", "Rio Arriba County",
-            "Santa Fe County"]
+COUNTIES = COUNTIES_ALL
 
 # Batch 8 — from the Utility Interconnection Forms & AHJ Building Permit
 # Forms documents (June 2026): per-utility forms/contacts and quirks,
@@ -450,7 +451,7 @@ LINK_TEXTS = {
 
 SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4,
                 5: SEED_RULES_V5, 6: SEED_RULES_V6, 7: SEED_RULES_V7,
-                8: SEED_RULES_V8, 9: []}
+                8: SEED_RULES_V8, 9: [], 10: NEW_RULES_V10}
 
 # One-off SQL applied alongside a batch (same once-only guarantee).
 SEED_BATCH_SQL = {
@@ -495,6 +496,9 @@ SEED_BATCH_SQL = {
         f"UPDATE resource_rules SET link_text = '{text}' WHERE url = '{url}'"
         for url, text in LINK_TEXTS.items()
     ],
+    # July 2026 verified reference set: corrections from the Manual
+    # Review Log (dead NMPRC domain, EMNRD path, phones, SMDTC tier...).
+    10: CORRECTIONS_V10,
 }
 
 # ECC's main products/services — the multi-select on the job form.
@@ -509,7 +513,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 6.1"
+VERSION = "Piece 6.2"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
