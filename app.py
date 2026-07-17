@@ -307,7 +307,15 @@ SEED_RULES_V7 = [
 
 # Canonical values suggested on the job form so free-typed utilities and
 # counties actually match the rules below.
-UTILITIES = ["MSMEC", "KCEC", "Springer Electric", "JMEC", "PNM"]
+UTILITIES = ["MSMEC", "KCEC", "Springer Electric", "JMEC", "PNM", "N/A"]
+
+# These products share one utility-connection choice on the job form.
+GRID_PRODUCTS = ["PV Systems", "Battery Banks", "Generators"]
+GRID_CONNECTION_FIELDS = {
+    "PV Systems": "pv_utility_connection",
+    "Generators": "generator_utility_connection",
+    "Battery Banks": "battery_utility_connection",
+}
 COUNTIES = ["Mora County", "San Miguel County", "Taos County", "Colfax County",
             "Harding County", "Guadalupe County", "Rio Arriba County",
             "Santa Fe County"]
@@ -501,7 +509,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 6"
+VERSION = "Piece 6.1"
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -767,6 +775,8 @@ def new_job(client_id):
         ).fetchone()
         if source:
             values = {f: source[f] for f in JOB_FIELDS}
+            values["utility_connection"] = next(
+                (source[f] for f in GRID_CONNECTION_FIELDS.values() if source[f]), "")
             values["job_name"] = f"Service — {source['job_name'] or 'Job #' + str(source['id'])}"
             selected = [p.strip() for p in source["products"].split(",") if p.strip()]
             if "Technician Service" not in selected:
@@ -779,17 +789,19 @@ def read_job_form():
     values = {f: request.form.get(f, "").strip() for f in JOB_FIELDS}
     selected = request.form.getlist("products")
     values["products"] = ", ".join(p for p in PRODUCTS if p in selected)
+    # One shared utility-connection choice covers PV, Battery, and
+    # Generators; it lands in each selected system's own column (which
+    # the rules engine matches on), blank for unselected systems.
+    shared = request.form.get("utility_connection", "").strip()
+    for product, field in GRID_CONNECTION_FIELDS.items():
+        values[field] = shared if product in selected else ""
+    values["utility_connection"] = shared  # for form re-render only
     # Product-specific options only apply when their product is selected
     # (the browser hides the sections, but never trust hidden inputs).
     if "PV Systems" not in selected:
-        values["pv_utility_connection"] = ""
         values["pv_mounting_type"] = ""
     if values["pv_mounting_type"] != "Roof mounted":
         values["pv_manufactured_house"] = ""
-    if "Generators" not in selected:
-        values["generator_utility_connection"] = ""
-    if "Battery Banks" not in selected:
-        values["battery_utility_connection"] = ""
     if "Technician Service" not in selected:
         values["service_type"] = ""
     errors = []
@@ -797,19 +809,12 @@ def read_job_form():
         errors.append("Job name is required.")
     if not values["site_location"]:
         errors.append("Site location is required.")
+    if not values["cost_method"]:
+        errors.append("Cost method is required.")
     if not values["products"]:
         errors.append("Select at least one product/service.")
     if "Technician Service" in selected and not values["service_type"]:
         errors.append("Specify general or warranty service.")
-    # The utility connection state must match across PV, Generator,
-    # and Battery Bank when more than one of them is on the job.
-    connections = {values[f] for f in (
-        "pv_utility_connection", "generator_utility_connection",
-        "battery_utility_connection") if values[f]}
-    if len(connections) > 1:
-        errors.append(
-            "Utility connection must match across all selected products"
-            f" — currently: {', '.join(sorted(connections))}.")
     return values, selected, errors
 
 
@@ -860,6 +865,8 @@ def edit_job(job_id):
         flash(f"Job updated — the previous state was kept as version {version}.")
         return redirect(url_for("job_detail", job_id=job_id))
     values = {f: job[f] for f in JOB_FIELDS}
+    values["utility_connection"] = next(
+        (job[f] for f in GRID_CONNECTION_FIELDS.values() if job[f]), "")
     selected = [p.strip() for p in job["products"].split(",") if p.strip()]
     return render_job_form(client, values, selected, editing_job_id=job_id)
 
@@ -958,7 +965,7 @@ def job_bpmn(job_id):
     pipeline instantiated with the job's resolved permits and variables."""
     job = fetch_job(job_id)
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
-    xml = build_job_bpmn(job, match_rules(job, rules))
+    xml, _details = build_job_bpmn(job, match_rules(job, rules))
     return Response(
         xml, mimetype="application/xml",
         headers={"Content-Disposition":
@@ -969,7 +976,9 @@ def job_bpmn(job_id):
 @app.route("/jobs/<int:job_id>/bpmn/view")
 def job_bpmn_view(job_id):
     job = fetch_job(job_id)
-    return render_template("bpmn_view.html", job=job)
+    rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
+    _xml, details = build_job_bpmn(job, match_rules(job, rules))
+    return render_template("bpmn_view.html", job=job, details=details)
 
 
 @app.route("/rules")

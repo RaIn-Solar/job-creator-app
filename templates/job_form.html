@@ -57,10 +57,10 @@ recordkeeping.</p>
              value="{{ values.get('warranty_type', '') }}">
     </div>
     <div class="field">
-      <label for="cost_method">Cost method</label>
+      <label for="cost_method">Cost method *</label>
       <input id="cost_method" name="cost_method"
              value="{{ values.get('cost_method', '') }}"
-             placeholder="Cash, finance…">
+             placeholder="Cash, finance…" required>
     </div>
     <div class="field">
       <label for="tax_credit">Tax credit</label>
@@ -78,8 +78,32 @@ recordkeeping.</p>
     </div>
     <div class="field wide">
       <label>Products / services * <span class="muted">(select all that apply)</span></label>
+      <fieldset class="section" style="margin-bottom: 0.5rem;">
+        <legend>⚡ Energy systems <span class="muted">(share one utility connection)</span></legend>
+        <div class="check-grid">
+          {% for p in ["PV Systems", "Battery Banks", "Generators"] %}
+          <label class="check">
+            <input type="checkbox" name="products" value="{{ p }}"
+                   {% if p in selected %}checked{% endif %}>
+            {{ p }}
+          </label>
+          {% endfor %}
+        </div>
+        <div id="grid_options" style="display: none; margin-top: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.6rem;">
+          <label style="font-size:0.8rem; color:var(--muted); font-weight:600;">Utility connection — applies to all selected energy systems</label>
+          <div class="check-grid">
+            {% for opt in utility_connections %}
+            <label class="check">
+              <input type="radio" name="utility_connection" value="{{ opt }}"
+                     {% if values.get('utility_connection') == opt %}checked{% endif %}>
+              {{ opt }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </fieldset>
       <div class="check-grid">
-        {% for p in products %}
+        {% for p in products if p not in ["PV Systems", "Battery Banks", "Generators"] %}
         <label class="check">
           <input type="checkbox" name="products" value="{{ p }}"
                  {% if p in selected %}checked{% endif %}>
@@ -91,19 +115,9 @@ recordkeeping.</p>
 
     <fieldset class="section" id="pv_options" style="grid-column: 1 / -1; display: none;">
       <legend>☀️ PV Systems options</legend>
-      <div class="form-grid">
-        <div class="field">
-          <label>Utility connection</label>
-          {% for opt in utility_connections %}
-          <label class="check">
-            <input type="radio" name="pv_utility_connection" value="{{ opt }}"
-                   {% if values.get('pv_utility_connection') == opt %}checked{% endif %}>
-            {{ opt }}
-          </label>
-          {% endfor %}
-        </div>
-        <div class="field">
-          <label>Mounting type</label>
+      <div class="field">
+        <label>Mounting type</label>
+        <div class="check-grid">
           {% for opt in mounting_types %}
           <label class="check">
             <input type="radio" name="pv_mounting_type" value="{{ opt }}"
@@ -111,43 +125,11 @@ recordkeeping.</p>
             {{ opt }}
           </label>
           {% endfor %}
-          <label class="check" id="manufactured_row" style="margin-left: 1.4rem; display: none;">
+          <label class="check" id="manufactured_row" style="display: none;">
             <input type="checkbox" name="pv_manufactured_house" value="Yes"
                    {% if values.get('pv_manufactured_house') == 'Yes' %}checked{% endif %}>
             Manufactured house?
           </label>
-        </div>
-      </div>
-    </fieldset>
-
-    <fieldset class="section" id="generator_options" style="grid-column: 1 / -1; display: none;">
-      <legend>🔌 Generators options</legend>
-      <div class="field">
-        <label>Utility connection</label>
-        <div class="check-grid">
-          {% for opt in utility_connections %}
-          <label class="check">
-            <input type="radio" name="generator_utility_connection" value="{{ opt }}"
-                   {% if values.get('generator_utility_connection') == opt %}checked{% endif %}>
-            {{ opt }}
-          </label>
-          {% endfor %}
-        </div>
-      </div>
-    </fieldset>
-
-    <fieldset class="section" id="battery_options" style="grid-column: 1 / -1; display: none;">
-      <legend>🔋 Battery Banks options</legend>
-      <div class="field">
-        <label>Utility connection</label>
-        <div class="check-grid">
-          {% for opt in utility_connections %}
-          <label class="check">
-            <input type="radio" name="battery_utility_connection" value="{{ opt }}"
-                   {% if values.get('battery_utility_connection') == opt %}checked{% endif %}>
-            {{ opt }}
-          </label>
-          {% endfor %}
         </div>
       </div>
     </fieldset>
@@ -196,10 +178,9 @@ recordkeeping.</p>
   // and the manufactured-house question only for roof-mounted PV.
   const sectionFor = {
     "PV Systems": "pv_options",
-    "Generators": "generator_options",
-    "Battery Banks": "battery_options",
     "Technician Service": "service_options",
   };
+  const gridProducts = ["PV Systems", "Battery Banks", "Generators"];
   const productBoxes = document.querySelectorAll('input[name="products"]');
   function updateSections() {
     const checked = new Set(
@@ -208,6 +189,9 @@ recordkeeping.</p>
     for (const [product, id] of Object.entries(sectionFor)) {
       document.getElementById(id).style.display = checked.has(product) ? "" : "none";
     }
+    // One shared utility-connection choice when any energy system is on.
+    document.getElementById("grid_options").style.display =
+      gridProducts.some(p => checked.has(p)) ? "" : "none";
     const mounting = document.querySelector('input[name="pv_mounting_type"]:checked');
     document.getElementById("manufactured_row").style.display =
       (mounting && mounting.value === "Roof mounted") ? "" : "none";

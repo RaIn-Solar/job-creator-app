@@ -15,7 +15,7 @@ interconnection steps. The .bpmn file also opens in
 Modeler.</p>
 
 <div class="card" style="padding:0.4rem;">
-  <div id="canvas" style="height: 72vh;"></div>
+  <div id="canvas" style="height: 58vh;"></div>
   <div id="fallback" class="empty" style="display:none; padding:1rem;">
     The viewer failed to load. Use <strong>⬇ Download .bpmn</strong> and open
     the file at <a href="https://demo.bpmn.io" target="_blank">demo.bpmn.io</a>
@@ -23,9 +23,53 @@ Modeler.</p>
   </div>
 </div>
 
+<div class="card" id="detail_panel">
+  <h2 style="margin-top:0; font-size:1.05rem;">Step details</h2>
+  <p class="empty" id="detail_empty">Click any step in the chart to see its
+  particulars — responsible lane, requirements, links, and phone numbers.</p>
+  <div id="detail_body" style="display:none;">
+    <h3 id="detail_name" style="margin:0 0 0.2rem; font-size:1rem;"></h3>
+    <p class="muted" id="detail_lane" style="margin:0 0 0.6rem;"></p>
+    <ul id="detail_items" style="margin:0; padding-left:1.2rem;"></ul>
+  </div>
+</div>
+
 <script src="{{ url_for('static', filename='bpmn-viewer.min.js') }}"
         onerror="document.getElementById('fallback').style.display='block'"></script>
 <script>
+  const STEP_DETAILS = {{ details | tojson }};
+
+  function showDetails(id) {
+    const d = STEP_DETAILS[id];
+    if (!d) return;
+    document.getElementById("detail_empty").style.display = "none";
+    document.getElementById("detail_body").style.display = "";
+    document.getElementById("detail_name").textContent = d.name || "(unnamed step)";
+    document.getElementById("detail_lane").textContent = "Lane: " + d.lane;
+    const ul = document.getElementById("detail_items");
+    ul.innerHTML = "";
+    if (!d.items.length) {
+      const li = document.createElement("li");
+      li.className = "muted";
+      li.textContent = "Standard pipeline step — no rule-specific requirements attached.";
+      ul.appendChild(li);
+      return;
+    }
+    for (const item of d.items) {
+      const li = document.createElement("li");
+      li.style.marginBottom = "0.35rem";
+      let html = `<strong>${item.label}</strong> <span class="badge">${item.category}</span>`;
+      if (item.notes) html += ` <span class="muted">— ${item.notes}</span>`;
+      if (item.url) {
+        const text = item.link_text || new URL(item.url).hostname;
+        html += ` · <a href="${item.url}" target="_blank">${text}</a>`;
+      }
+      if (item.phone) html += ` · 📞 ${item.phone}`;
+      li.innerHTML = html;
+      ul.appendChild(li);
+    }
+  }
+
   window.addEventListener("load", async () => {
     if (typeof BpmnJS === "undefined") {
       document.getElementById("fallback").style.display = "block";
@@ -36,6 +80,7 @@ Modeler.</p>
       const viewer = new BpmnJS({ container: "#canvas" });
       await viewer.importXML(xml);
       viewer.get("canvas").zoom("fit-viewport");
+      viewer.get("eventBus").on("element.click", (e) => showDetails(e.element.id));
     } catch (err) {
       document.getElementById("fallback").style.display = "block";
       console.error(err);

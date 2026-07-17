@@ -41,9 +41,16 @@ CONNECTION_FIELDS = (
 )
 
 
+def _rule_item(rule):
+    return {"label": rule["label"], "category": rule["category"],
+            "notes": rule["notes"], "url": rule["url"],
+            "link_text": rule["link_text"], "phone": rule["phone"]}
+
+
 def _permit_chain(matched, grid_tied):
-    """Order the job's resolved permitting steps."""
-    seen, chain = set(), []
+    """Order the job's resolved permitting steps. Returns a list of
+    (task label, [rule detail items]) pairs."""
+    seen = set()
     permits = [r for r in matched if r["category"] == "Permit"]
     prescreens = [r for r in matched
                   if "pre-screening" in r["label"].lower()
@@ -62,16 +69,17 @@ def _permit_chain(matched, grid_tied):
             return 98
         return 50
 
-    labels = []
+    steps = []
     if licenses:
-        labels.append(f"Verify technician licenses ({len(licenses)})")
+        steps.append((f"Verify technician licenses ({len(licenses)})",
+                      [_rule_item(r) for r in licenses]))
     for rule in sorted(prescreens + permits, key=order):
         if not grid_tied and "interconnection" in rule["label"].lower():
             continue
         if rule["label"] not in seen:
             seen.add(rule["label"])
-            labels.append(rule["label"])
-    return labels or ["Permitting review"]
+            steps.append((rule["label"], [_rule_item(rule)]))
+    return steps or [("Permitting review", [])]
 
 
 def build_job_bpmn(job, matched):
@@ -84,9 +92,11 @@ def build_job_bpmn(job, matched):
                    for r in matched)
 
     nodes, flows, annotations = [], [], []
+    details = {}
 
-    def add(nid, ntype, name, lane, colx):
+    def add(nid, ntype, name, lane, colx, items=None):
         nodes.append(dict(id=nid, type=ntype, name=name, lane=lane, col=colx))
+        details[nid] = {"name": name, "lane": lane, "items": items or []}
         return nid
 
     def link(a, b, label=""):
@@ -115,9 +125,9 @@ def build_job_bpmn(job, matched):
     chain = _permit_chain(matched, grid_tied)
     add("order", "userTask", "Order all components and materials", "Warehouse Associate", c)
     prev = "split"
-    for i, label in enumerate(chain):
+    for i, (label, items) in enumerate(chain):
         nid = f"permit{i}"
-        add(nid, "userTask", label, "Permit Coordinator", c)
+        add(nid, "userTask", label, "Permit Coordinator", c, items)
         link(prev, nid)
         prev = nid
         c += 1
@@ -138,14 +148,18 @@ def build_job_bpmn(job, matched):
         link(a, b)
     prev = "monitoring"
 
+    utility_items = [_rule_item(r) for r in matched
+                     if r["field_name"] == "utility_provider"]
     if grid_tied:
         meter_label = f"Meter set by {utility}" if utility else "Meter set by Utility"
-        add("meterset", "task", meter_label, "Utility Company", c); c += 1
+        add("meterset", "task", meter_label, "Utility Company", c, utility_items); c += 1
         link(prev, "meterset")
         prev = "meterset"
 
+    cid_items = [_rule_item(r) for r in matched
+                 if "Inspection" in r["label"] and r["category"] == "Compliance"]
     cid_label = f"Final CID Inspection — {county}" if county else "Final CID Inspection"
-    add("cid", "task", cid_label, "Authorities (CID)", c)
+    add("cid", "task", cid_label, "Authorities (CID)", c, cid_items)
     cid_col = c; c += 1
     link(prev, "cid")
     add("passgw", "exclusiveGateway", "Inspection passed?", "Authorities (CID)", c)
@@ -157,8 +171,10 @@ def build_job_bpmn(job, matched):
     prev = "passgw"
     yes_label = "Yes"
     if jmec_loc:
+        loc_items = [_rule_item(r) for r in matched
+                     if r["label"].startswith("JMEC Letter of Compliance")]
         add("jmecloc", "task", "Letter of Compliance to JMEC (electrician)",
-            "Utility Company", c); c += 1
+            "Utility Company", c, loc_items); c += 1
         link("passgw", "jmecloc", "Yes")
         prev, yes_label = "jmecloc", ""
     add("sticker", "task", "Collect Final Inspection Sticker Photo", "Foreman", c); c += 1
@@ -181,7 +197,7 @@ def build_job_bpmn(job, matched):
                             "Service ticket: simplified service process "
                             "pending — install pipeline shown provisionally"))
 
-    return _render_xml(job, nodes, flows, annotations)
+    return _render_xml(job, nodes, flows, annotations), details
 
 
 def _render_xml(job, nodes, flows, annotations):
