@@ -516,7 +516,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 7"
+VERSION = "Piece 7.1"
 
 UPLOADS_DIR = BASE_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1125,7 +1125,9 @@ def job_bpmn(job_id):
     pipeline instantiated with the job's resolved permits and variables."""
     job = fetch_job(job_id)
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
-    xml, _details = build_job_bpmn(job, match_rules(job, rules))
+    materials, files, materials_note, docs_note = job_progress_extras(job_id)
+    xml, _details = build_job_bpmn(job, match_rules(job, rules),
+                                   materials_note, docs_note)
     return Response(
         xml, mimetype="application/xml",
         headers={"Content-Disposition":
@@ -1133,12 +1135,51 @@ def job_bpmn(job_id):
     )
 
 
+def job_progress_extras(job_id):
+    """Materials and documents for a job, plus one-line summaries used
+    as annotations in the exported BPMN."""
+    db = get_db()
+    materials = db.execute(
+        "SELECT * FROM job_materials WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    files = db.execute(
+        "SELECT * FROM job_files WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    materials_note = ""
+    if materials:
+        counts = {}
+        for m in materials:
+            counts[m["status"]] = counts.get(m["status"], 0) + 1
+        breakdown = ", ".join(f"{n} {s}" for s, n in counts.items())
+        materials_note = f"Materials: {len(materials)} items — {breakdown}"
+    docs_note = ""
+    if files:
+        covered = len({f["rule_label"] for f in files if f["rule_label"]})
+        docs_note = (f"Documents on file: {len(files)}"
+                     + (f" ({covered} requirements covered)" if covered else ""))
+    return materials, files, materials_note, docs_note
+
+
 @app.route("/jobs/<int:job_id>/bpmn/view")
 def job_bpmn_view(job_id):
     job = fetch_job(job_id)
     rules = get_db().execute("SELECT * FROM resource_rules").fetchall()
-    _xml, details = build_job_bpmn(job, match_rules(job, rules))
-    return render_template("bpmn_view.html", job=job, details=details)
+    materials, files, materials_note, docs_note = job_progress_extras(job_id)
+    _xml, details = build_job_bpmn(job, match_rules(job, rules),
+                                   materials_note, docs_note)
+    steps = sorted(details.values(), key=lambda d: d["order"])
+    files_by_label = {}
+    for f in files:
+        if f["rule_label"]:
+            files_by_label.setdefault(f["rule_label"], []).append(f)
+    material_counts = {}
+    for m in materials:
+        material_counts[m["status"]] = material_counts.get(m["status"], 0) + 1
+    return render_template(
+        "bpmn_view.html", job=job, steps=steps,
+        files_by_label=files_by_label, materials=materials,
+        material_counts=material_counts,
+    )
 
 
 @app.route("/rules")

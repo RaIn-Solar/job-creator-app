@@ -82,7 +82,7 @@ def _permit_chain(matched, grid_tied):
     return steps or [("Permitting review", [])]
 
 
-def build_job_bpmn(job, matched):
+def build_job_bpmn(job, matched, materials_note="", docs_note=""):
     grid_tied = any((job[f] or "") in ("Grid-tie", "Backup system")
                     for f in CONNECTION_FIELDS)
     county = (job["county"] or "").strip()
@@ -96,7 +96,8 @@ def build_job_bpmn(job, matched):
 
     def add(nid, ntype, name, lane, colx, items=None):
         nodes.append(dict(id=nid, type=ntype, name=name, lane=lane, col=colx))
-        details[nid] = {"name": name, "lane": lane, "items": items or []}
+        details[nid] = {"name": name, "lane": lane, "items": items or [],
+                        "kind": ntype, "order": len(nodes)}
         return nid
 
     def link(a, b, label=""):
@@ -196,6 +197,10 @@ def build_job_bpmn(job, matched):
         annotations.append(("ann_service", "start",
                             "Service ticket: simplified service process "
                             "pending — install pipeline shown provisionally"))
+    if materials_note:
+        annotations.append(("ann_materials", "order", materials_note))
+    if docs_note:
+        annotations.append(("ann_docs", "solbiz", docs_note))
 
     return _render_xml(job, nodes, flows, annotations), details
 
