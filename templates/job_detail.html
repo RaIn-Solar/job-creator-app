@@ -178,11 +178,20 @@
         <input type="file" name="document" required>
       </div>
       <div class="field">
-        <label>Files under requirement (optional)</label>
+        <label>File under (optional)</label>
         <select name="rule_label">
-          <option value="">— general job document —</option>
-          {% for label in requirement_labels %}
-          <option value="{{ label }}">{{ label }}</option>
+          <optgroup label="General">
+            <option value="">— general job document —</option>
+            <option value="Photos / Images">Photos / Images</option>
+            <option value="PDF document">PDF document</option>
+            <option value="Site file (KMZ/KML)">Site file (KMZ/KML)</option>
+          </optgroup>
+          {% for heading, labels in requirement_groups %}
+          <optgroup label="{{ heading }}">
+            {% for label in labels %}
+            <option value="{{ label }}">{{ label }}</option>
+            {% endfor %}
+          </optgroup>
           {% endfor %}
         </select>
       </div>

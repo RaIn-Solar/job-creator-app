@@ -516,7 +516,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 7.2"
+VERSION = "Piece 7.3"
 
 UPLOADS_DIR = BASE_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -938,12 +938,16 @@ def job_detail(job_id):
         heading: sum(1 for r in items if r["label"] in filed_labels)
         for heading, items in groups
     }
-    requirement_labels = sorted({r["label"] for _h, items in groups
-                                 for r in items})
+    # Filing dropdown, sectioned: generic types first, then the job's
+    # requirements grouped by their category headings.
+    requirement_groups = [
+        (heading, sorted({r["label"] for r in items}))
+        for heading, items in groups
+    ]
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
         materials=materials, files=files, filed_labels=filed_labels,
-        coverage=coverage, requirement_labels=requirement_labels,
+        coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES,
     )
 
