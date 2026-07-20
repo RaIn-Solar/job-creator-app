@@ -14,12 +14,15 @@ then open http://127.0.0.1:5000 in your browser.
 
 import json
 import sqlite3
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 from flask import (
-    Flask, Response, abort, flash, g, redirect, render_template, request, url_for,
+    Flask, Response, abort, flash, g, redirect, render_template, request,
+    send_from_directory, url_for,
 )
+from werkzeug.utils import secure_filename
 
 from bpmn_export import build_job_bpmn
 from nm_directory import (
@@ -513,11 +516,19 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 6.2"
+VERSION = "Piece 7"
+
+UPLOADS_DIR = BASE_DIR / "uploads"
+ALLOWED_EXTENSIONS = {
+    "pdf", "png", "jpg", "jpeg", "heic", "gif", "doc", "docx", "xls", "xlsx",
+    "csv", "txt", "kmz", "kml", "zip", "bpmn",
+}
+MATERIAL_STATUSES = ["Needed", "Ordered", "Received", "Installed"]
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
 app.secret_key = "ecc-solar-job-creator"
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB per upload
 
 
 @app.context_processor
@@ -915,8 +926,131 @@ def job_detail(job_id):
         "SELECT version, saved_at FROM job_versions WHERE job_id = ?"
         " ORDER BY version DESC", (job_id,)
     ).fetchall()
-    return render_template("job_detail.html", job=job, groups=groups,
-                           versions=versions)
+    materials = db.execute(
+        "SELECT * FROM job_materials WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    files = db.execute(
+        "SELECT * FROM job_files WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    filed_labels = {f["rule_label"] for f in files if f["rule_label"]}
+    # Filing coverage per category: how many requirements have a document.
+    coverage = {
+        heading: sum(1 for r in items if r["label"] in filed_labels)
+        for heading, items in groups
+    }
+    requirement_labels = sorted({r["label"] for _h, items in groups
+                                 for r in items})
+    return render_template(
+        "job_detail.html", job=job, groups=groups, versions=versions,
+        materials=materials, files=files, filed_labels=filed_labels,
+        coverage=coverage, requirement_labels=requirement_labels,
+        material_statuses=MATERIAL_STATUSES,
+    )
+
+
+# ---------------------------------------------------------------- materials
+@app.route("/jobs/<int:job_id>/materials/add", methods=["POST"])
+def add_material(job_id):
+    fetch_job(job_id)
+    item = request.form.get("item", "").strip()
+    if not item:
+        flash("Material item name is required.", "error")
+        return redirect(url_for("job_detail", job_id=job_id))
+    db = get_db()
+    db.execute(
+        "INSERT INTO job_materials (job_id, item, quantity, unit, supplier, notes)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (job_id, item,
+         request.form.get("quantity", "").strip(),
+         request.form.get("unit", "").strip(),
+         request.form.get("supplier", "").strip(),
+         request.form.get("notes", "").strip()),
+    )
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/materials/<int:material_id>/status", methods=["POST"])
+def update_material_status(job_id, material_id):
+    status = request.form.get("status", "")
+    if status in MATERIAL_STATUSES:
+        db = get_db()
+        db.execute(
+            "UPDATE job_materials SET status = ? WHERE id = ? AND job_id = ?",
+            (status, material_id, job_id),
+        )
+        db.commit()
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/materials/<int:material_id>/delete", methods=["POST"])
+def delete_material(job_id, material_id):
+    db = get_db()
+    db.execute("DELETE FROM job_materials WHERE id = ? AND job_id = ?",
+               (material_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+# -------------------------------------------------------------------- files
+def job_upload_dir(job_id):
+    directory = UPLOADS_DIR / f"job_{job_id}"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+@app.route("/jobs/<int:job_id>/files/upload", methods=["POST"])
+def upload_file(job_id):
+    fetch_job(job_id)
+    upload = request.files.get("document")
+    if upload is None or not upload.filename:
+        flash("Choose a file to upload.", "error")
+        return redirect(url_for("job_detail", job_id=job_id))
+    extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    if extension not in ALLOWED_EXTENSIONS:
+        flash(f"File type .{extension} is not allowed.", "error")
+        return redirect(url_for("job_detail", job_id=job_id))
+    original = upload.filename
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
+    upload.save(job_upload_dir(job_id) / stored)
+    db = get_db()
+    db.execute(
+        "INSERT INTO job_files (job_id, rule_label, stored_name, original_name)"
+        " VALUES (?, ?, ?, ?)",
+        (job_id, request.form.get("rule_label", "").strip(), stored, original),
+    )
+    db.commit()
+    flash(f"Uploaded: {original}")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/files/<int:file_id>/download")
+def download_file(job_id, file_id):
+    record = get_db().execute(
+        "SELECT * FROM job_files WHERE id = ? AND job_id = ?",
+        (file_id, job_id),
+    ).fetchone()
+    if record is None:
+        abort(404)
+    return send_from_directory(
+        job_upload_dir(job_id), record["stored_name"], as_attachment=True,
+        download_name=record["original_name"],
+    )
+
+
+@app.route("/jobs/<int:job_id>/files/<int:file_id>/delete", methods=["POST"])
+def delete_file(job_id, file_id):
+    db = get_db()
+    record = db.execute(
+        "SELECT * FROM job_files WHERE id = ? AND job_id = ?",
+        (file_id, job_id),
+    ).fetchone()
+    if record:
+        (job_upload_dir(job_id) / record["stored_name"]).unlink(missing_ok=True)
+        db.execute("DELETE FROM job_files WHERE id = ?", (record["id"],))
+        db.commit()
+        flash(f"Deleted: {record['original_name']}")
+    return redirect(url_for("job_detail", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/report")
@@ -954,6 +1088,28 @@ def job_report(job_id):
                 lines.append(f"      phone: {rule['phone']}")
     if not groups:
         lines += ["", "No license/permit/compliance requirements matched."]
+    materials = get_db().execute(
+        "SELECT * FROM job_materials WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    if materials:
+        lines += ["", f"MATERIAL LIST ({len(materials)} ITEMS)", "-" * 64]
+        for m in materials:
+            entry = f"[{m['status']:>9}] {m['item']}"
+            if m["quantity"]:
+                entry += f" — {m['quantity']} {m['unit']}".rstrip()
+            if m["supplier"]:
+                entry += f" ({m['supplier']})"
+            lines.append(entry)
+    files = get_db().execute(
+        "SELECT * FROM job_files WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    if files:
+        lines += ["", f"DOCUMENTS ON FILE ({len(files)})", "-" * 64]
+        for f in files:
+            entry = f"- {f['original_name']} ({f['uploaded_at'][:10]})"
+            if f["rule_label"]:
+                entry += f" -> {f['rule_label']}"
+            lines.append(entry)
     lines.append("")
     return Response(
         "\n".join(lines),

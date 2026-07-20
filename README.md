@@ -36,4 +36,5 @@ Delete that file to start over with a fresh database.
 - [x] **Piece 4** — Rules engine: job selections → licenses, permits, compliance items (editable at /rules); service tickets with pre-fill; exportable job report
 - [x] **Piece 5** — Edit jobs with version history for recordkeeping
 - [x] **Piece 6** — Per-job BPMN process charts (in-app viewer + .bpmn export)
-- [ ] **Piece 7** — Per-rule document uploads; polish (search, statuses, logins)
+- [x] **Piece 7** — Material lists per job; document upload/storage with per-requirement filing coverage
+- [ ] **Piece 8** — Polish (search, statuses, logins); service-ticket process refinement

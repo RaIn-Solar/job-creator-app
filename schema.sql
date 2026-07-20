@@ -53,6 +53,30 @@ CREATE TABLE IF NOT EXISTS job_versions (
     saved_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 7: material list per job.
+CREATE TABLE IF NOT EXISTS job_materials (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     INTEGER NOT NULL REFERENCES jobs(id),
+    item       TEXT NOT NULL,
+    quantity   TEXT DEFAULT '',
+    unit       TEXT DEFAULT '',
+    supplier   TEXT DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'Needed',  -- Needed/Ordered/Received/Installed
+    notes      TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Piece 7: uploaded documents per job; optionally tied to a requirement
+-- label so the requirements panel can show filing coverage.
+CREATE TABLE IF NOT EXISTS job_files (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id        INTEGER NOT NULL REFERENCES jobs(id),
+    rule_label    TEXT DEFAULT '',   -- requirement this document satisfies
+    stored_name   TEXT NOT NULL,     -- name on disk (uploads/job_<id>/)
+    original_name TEXT NOT NULL,
+    uploaded_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- App metadata (e.g. which rule seed batches have been applied).
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,

@@ -219,3 +219,6 @@ __marimo__/
 
 # Local database
 job_creator.db
+
+# Uploaded job documents (local storage)
+uploads/
