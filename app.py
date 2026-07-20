@@ -516,7 +516,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 7.1"
+VERSION = "Piece 7.2"
 
 UPLOADS_DIR = BASE_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -955,7 +955,7 @@ def add_material(job_id):
     item = request.form.get("item", "").strip()
     if not item:
         flash("Material item name is required.", "error")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
     db = get_db()
     db.execute(
         "INSERT INTO job_materials (job_id, item, quantity, unit, supplier, notes)"
@@ -967,7 +967,7 @@ def add_material(job_id):
          request.form.get("notes", "").strip()),
     )
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
 
 
 @app.route("/jobs/<int:job_id>/materials/<int:material_id>/status", methods=["POST"])
@@ -980,7 +980,7 @@ def update_material_status(job_id, material_id):
             (status, material_id, job_id),
         )
         db.commit()
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
 
 
 @app.route("/jobs/<int:job_id>/materials/<int:material_id>/delete", methods=["POST"])
@@ -989,7 +989,7 @@ def delete_material(job_id, material_id):
     db.execute("DELETE FROM job_materials WHERE id = ? AND job_id = ?",
                (material_id, job_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
 
 
 # -------------------------------------------------------------------- files
@@ -1005,11 +1005,11 @@ def upload_file(job_id):
     upload = request.files.get("document")
     if upload is None or not upload.filename:
         flash("Choose a file to upload.", "error")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
     extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
     if extension not in ALLOWED_EXTENSIONS:
         flash(f"File type .{extension} is not allowed.", "error")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
     original = upload.filename
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
     upload.save(job_upload_dir(job_id) / stored)
@@ -1021,7 +1021,7 @@ def upload_file(job_id):
     )
     db.commit()
     flash(f"Uploaded: {original}")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
 
 
 @app.route("/jobs/<int:job_id>/files/<int:file_id>/download")
@@ -1050,7 +1050,7 @@ def delete_file(job_id, file_id):
         db.execute("DELETE FROM job_files WHERE id = ?", (record["id"],))
         db.commit()
         flash(f"Deleted: {record['original_name']}")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
 
 
 @app.route("/jobs/<int:job_id>/report")

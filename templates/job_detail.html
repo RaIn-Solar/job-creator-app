@@ -10,6 +10,15 @@
   </div>
 </div>
 
+{% set req_total = groups | map(attribute=1) | map('length') | sum %}
+<div class="tab-bar">
+  <button class="tab-btn" data-tab="general">General details</button>
+  <button class="tab-btn" data-tab="requirements">Licenses, Permits &amp; Compliance ({{ req_total }})</button>
+  <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
+  <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
+</div>
+
+<div class="tab-panel" id="tab-general">
 <div class="card">
   <div style="margin-bottom: 0.9rem;">
     {% for p in job["products"].split(", ") if p %}
@@ -44,6 +53,24 @@
   </dl>
 </div>
 
+{% if versions %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">Version history</h2>
+  <p class="muted">Previous states of this job, kept for recordkeeping.
+  The current profile is always the live version above.</p>
+  <ul style="margin:0; padding-left:1.2rem;">
+    {% for v in versions %}
+    <li style="margin-bottom:0.25rem;">
+      <a href="{{ url_for('job_version', job_id=job['id'], version=v['version']) }}">Version {{ v["version"] }}</a>
+      <span class="muted">— replaced {{ v["saved_at"] }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+</div>
+
+<div class="tab-panel" id="tab-requirements">
 <div class="card">
   <div class="toolbar" style="margin-bottom: 0.6rem;">
     <h2 style="margin:0; font-size:1.1rem;">Licenses, permits &amp; compliance</h2>
@@ -74,7 +101,9 @@
   <p class="muted" style="margin-bottom:0;">Resolved automatically from this
   job's fields · <a href="{{ url_for('rules_page', from_job=job['id']) }}">manage the rules</a></p>
 </div>
+</div>
 
+<div class="tab-panel" id="tab-materials">
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">🧰 Material list</h2>
   {% if materials %}
@@ -120,7 +149,9 @@
     <div class="actions"><button type="submit" class="btn">＋ Add material</button></div>
   </form>
 </div>
+</div>
 
+<div class="tab-panel" id="tab-documents">
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">📁 Documents</h2>
   {% if files %}
@@ -159,20 +190,24 @@
     <div class="actions"><button type="submit" class="btn">⬆ Upload document</button></div>
   </form>
 </div>
-
-{% if versions %}
-<div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">Version history</h2>
-  <p class="muted">Previous states of this job, kept for recordkeeping.
-  The current profile is always the live version above.</p>
-  <ul style="margin:0; padding-left:1.2rem;">
-    {% for v in versions %}
-    <li style="margin-bottom:0.25rem;">
-      <a href="{{ url_for('job_version', job_id=job['id'], version=v['version']) }}">Version {{ v["version"] }}</a>
-      <span class="muted">— replaced {{ v["saved_at"] }}</span>
-    </li>
-    {% endfor %}
-  </ul>
 </div>
-{% endif %}
+
+<script>
+  // Tabs remember their state through the URL hash, so form posts that
+  // redirect back (materials, uploads) land on the tab you were using.
+  const TABS = ["general", "requirements", "materials", "documents"];
+  function activateTab(name, updateHash) {
+    if (!TABS.includes(name)) name = "general";
+    document.querySelectorAll(".tab-btn").forEach(b =>
+      b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll(".tab-panel").forEach(p =>
+      p.classList.toggle("active", p.id === "tab-" + name));
+    if (updateHash) history.replaceState(null, "", "#" + name);
+  }
+  document.querySelectorAll(".tab-btn").forEach(b =>
+    b.addEventListener("click", () => activateTab(b.dataset.tab, true)));
+  window.addEventListener("hashchange", () =>
+    activateTab(location.hash.slice(1) || "general", false));
+  activateTab(location.hash.slice(1) || "general", false);
+</script>
 {% endblock %}

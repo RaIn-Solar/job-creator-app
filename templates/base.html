@@ -119,6 +119,28 @@
       font-weight: 600;
       margin: 0 0.3rem 0.3rem 0;
     }
+    .tab-bar {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      font: inherit;
+      font-weight: 600;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      padding: 0.55rem 0.9rem;
+      cursor: pointer;
+      color: var(--muted);
+    }
+    .tab-btn:hover { color: var(--brand-dark); }
+    .tab-btn.active { color: var(--brand-dark); border-bottom-color: var(--brand); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
     details.req-group { border-bottom: 1px solid var(--border); padding: 0.45rem 0; }
     details.req-group:last-of-type { border-bottom: none; }
     details.req-group summary {
