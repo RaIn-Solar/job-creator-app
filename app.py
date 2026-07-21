@@ -84,13 +84,20 @@ CREDENTIAL_FIELDS = ["name", "rule_label", "number", "issued", "expires", "notes
 # A credential within this many days of its expiry date is flagged
 # "expiring soon" on the employee and job pages.
 EXPIRY_SOON_DAYS = 60
-# Common ECC crew roles, offered as checkboxes on the employee form (the
-# form also allows free-typed extras). Stored comma-separated, like the
-# job form's products.
+# ECC's roles, offered as checkboxes on the employee form (the form also
+# allows free-typed extras). An employee may hold any number of these;
+# they're stored comma-separated, like the job form's products.
 EMPLOYEE_ROLES = [
-    "Installer", "Electrician", "Journeyman", "HVAC Technician",
-    "Well Pump Technician", "Generator Technician", "Project Manager",
-    "Office / Admin", "Sales",
+    "General Manager", "Sales and Marketing Manager", "Operations Manager",
+    "Administration Manager", "Finance Manager",
+    "Research and Development Manager", "Marketing Associate",
+    "Inside Sales Rep", "Outside Sales Rep", "Designer", "Inventory Manager",
+    "Permit Coordinator", "Scheduling Coordinator", "Lead Installer",
+    "Service Technician", "Facilities Manager", "HR Manager",
+    "Administrative Assistant", "Bookkeeper", "Product Portfolio Manager",
+    "Process Developer", "Software Developer", "Payroll Manager",
+    "Payroll Administrator", "Installer", "Warehouse Associate",
+    "Purchasing Agent",
 ]
 
 UTILITY_CONNECTIONS = ["Off-grid", "Grid-tie", "Backup system"]
@@ -538,7 +545,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 8.1"
+VERSION = "Piece 8.2"
 
 UPLOADS_DIR = BASE_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -629,11 +636,11 @@ def init_db():
         )
         emp1 = db.execute(
             "INSERT INTO employees (name, roles, schedule) VALUES (?, ?, ?)",
-            ("Daniel Ortiz (sample)", "Electrician, Installer",
+            ("Daniel Ortiz (sample)", "Lead Installer, Installer",
              "Mon–Fri 7:00 AM – 4:00 PM")).lastrowid
         emp2 = db.execute(
             "INSERT INTO employees (name, roles, schedule) VALUES (?, ?, ?)",
-            ("Maria Sandoval (sample)", "Project Manager, Office / Admin",
+            ("Maria Sandoval (sample)", "Operations Manager, Administration Manager",
              "Mon–Fri 8:00 AM – 5:00 PM")).lastrowid
         db.executemany(
             "INSERT INTO employee_credentials"
