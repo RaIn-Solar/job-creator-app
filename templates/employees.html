@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Employees{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>👥 Employees</h1>
+  <a href="{{ url_for('new_employee') }}" class="btn">＋ New employee</a>
+</div>
+<p class="muted">ECC's crew: each person's roles, the licenses and
+certifications they hold, and their working schedule. Click a name to view
+or edit their record.</p>
+<div class="card">
+  {% if employees %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Roles</th>
+        <th>Licenses &amp; Certifications</th>
+        <th>Schedule</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in employees %}
+      <tr>
+        <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a></td>
+        <td>
+          {% for r in (e["roles"] or "").split(",") if r.strip() %}
+          <span class="badge">{{ r.strip() }}</span>
+          {% else %}
+          <span class="muted">—</span>
+          {% endfor %}
+        </td>
+        <td style="white-space: pre-line;">{{ e["licenses_certifications"] or "—" }}</td>
+        <td style="white-space: pre-line;">{{ e["schedule"] or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No employees yet — click “＋ New employee” to add the first one.</p>
+  {% endif %}
+</div>
+{% endblock %}

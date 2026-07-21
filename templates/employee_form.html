@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit employee" if employee_id else "New employee" }}{% endblock %}
+{% block content %}
+<div style="margin-bottom: 0.8rem;">
+  {% if employee_id %}
+  <a href="{{ url_for('employee_detail', employee_id=employee_id) }}" class="btn btn-secondary">← Back to {{ values["name"] or "employee" }}</a>
+  {% else %}
+  <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Back to employees</a>
+  {% endif %}
+</div>
+<h1>{{ "Edit employee" if employee_id else "New employee" }}</h1>
+<form method="post" class="card">
+  <div class="form-grid">
+    <div class="field wide">
+      <label for="name">Name *</label>
+      <input id="name" name="name" required value="{{ values.get('name', '') }}">
+    </div>
+
+    <div class="field wide">
+      <fieldset class="section">
+        <legend>Roles</legend>
+        <div class="check-grid">
+          {% for r in roles %}
+          <label class="check">
+            <input type="checkbox" name="roles" value="{{ r }}" {% if r in selected %}checked{% endif %}> {{ r }}
+          </label>
+          {% endfor %}
+        </div>
+        <div class="field" style="margin-top:0.7rem;">
+          <label for="roles_other">Other role(s)</label>
+          <input id="roles_other" name="roles_other" value="{{ roles_other }}"
+                 placeholder="comma-separated, e.g. Warehouse, Trainer">
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="field wide">
+      <label for="licenses_certifications">Licenses &amp; Certifications</label>
+      <textarea id="licenses_certifications" name="licenses_certifications" rows="5"
+                placeholder="One per line — e.g.&#10;EE-98J Journeyman #JX-4821 (exp. 2027-03)&#10;EPA Section 608 — Universal&#10;OSHA 30">{{ values.get('licenses_certifications', '') }}</textarea>
+    </div>
+
+    <div class="field wide">
+      <label for="schedule">Schedule</label>
+      <textarea id="schedule" name="schedule" rows="3"
+                placeholder="e.g. Mon–Fri 7:00 AM – 4:00 PM; on call alternate weekends">{{ values.get('schedule', '') }}</textarea>
+    </div>
+  </div>
+  <div class="actions">
+    <button type="submit" class="btn">{{ "Save changes" if employee_id else "Add employee" }}</button>
+    {% if employee_id %}
+    <a href="{{ url_for('employee_detail', employee_id=employee_id) }}" class="btn btn-secondary">Cancel</a>
+    {% else %}
+    <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">Cancel</a>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}

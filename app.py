@@ -71,6 +71,25 @@ JOB_FIELD_LABELS = {
     "property_type": "Property type",
 }
 
+# Employee directory (Piece 8). The four field categories a person's
+# record carries: who they are, what they do, what they're licensed/
+# certified to do, and when they work.
+EMPLOYEE_FIELDS = ["name", "roles", "licenses_certifications", "schedule"]
+EMPLOYEE_FIELD_LABELS = {
+    "name": "Name",
+    "roles": "Roles",
+    "licenses_certifications": "Licenses & Certifications",
+    "schedule": "Schedule",
+}
+# Common ECC crew roles, offered as checkboxes on the employee form (the
+# form also allows free-typed extras). Stored comma-separated, like the
+# job form's products.
+EMPLOYEE_ROLES = [
+    "Installer", "Electrician", "Journeyman", "HVAC Technician",
+    "Well Pump Technician", "Generator Technician", "Project Manager",
+    "Office / Admin", "Sales",
+]
+
 UTILITY_CONNECTIONS = ["Off-grid", "Grid-tie", "Backup system"]
 MOUNTING_TYPES = ["Roof mounted", "Ground mount"]
 SERVICE_TYPES = ["General service", "Warranty service"]
@@ -516,7 +535,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 7.3"
+VERSION = "Piece 8.0"
 
 UPLOADS_DIR = BASE_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -573,6 +592,7 @@ def init_db():
         db.execute("ALTER TABLE clients RENAME COLUMN street_address TO mailing_address")
     ensure_columns(db, "clients", CLIENT_FIELDS)
     ensure_columns(db, "jobs", JOB_FIELDS)
+    ensure_columns(db, "employees", EMPLOYEE_FIELDS)
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
@@ -603,6 +623,19 @@ def init_db():
              "Standard 10-year", "Cash", "Yes", "Yes",
              "PV Systems, Battery Banks",
              "Grid-tie", "Roof mounted", "Grid-tie", "Residential"),
+        )
+        db.executemany(
+            "INSERT INTO employees"
+            " (name, roles, licenses_certifications, schedule) VALUES (?, ?, ?, ?)",
+            [
+                ("Daniel Ortiz (sample)", "Electrician, Installer",
+                 "EE-98J Journeyman #JX-4821 (exp. 2027-03)\n"
+                 "EPA Section 608 — Universal\nOSHA 30",
+                 "Mon–Fri 7:00 AM – 4:00 PM"),
+                ("Maria Sandoval (sample)", "Project Manager, Office / Admin",
+                 "NABCEP PV Associate\nFirst Aid / CPR (exp. 2026-11)",
+                 "Mon–Fri 8:00 AM – 5:00 PM"),
+            ],
         )
         db.commit()
     if db.execute("SELECT COUNT(*) FROM resource_rules").fetchone()[0] == 0:
@@ -1313,6 +1346,109 @@ def delete_rule(rule_id):
     flash("Rule deleted.")
     return redirect(url_for("rules_page",
                             from_job=request.form.get("from_job") or None))
+
+
+# ---------------------------------------------------------------- employees
+def read_employee_form():
+    """Validate and normalize a submitted employee form (create or edit).
+    Roles come in as checkboxes plus an optional free-typed 'other' field;
+    both are folded into one comma-separated list."""
+    values = {f: request.form.get(f, "").strip() for f in EMPLOYEE_FIELDS}
+    selected = request.form.getlist("roles")
+    roles = [r for r in EMPLOYEE_ROLES if r in selected]
+    for extra in request.form.get("roles_other", "").split(","):
+        extra = extra.strip()
+        if extra and extra not in roles:
+            roles.append(extra)
+    values["roles"] = ", ".join(roles)
+    errors = []
+    if not values["name"]:
+        errors.append("Employee name is required.")
+    return values, errors
+
+
+def render_employee_form(values, employee_id=None):
+    """Render the shared new/edit form, splitting stored roles back into
+    the known checkbox roles and any free-typed extras."""
+    stored = [r.strip() for r in (values.get("roles") or "").split(",") if r.strip()]
+    selected = [r for r in stored if r in EMPLOYEE_ROLES]
+    roles_other = ", ".join(r for r in stored if r not in EMPLOYEE_ROLES)
+    return render_template(
+        "employee_form.html", values=values, roles=EMPLOYEE_ROLES,
+        selected=selected, roles_other=roles_other, employee_id=employee_id,
+    )
+
+
+@app.route("/employees")
+def employees_page():
+    employees = get_db().execute(
+        "SELECT * FROM employees ORDER BY name"
+    ).fetchall()
+    return render_template("employees.html", employees=employees)
+
+
+@app.route("/employees/new", methods=["GET", "POST"])
+def new_employee():
+    if request.method == "POST":
+        values, errors = read_employee_form()
+        if errors:
+            flash(" ".join(errors), "error")
+            return render_employee_form(values), 400
+        db = get_db()
+        cur = db.execute(
+            f"INSERT INTO employees ({', '.join(EMPLOYEE_FIELDS)})"
+            f" VALUES ({', '.join('?' * len(EMPLOYEE_FIELDS))})",
+            [values[f] for f in EMPLOYEE_FIELDS],
+        )
+        db.commit()
+        flash(f"Employee added: {values['name']}")
+        return redirect(url_for("employee_detail", employee_id=cur.lastrowid))
+    return render_employee_form({})
+
+
+@app.route("/employees/<int:employee_id>")
+def employee_detail(employee_id):
+    employee = get_db().execute(
+        "SELECT * FROM employees WHERE id = ?", (employee_id,)
+    ).fetchone()
+    if employee is None:
+        abort(404)
+    roles = [r.strip() for r in (employee["roles"] or "").split(",") if r.strip()]
+    return render_template("employee_detail.html", employee=employee, roles=roles)
+
+
+@app.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
+def edit_employee(employee_id):
+    db = get_db()
+    employee = db.execute(
+        "SELECT * FROM employees WHERE id = ?", (employee_id,)
+    ).fetchone()
+    if employee is None:
+        abort(404)
+    if request.method == "POST":
+        values, errors = read_employee_form()
+        if errors:
+            flash(" ".join(errors), "error")
+            return render_employee_form(values, employee_id=employee_id), 400
+        db.execute(
+            f"UPDATE employees SET {', '.join(f + ' = ?' for f in EMPLOYEE_FIELDS)}"
+            " WHERE id = ?",
+            [values[f] for f in EMPLOYEE_FIELDS] + [employee_id],
+        )
+        db.commit()
+        flash(f"Employee updated: {values['name']}")
+        return redirect(url_for("employee_detail", employee_id=employee_id))
+    values = {f: employee[f] for f in EMPLOYEE_FIELDS}
+    return render_employee_form(values, employee_id=employee_id)
+
+
+@app.route("/employees/<int:employee_id>/delete", methods=["POST"])
+def delete_employee(employee_id):
+    db = get_db()
+    db.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
+    db.commit()
+    flash("Employee removed.")
+    return redirect(url_for("employees_page"))
 
 
 if __name__ == "__main__":

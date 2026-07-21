@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ employee["name"] }}{% endblock %}
+{% block content %}
+<div style="margin-bottom: 0.8rem;">
+  <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Back to employees</a>
+</div>
+<div class="toolbar">
+  <h1>{{ employee["name"] }}</h1>
+  <div style="display:flex; gap:0.5rem;">
+    <a href="{{ url_for('edit_employee', employee_id=employee['id']) }}" class="btn">Edit</a>
+    <form method="post" action="{{ url_for('delete_employee', employee_id=employee['id']) }}"
+          onsubmit="return confirm('Remove this employee?');" style="margin:0;">
+      <button type="submit" class="btn btn-secondary">Delete</button>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <dl class="profile">
+    <dt>Roles</dt>
+    <dd>
+      {% if roles %}
+        {% for r in roles %}<span class="badge">{{ r }}</span>{% endfor %}
+      {% else %}<span class="muted">—</span>{% endif %}
+    </dd>
+    <dt>Licenses &amp; Certifications</dt>
+    <dd style="white-space: pre-line;">{{ employee["licenses_certifications"] or "—" }}</dd>
+    <dt>Schedule</dt>
+    <dd style="white-space: pre-line;">{{ employee["schedule"] or "—" }}</dd>
+  </dl>
+</div>
+{% endblock %}

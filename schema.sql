@@ -83,6 +83,19 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT
 );
 
+-- Piece 8: the employee directory. ECC's crew, kept separate from
+-- clients/jobs. Each row records who the person is (name), what they do
+-- (roles — comma-separated selections), the licenses and certifications
+-- they hold, and their working schedule.
+CREATE TABLE IF NOT EXISTS employees (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                    TEXT NOT NULL,
+    roles                   TEXT DEFAULT '',   -- comma-separated selections
+    licenses_certifications TEXT DEFAULT '',   -- free text, one per line
+    schedule                TEXT DEFAULT '',
+    created_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS resource_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     field_name  TEXT NOT NULL,
