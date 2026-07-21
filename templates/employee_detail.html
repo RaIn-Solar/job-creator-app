@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ employee["name"] }}{% endblock %}
 {% block content %}
+{% set state_class = {"ok": "", "soon": "warn", "expired": "danger", "none": "neutral"} %}
 <div style="margin-bottom: 0.8rem;">
   <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Back to employees</a>
 </div>
@@ -9,11 +10,12 @@
   <div style="display:flex; gap:0.5rem;">
     <a href="{{ url_for('edit_employee', employee_id=employee['id']) }}" class="btn">Edit</a>
     <form method="post" action="{{ url_for('delete_employee', employee_id=employee['id']) }}"
-          onsubmit="return confirm('Remove this employee?');" style="margin:0;">
+          onsubmit="return confirm('Remove this employee and all their credentials and documents?');" style="margin:0;">
       <button type="submit" class="btn btn-secondary">Delete</button>
     </form>
   </div>
 </div>
+
 <div class="card">
   <dl class="profile">
     <dt>Roles</dt>
@@ -22,10 +24,126 @@
         {% for r in roles %}<span class="badge">{{ r }}</span>{% endfor %}
       {% else %}<span class="muted">—</span>{% endif %}
     </dd>
-    <dt>Licenses &amp; Certifications</dt>
-    <dd style="white-space: pre-line;">{{ employee["licenses_certifications"] or "—" }}</dd>
     <dt>Schedule</dt>
     <dd style="white-space: pre-line;">{{ employee["schedule"] or "—" }}</dd>
   </dl>
+  {% if employee["licenses_certifications"] %}
+  <p class="muted" style="margin:0.8rem 0 0; font-size:0.85rem;">
+    <strong>Earlier free-text entry (from before structured tracking):</strong><br>
+    <span style="white-space: pre-line;">{{ employee["licenses_certifications"] }}</span><br>
+    Re-enter these as rows below so expiry can be tracked.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">🪪 Licenses &amp; Certifications</h2>
+  {% if credentials %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Number</th><th>Issued</th><th>Expiry</th><th>Satisfies requirement</th><th>Copy on file</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for c in credentials %}
+      {% set r = c.row %}
+      <tr>
+        <td>{{ r["name"] }}{% if r["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ r["notes"] }}</span>{% endif %}</td>
+        <td>{{ r["number"] or "—" }}</td>
+        <td>{{ r["issued"] or "—" }}</td>
+        <td><span class="badge {{ state_class[c.state] }}">{{ c.status_text }}</span></td>
+        <td class="muted">{{ r["rule_label"] or "—" }}</td>
+        <td>{% if c.documented %}📎 yes{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_credential', employee_id=employee['id'], credential_id=r['id']) }}"
+                onsubmit="return confirm('Remove this license/certification?');" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No licenses or certifications recorded yet.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('add_credential', employee_id=employee['id']) }}" style="margin-top:0.9rem;">
+    <div class="form-grid">
+      <div class="field wide">
+        <label for="cname">License / Certification *</label>
+        <input id="cname" name="name" required placeholder="e.g. EE-98J Journeyman, EPA 608 Universal, NABCEP PV">
+      </div>
+      <div class="field">
+        <label for="number">Number</label>
+        <input id="number" name="number" placeholder="license / cert #">
+      </div>
+      <div class="field">
+        <label for="issued">Issued</label>
+        <input id="issued" name="issued" type="date">
+      </div>
+      <div class="field">
+        <label for="expires">Expires <span class="muted">(leave blank if none)</span></label>
+        <input id="expires" name="expires" type="date">
+      </div>
+      <div class="field">
+        <label for="rule_label">Satisfies job requirement (optional)</label>
+        <select id="rule_label" name="rule_label">
+          <option value="">— not tied to a requirement —</option>
+          {% for label in license_labels %}
+          <option value="{{ label }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field wide">
+        <label for="notes">Notes</label>
+        <input id="notes" name="notes" placeholder="e.g. per tech on site">
+      </div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Add license / certification</button></div>
+  </form>
+  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Tying a license
+  to a job requirement lets each job page show whether someone on staff holds
+  the licenses it needs — and warn when a credential has lapsed.</p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">📁 Document copies</h2>
+  {% if files %}
+  <ul style="margin:0 0 0.8rem; padding-left:1.2rem;">
+    {% for f in files %}
+    <li style="margin-bottom:0.3rem;">
+      <a href="{{ url_for('download_employee_file', employee_id=employee['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+      {% if f["credential_name"] %}<span class="badge">{{ f["credential_name"] }}</span>{% endif %}
+      <span class="muted">{{ f["uploaded_at"][:10] }}</span>
+      <form method="post" action="{{ url_for('delete_employee_file', employee_id=employee['id'], file_id=f['id']) }}"
+            onsubmit="return confirm('Delete this document?');" style="display:inline; margin:0 0 0 0.4rem;">
+        <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No document copies on file yet.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('upload_employee_file', employee_id=employee['id']) }}" enctype="multipart/form-data">
+    <div class="form-grid">
+      <div class="field">
+        <label>File * <span class="muted">(pdf, images, office docs — max 25 MB)</span></label>
+        <input type="file" name="document" required>
+      </div>
+      <div class="field">
+        <label>Copy of (optional)</label>
+        <select name="credential_name">
+          <option value="">— general document —</option>
+          {% for name in cred_names %}
+          <option value="{{ name }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">⬆ Upload copy</button></div>
+  </form>
 </div>
 {% endblock %}

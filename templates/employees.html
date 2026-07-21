@@ -22,6 +22,7 @@ or edit their record.</p>
     </thead>
     <tbody>
       {% for e in employees %}
+      {% set s = summary.get(e["id"]) %}
       <tr>
         <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a></td>
         <td>
@@ -31,7 +32,15 @@ or edit their record.</p>
           <span class="muted">—</span>
           {% endfor %}
         </td>
-        <td style="white-space: pre-line;">{{ e["licenses_certifications"] or "—" }}</td>
+        <td>
+          {% if s and s.count %}
+            {{ s.count }} on file
+            {% if s.expired %}<span class="badge danger">{{ s.expired }} expired</span>{% endif %}
+            {% if s.soon %}<span class="badge warn">{{ s.soon }} expiring soon</span>{% endif %}
+          {% else %}
+            <span class="muted">none yet</span>
+          {% endif %}
+        </td>
         <td style="white-space: pre-line;">{{ e["schedule"] or "—" }}</td>
       </tr>
       {% endfor %}

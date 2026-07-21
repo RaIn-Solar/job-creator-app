@@ -90,6 +90,16 @@
           {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
           {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
           {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+          {% if r["category"] == "License" and license_staffing %}
+            {% set holders = license_staffing.get(r["label"], []) %}
+            <br>
+            {% if holders %}
+            <span class="muted" style="font-size:0.8rem;">👷 held by:</span>
+            {% for h in holders %}<span class="badge {{ {'ok':'','soon':'warn','expired':'danger','none':'neutral'}[h.state] }}">{{ h.name }}{% if h.state == 'expired' %} · expired{% elif h.state == 'soon' %} · expiring{% endif %}</span>{% endfor %}
+            {% else %}
+            <span class="badge danger">⚠ no one on staff holds this</span>
+            {% endif %}
+          {% endif %}
         </li>
         {% endfor %}
       </ul>

@@ -71,16 +71,19 @@ JOB_FIELD_LABELS = {
     "property_type": "Property type",
 }
 
-# Employee directory (Piece 8). The four field categories a person's
-# record carries: who they are, what they do, what they're licensed/
-# certified to do, and when they work.
-EMPLOYEE_FIELDS = ["name", "roles", "licenses_certifications", "schedule"]
+# Employee directory (Piece 8). The core fields on a person's record:
+# who they are, what they do, and when they work. Their licenses and
+# certifications are structured rows in employee_credentials (Piece 8.1),
+# managed on the profile page.
+EMPLOYEE_FIELDS = ["name", "roles", "schedule"]
 EMPLOYEE_FIELD_LABELS = {
-    "name": "Name",
-    "roles": "Roles",
-    "licenses_certifications": "Licenses & Certifications",
-    "schedule": "Schedule",
+    "name": "Name", "roles": "Roles", "schedule": "Schedule",
 }
+# Columns a user fills in when adding a license/certification.
+CREDENTIAL_FIELDS = ["name", "rule_label", "number", "issued", "expires", "notes"]
+# A credential within this many days of its expiry date is flagged
+# "expiring soon" on the employee and job pages.
+EXPIRY_SOON_DAYS = 60
 # Common ECC crew roles, offered as checkboxes on the employee form (the
 # form also allows free-typed extras). Stored comma-separated, like the
 # job form's products.
@@ -535,7 +538,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 8.0"
+VERSION = "Piece 8.1"
 
 UPLOADS_DIR = BASE_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -624,17 +627,26 @@ def init_db():
              "PV Systems, Battery Banks",
              "Grid-tie", "Roof mounted", "Grid-tie", "Residential"),
         )
+        emp1 = db.execute(
+            "INSERT INTO employees (name, roles, schedule) VALUES (?, ?, ?)",
+            ("Daniel Ortiz (sample)", "Electrician, Installer",
+             "Mon–Fri 7:00 AM – 4:00 PM")).lastrowid
+        emp2 = db.execute(
+            "INSERT INTO employees (name, roles, schedule) VALUES (?, ?, ?)",
+            ("Maria Sandoval (sample)", "Project Manager, Office / Admin",
+             "Mon–Fri 8:00 AM – 5:00 PM")).lastrowid
         db.executemany(
-            "INSERT INTO employees"
-            " (name, roles, licenses_certifications, schedule) VALUES (?, ?, ?, ?)",
+            "INSERT INTO employee_credentials"
+            " (employee_id, name, rule_label, number, issued, expires, notes)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
-                ("Daniel Ortiz (sample)", "Electrician, Installer",
-                 "EE-98J Journeyman #JX-4821 (exp. 2027-03)\n"
-                 "EPA Section 608 — Universal\nOSHA 30",
-                 "Mon–Fri 7:00 AM – 4:00 PM"),
-                ("Maria Sandoval (sample)", "Project Manager, Office / Admin",
-                 "NABCEP PV Associate\nFirst Aid / CPR (exp. 2026-11)",
-                 "Mon–Fri 8:00 AM – 5:00 PM"),
+                (emp1, "EE-98J Journeyman", "EE-98J Journeyman", "JX-4821",
+                 "2023-03-15", "2027-03-15", "per tech on site"),
+                (emp1, "EPA Section 608 — Universal",
+                 "EPA Section 608 — Type II or Universal", "", "2019-05-01", "", ""),
+                (emp1, "OSHA 30", "", "", "2022-06-01", "", ""),
+                (emp2, "NABCEP PV Associate", "", "", "2024-01-10", "", ""),
+                (emp2, "First Aid / CPR", "", "", "2024-08-25", "2026-08-25", ""),
             ],
         )
         db.commit()
@@ -743,6 +755,44 @@ def group_rules(matched, dedupe=True):
         ordered.append((CATEGORY_HEADINGS.get(category, category),
                         groups[category]))
     return ordered
+
+
+def credential_status(expires):
+    """Classify a credential by its expiry date: returns (state, text)
+    where state is expired / soon / ok / none, and text is a short label
+    for display."""
+    expires = (expires or "").strip()
+    if not expires:
+        return ("none", "no expiry")
+    try:
+        exp = datetime.strptime(expires, "%Y-%m-%d").date()
+    except ValueError:
+        return ("none", expires)
+    days = (exp - datetime.now().date()).days
+    if days < 0:
+        return ("expired", f"expired {expires}")
+    if days <= EXPIRY_SOON_DAYS:
+        return ("soon", f"expires {expires} ({days} d)")
+    return ("ok", f"expires {expires}")
+
+
+def license_staffing():
+    """For each License requirement label, the employees who hold a
+    matching credential (tied via rule_label), each with its expiry state.
+    Drives the 'who on staff is licensed' badges on job pages."""
+    rows = get_db().execute(
+        "SELECT c.rule_label, c.expires, e.name AS emp_name"
+        " FROM employee_credentials c"
+        " JOIN employees e ON e.id = c.employee_id"
+        " WHERE c.rule_label != ''"
+        " ORDER BY e.name"
+    ).fetchall()
+    staffing = {}
+    for r in rows:
+        state, _ = credential_status(r["expires"])
+        staffing.setdefault(r["rule_label"], []).append(
+            {"name": r["emp_name"], "state": state})
+    return staffing
 
 
 @app.route("/")
@@ -981,7 +1031,7 @@ def job_detail(job_id):
         "job_detail.html", job=job, groups=groups, versions=versions,
         materials=materials, files=files, filed_labels=filed_labels,
         coverage=coverage, requirement_groups=requirement_groups,
-        material_statuses=MATERIAL_STATUSES,
+        material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
     )
 
 
@@ -1381,10 +1431,21 @@ def render_employee_form(values, employee_id=None):
 
 @app.route("/employees")
 def employees_page():
-    employees = get_db().execute(
-        "SELECT * FROM employees ORDER BY name"
-    ).fetchall()
-    return render_template("employees.html", employees=employees)
+    db = get_db()
+    employees = db.execute("SELECT * FROM employees ORDER BY name").fetchall()
+    # Per-employee credential tally, with expiry warnings, for the list.
+    summary = {}
+    for c in db.execute(
+            "SELECT employee_id, expires FROM employee_credentials").fetchall():
+        s = summary.setdefault(c["employee_id"],
+                               {"count": 0, "expired": 0, "soon": 0})
+        s["count"] += 1
+        state, _ = credential_status(c["expires"])
+        if state == "expired":
+            s["expired"] += 1
+        elif state == "soon":
+            s["soon"] += 1
+    return render_template("employees.html", employees=employees, summary=summary)
 
 
 @app.route("/employees/new", methods=["GET", "POST"])
@@ -1408,13 +1469,34 @@ def new_employee():
 
 @app.route("/employees/<int:employee_id>")
 def employee_detail(employee_id):
-    employee = get_db().execute(
+    db = get_db()
+    employee = db.execute(
         "SELECT * FROM employees WHERE id = ?", (employee_id,)
     ).fetchone()
     if employee is None:
         abort(404)
     roles = [r.strip() for r in (employee["roles"] or "").split(",") if r.strip()]
-    return render_template("employee_detail.html", employee=employee, roles=roles)
+    files = db.execute(
+        "SELECT * FROM employee_files WHERE employee_id = ? ORDER BY id",
+        (employee_id,)
+    ).fetchall()
+    documented = {f["credential_name"] for f in files if f["credential_name"]}
+    credentials = []
+    for c in db.execute(
+            "SELECT * FROM employee_credentials WHERE employee_id = ?"
+            " ORDER BY name", (employee_id,)).fetchall():
+        state, text = credential_status(c["expires"])
+        credentials.append({"row": c, "state": state, "status_text": text,
+                            "documented": c["name"] in documented})
+    # License requirement labels, for the "satisfies requirement" dropdown.
+    license_labels = [r["label"] for r in db.execute(
+        "SELECT DISTINCT label FROM resource_rules WHERE category = 'License'"
+        " ORDER BY label").fetchall()]
+    return render_template(
+        "employee_detail.html", employee=employee, roles=roles,
+        credentials=credentials, files=files, license_labels=license_labels,
+        cred_names=[c["row"]["name"] for c in credentials],
+    )
 
 
 @app.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
@@ -1445,10 +1527,119 @@ def edit_employee(employee_id):
 @app.route("/employees/<int:employee_id>/delete", methods=["POST"])
 def delete_employee(employee_id):
     db = get_db()
+    # Remove the person's credentials and document records, and their files
+    # on disk, so nothing is orphaned.
+    for record in db.execute(
+            "SELECT stored_name FROM employee_files WHERE employee_id = ?",
+            (employee_id,)).fetchall():
+        (employee_upload_dir(employee_id) / record["stored_name"]).unlink(missing_ok=True)
+    db.execute("DELETE FROM employee_files WHERE employee_id = ?", (employee_id,))
+    db.execute("DELETE FROM employee_credentials WHERE employee_id = ?", (employee_id,))
     db.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
     db.commit()
     flash("Employee removed.")
     return redirect(url_for("employees_page"))
+
+
+# ---- employee licenses & certifications (structured, with expiry) --------
+@app.route("/employees/<int:employee_id>/credentials/add", methods=["POST"])
+def add_credential(employee_id):
+    if get_db().execute("SELECT id FROM employees WHERE id = ?",
+                        (employee_id,)).fetchone() is None:
+        abort(404)
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("A license/certification needs a name.", "error")
+        return redirect(url_for("employee_detail", employee_id=employee_id))
+    db = get_db()
+    db.execute(
+        "INSERT INTO employee_credentials"
+        " (employee_id, name, rule_label, number, issued, expires, notes)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (employee_id, name,
+         request.form.get("rule_label", "").strip(),
+         request.form.get("number", "").strip(),
+         request.form.get("issued", "").strip(),
+         request.form.get("expires", "").strip(),
+         request.form.get("notes", "").strip()),
+    )
+    db.commit()
+    flash(f"Added license/certification: {name}")
+    return redirect(url_for("employee_detail", employee_id=employee_id))
+
+
+@app.route("/employees/<int:employee_id>/credentials/<int:credential_id>/delete",
+           methods=["POST"])
+def delete_credential(employee_id, credential_id):
+    db = get_db()
+    db.execute("DELETE FROM employee_credentials WHERE id = ? AND employee_id = ?",
+               (credential_id, employee_id))
+    db.commit()
+    flash("License/certification removed.")
+    return redirect(url_for("employee_detail", employee_id=employee_id))
+
+
+# ---- employee documents (copies of certifications, etc.) -----------------
+def employee_upload_dir(employee_id):
+    directory = UPLOADS_DIR / f"employee_{employee_id}"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+@app.route("/employees/<int:employee_id>/files/upload", methods=["POST"])
+def upload_employee_file(employee_id):
+    if get_db().execute("SELECT id FROM employees WHERE id = ?",
+                        (employee_id,)).fetchone() is None:
+        abort(404)
+    upload = request.files.get("document")
+    if upload is None or not upload.filename:
+        flash("Choose a file to upload.", "error")
+        return redirect(url_for("employee_detail", employee_id=employee_id))
+    extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    if extension not in ALLOWED_EXTENSIONS:
+        flash(f"File type .{extension} is not allowed.", "error")
+        return redirect(url_for("employee_detail", employee_id=employee_id))
+    original = upload.filename
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
+    upload.save(employee_upload_dir(employee_id) / stored)
+    db = get_db()
+    db.execute(
+        "INSERT INTO employee_files"
+        " (employee_id, credential_name, stored_name, original_name)"
+        " VALUES (?, ?, ?, ?)",
+        (employee_id, request.form.get("credential_name", "").strip(),
+         stored, original),
+    )
+    db.commit()
+    flash(f"Uploaded: {original}")
+    return redirect(url_for("employee_detail", employee_id=employee_id))
+
+
+@app.route("/employees/<int:employee_id>/files/<int:file_id>/download")
+def download_employee_file(employee_id, file_id):
+    record = get_db().execute(
+        "SELECT * FROM employee_files WHERE id = ? AND employee_id = ?",
+        (file_id, employee_id)).fetchone()
+    if record is None:
+        abort(404)
+    return send_from_directory(
+        employee_upload_dir(employee_id), record["stored_name"],
+        as_attachment=True, download_name=record["original_name"])
+
+
+@app.route("/employees/<int:employee_id>/files/<int:file_id>/delete",
+           methods=["POST"])
+def delete_employee_file(employee_id, file_id):
+    db = get_db()
+    record = db.execute(
+        "SELECT * FROM employee_files WHERE id = ? AND employee_id = ?",
+        (file_id, employee_id)).fetchone()
+    if record:
+        (employee_upload_dir(employee_id) / record["stored_name"]).unlink(missing_ok=True)
+        db.execute("DELETE FROM employee_files WHERE id = ?", (record["id"],))
+        db.commit()
+        flash(f"Deleted: {record['original_name']}")
+    return redirect(url_for("employee_detail", employee_id=employee_id))
 
 
 if __name__ == "__main__":

@@ -35,17 +35,14 @@
     </div>
 
     <div class="field wide">
-      <label for="licenses_certifications">Licenses &amp; Certifications</label>
-      <textarea id="licenses_certifications" name="licenses_certifications" rows="5"
-                placeholder="One per line — e.g.&#10;EE-98J Journeyman #JX-4821 (exp. 2027-03)&#10;EPA Section 608 — Universal&#10;OSHA 30">{{ values.get('licenses_certifications', '') }}</textarea>
-    </div>
-
-    <div class="field wide">
       <label for="schedule">Schedule</label>
       <textarea id="schedule" name="schedule" rows="3"
                 placeholder="e.g. Mon–Fri 7:00 AM – 4:00 PM; on call alternate weekends">{{ values.get('schedule', '') }}</textarea>
     </div>
   </div>
+  <p class="muted" style="margin:0.6rem 0 0;">💡 Licenses, certifications
+  (with expiry dates) and document copies are added on the employee's profile
+  page {% if employee_id %}below{% else %}once you save this record{% endif %}.</p>
   <div class="actions">
     <button type="submit" class="btn">{{ "Save changes" if employee_id else "Add employee" }}</button>
     {% if employee_id %}

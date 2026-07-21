@@ -91,9 +91,37 @@ CREATE TABLE IF NOT EXISTS employees (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     name                    TEXT NOT NULL,
     roles                   TEXT DEFAULT '',   -- comma-separated selections
-    licenses_certifications TEXT DEFAULT '',   -- free text, one per line
+    licenses_certifications TEXT DEFAULT '',   -- legacy free-text (Piece 8.0)
     schedule                TEXT DEFAULT '',
     created_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Piece 8.1: each license/certification an employee holds as its own row,
+-- so expiry can be tracked and flagged. rule_label optionally ties the
+-- credential to a License requirement in resource_rules, which lets a job
+-- page show whether someone on staff holds the licenses it requires.
+CREATE TABLE IF NOT EXISTS employee_credentials (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL REFERENCES employees(id),
+    name        TEXT NOT NULL,
+    rule_label  TEXT DEFAULT '',   -- License requirement this satisfies
+    number      TEXT DEFAULT '',
+    issued      TEXT DEFAULT '',   -- YYYY-MM-DD
+    expires     TEXT DEFAULT '',   -- YYYY-MM-DD; blank = no expiry
+    notes       TEXT DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Piece 8.1: uploaded copies of an employee's credentials/documents;
+-- optionally tied to one credential by name. Files live on disk in
+-- uploads/employee_<id>/, not in the database.
+CREATE TABLE IF NOT EXISTS employee_files (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id     INTEGER NOT NULL REFERENCES employees(id),
+    credential_name TEXT DEFAULT '',   -- credential this documents (optional)
+    stored_name     TEXT NOT NULL,     -- name on disk
+    original_name   TEXT NOT NULL,
+    uploaded_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS resource_rules (
