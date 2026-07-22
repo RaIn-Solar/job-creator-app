@@ -13,6 +13,7 @@ then open http://127.0.0.1:5000 in your browser.
 """
 
 import json
+import math
 import sqlite3
 import uuid
 from datetime import datetime
@@ -28,6 +29,7 @@ from bpmn_export import build_job_bpmn
 from nm_directory import (
     COUNTIES_ALL, CORRECTIONS_V10, NEW_RULES_V10, UTILITIES_ALL,
 )
+from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
 
 BASE_DIR = Path(__file__).parent
 DATABASE = BASE_DIR / "job_creator.db"
@@ -545,7 +547,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 8.2"
+VERSION = "Piece 9.0"
 
 UPLOADS_DIR = BASE_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -553,6 +555,25 @@ ALLOWED_EXTENSIONS = {
     "csv", "txt", "kmz", "kml", "zip", "bpmn",
 }
 MATERIAL_STATUSES = ["Needed", "Ordered", "Received", "Installed"]
+
+# Piece 9: Electric Loads Calculator / System Sizing config (ported from
+# the standalone loads_calculator.html field tool). Catalogs themselves
+# live in appliance_catalog / component_catalog (seeded from loads_seed.py).
+LOAD_USAGE_TYPES = ["Always-on", "Daily", "Occasional", "Seasonal"]
+LOAD_ERAS = ["Modern", "Vintage"]
+ROOM_TYPES = ["standard", "scenario"]
+COMPONENT_CATEGORIES = [
+    "Battery", "Breaker", "Breaker Panel", "Charge Controller", "Controls",
+    "Electrical", "Enclosure", "Generator", "Inverter", "Monitoring",
+    "Office Supplies", "Optimizer", "Pumping", "PV Module", "Racking", "Wire",
+]
+# system_type presets auto-fill sizing fields on the job page; system_type
+# reverts to "custom" on manual edit of a preset-controlled field.
+SYSTEM_TYPE_PRESETS = {
+    "offgrid": {"derate_pct": 70, "autonomy_days": 3},
+    "gridtie": {"derate_pct": 80, "autonomy_days": 1.5},
+}
+UI_MODES = ["sales", "designer"]
 
 app = Flask(__name__)
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -677,6 +698,28 @@ def init_db():
         (str(seed_version),),
     )
     db.commit()
+    # Piece 9: appliance + component catalogs seed once, the same way the
+    # sample clients above do — not via the rule-style batch system, since
+    # they're reference tables of their own rather than resource_rules rows.
+    if db.execute("SELECT COUNT(*) FROM appliance_catalog").fetchone()[0] == 0:
+        db.executemany(
+            "INSERT INTO appliance_catalog"
+            " (name, category, era, low_w, high_w, avg_w, hrs_per_day,"
+            "  usage_type, notes)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            APPLIANCE_SEED,
+        )
+        db.commit()
+    if db.execute("SELECT COUNT(*) FROM component_catalog").fetchone()[0] == 0:
+        db.executemany(
+            "INSERT INTO component_catalog"
+            " (name, category, manufacturer, model, specs, watts, voc, vmp,"
+            "  temp_coef_voc, capacity_kwh_nameplate, dod, max_input_v,"
+            "  continuous_w, inverter_eff, cost, notes)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            COMPONENT_SEED,
+        )
+        db.commit()
     db.close()
 
 
@@ -800,6 +843,72 @@ def license_staffing():
         staffing.setdefault(r["rule_label"], []).append(
             {"name": r["emp_name"], "state": state})
     return staffing
+
+
+# ------------------------------------------------------- Piece 9: loads/sizing
+def fetch_job_sizing(db, job_id):
+    """One job_sizing row always exists once a job's Loads tab is opened;
+    create it lazily with defaults from the schema."""
+    row = db.execute("SELECT * FROM job_sizing WHERE job_id = ?", (job_id,)).fetchone()
+    if row is None:
+        db.execute("INSERT INTO job_sizing (job_id) VALUES (?)", (job_id,))
+        db.commit()
+        row = db.execute("SELECT * FROM job_sizing WHERE job_id = ?", (job_id,)).fetchone()
+    return row
+
+
+def compute_load_totals(rooms, items):
+    """Daily kWh and peak watts across every ENABLED room only — a
+    disabled scenario room's items are excluded without being deleted."""
+    enabled = {r["id"] for r in rooms if r["enabled"]}
+    daily_kwh = 0.0
+    peak_w = 0.0
+    for it in items:
+        if it["room_id"] not in enabled:
+            continue
+        w = (it["watts"] or 0) * (it["qty"] or 0)
+        peak_w += w
+        daily_kwh += w * (it["hrs"] or 0) / 1000.0
+    return daily_kwh, peak_w
+
+
+def compute_array(daily_kwh, sun_hours, derate_pct, solar_fraction_pct, panel_watts):
+    """Array sizing: daily kWh (scaled by the solar fraction) divided by
+    peak sun hours and the derate factor gives array kW; panel count is
+    that array size divided by a single panel's wattage, rounded up."""
+    derate = (derate_pct or 0) / 100.0
+    frac = (solar_fraction_pct or 100) / 100.0
+    if not sun_hours or sun_hours <= 0 or derate <= 0:
+        return 0.0, 0
+    array_kw = (daily_kwh * frac) / (sun_hours * derate)
+    panel_count = math.ceil((array_kw * 1000) / panel_watts) if panel_watts else 0
+    return array_kw, panel_count
+
+
+def compute_battery_kwh(backup_daily_kwh, autonomy_days, dod_pct,
+                         round_trip_eff_pct, inverter_eff_pct):
+    """Usable backup load over the autonomy window, grossed up for
+    depth-of-discharge and round-trip/inverter losses, gives the
+    nameplate battery kWh needed."""
+    dod = (dod_pct or 0) / 100.0
+    rte = (round_trip_eff_pct or 100) / 100.0
+    inv = (inverter_eff_pct or 100) / 100.0
+    if dod <= 0 or rte <= 0 or inv <= 0:
+        return 0.0
+    return (backup_daily_kwh or 0) * (autonomy_days or 0) / dod / (rte * inv)
+
+
+def compute_voc(voc_rated, temp_coef_pct, record_low_temp_f, max_input_v):
+    """NEC 690.7 Method 1 cold-temperature Voc correction: correct the
+    module's rated Voc to the site's record low, then divide the inverter/
+    charge controller's max input voltage by that to get the longest
+    allowed string length."""
+    if not voc_rated or temp_coef_pct is None:
+        return None, None
+    tmin_c = ((record_low_temp_f or 32) - 32) * 5.0 / 9.0
+    voc_corrected = voc_rated * (1 + (temp_coef_pct / 100.0) * (tmin_c - 25))
+    max_modules = math.floor(max_input_v / voc_corrected) if voc_corrected > 0 and max_input_v else 0
+    return voc_corrected, max_modules
 
 
 @app.route("/")
@@ -1034,12 +1143,432 @@ def job_detail(job_id):
         (heading, sorted({r["label"] for r in items}))
         for heading, items in groups
     ]
+
+    # Piece 9: Loads & Sizing tab.
+    rooms = db.execute(
+        "SELECT * FROM job_load_rooms WHERE job_id = ? ORDER BY sort_order, id",
+        (job_id,),
+    ).fetchall()
+    load_items = db.execute(
+        "SELECT * FROM job_load_items WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    items_by_room = {}
+    for it in load_items:
+        items_by_room.setdefault(it["room_id"], []).append(it)
+    sizing = fetch_job_sizing(db, job_id)
+    bom = db.execute(
+        "SELECT * FROM job_bom WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    appliances = db.execute(
+        "SELECT * FROM appliance_catalog ORDER BY category, name"
+    ).fetchall()
+    components = db.execute(
+        "SELECT * FROM component_catalog ORDER BY category, name"
+    ).fetchall()
+    appliances_by_category = {}
+    for a in appliances:
+        appliances_by_category.setdefault(a["category"] or "Other", []).append(a)
+    components_by_category = {}
+    for c in components:
+        components_by_category.setdefault(c["category"] or "Other", []).append(c)
+
+    daily_kwh, peak_w = compute_load_totals(rooms, load_items)
+    array_kw, panel_count = compute_array(
+        daily_kwh, sizing["sun_hours"], sizing["derate_pct"],
+        sizing["solar_fraction_pct"], sizing["panel_watts"],
+    )
+    battery_kwh_needed = compute_battery_kwh(
+        sizing["backup_daily_kwh"], sizing["autonomy_days"], sizing["dod_pct"],
+        sizing["round_trip_eff_pct"], sizing["inverter_eff_pct"],
+    )
+    selected_battery = None
+    battery_units_needed = None
+    if sizing["selected_battery_id"]:
+        selected_battery = db.execute(
+            "SELECT * FROM component_catalog WHERE id = ?",
+            (sizing["selected_battery_id"],),
+        ).fetchone()
+        if selected_battery and selected_battery["capacity_kwh_nameplate"]:
+            battery_units_needed = math.ceil(
+                battery_kwh_needed / selected_battery["capacity_kwh_nameplate"]
+            )
+    selected_pv_module = None
+    voc_corrected = max_modules = None
+    if sizing["selected_pv_module_id"]:
+        selected_pv_module = db.execute(
+            "SELECT * FROM component_catalog WHERE id = ?",
+            (sizing["selected_pv_module_id"],),
+        ).fetchone()
+        if selected_pv_module:
+            voc_corrected, max_modules = compute_voc(
+                selected_pv_module["voc"], selected_pv_module["temp_coef_voc"],
+                sizing["record_low_temp_f"], sizing["max_input_v"],
+            )
+    bom_total = sum((b["qty"] or 0) * (b["unit_cost"] or 0) for b in bom)
+
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
         materials=materials, files=files, filed_labels=filed_labels,
         coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
+        rooms=rooms, items_by_room=items_by_room, sizing=sizing, bom=bom,
+        bom_total=bom_total, appliances_by_category=appliances_by_category,
+        components_by_category=components_by_category,
+        component_categories=COMPONENT_CATEGORIES,
+        load_usage_types=LOAD_USAGE_TYPES, load_eras=LOAD_ERAS,
+        daily_kwh=daily_kwh, peak_w=peak_w, array_kw=array_kw,
+        panel_count=panel_count, battery_kwh_needed=battery_kwh_needed,
+        selected_battery=selected_battery, battery_units_needed=battery_units_needed,
+        selected_pv_module=selected_pv_module, voc_corrected=voc_corrected,
+        max_modules=max_modules,
     )
+
+
+def _float(val, default=0.0):
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+# ------------------------------------------------------------ loads & sizing
+@app.route("/jobs/<int:job_id>/loads/rooms/add", methods=["POST"])
+def add_load_room(job_id):
+    fetch_job(job_id)
+    name = request.form.get("name", "").strip()
+    room_type = request.form.get("room_type", "standard")
+    if room_type not in ROOM_TYPES:
+        room_type = "standard"
+    if not name:
+        flash("Room name is required.", "error")
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    db = get_db()
+    next_order = db.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_load_rooms WHERE job_id = ?",
+        (job_id,),
+    ).fetchone()[0]
+    db.execute(
+        "INSERT INTO job_load_rooms (job_id, name, room_type, sort_order)"
+        " VALUES (?, ?, ?, ?)",
+        (job_id, name, room_type, next_order),
+    )
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+@app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/toggle", methods=["POST"])
+def toggle_load_room(job_id, room_id):
+    db = get_db()
+    db.execute(
+        "UPDATE job_load_rooms SET enabled = 1 - enabled WHERE id = ? AND job_id = ?",
+        (room_id, job_id),
+    )
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+@app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/delete", methods=["POST"])
+def delete_load_room(job_id, room_id):
+    db = get_db()
+    db.execute("DELETE FROM job_load_items WHERE room_id = ? AND job_id = ?",
+               (room_id, job_id))
+    db.execute("DELETE FROM job_load_rooms WHERE id = ? AND job_id = ?",
+               (room_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+@app.route("/jobs/<int:job_id>/loads/items/add", methods=["POST"])
+def add_load_item(job_id):
+    fetch_job(job_id)
+    db = get_db()
+    room_id = request.form.get("room_id", type=int)
+    room = db.execute(
+        "SELECT * FROM job_load_rooms WHERE id = ? AND job_id = ?", (room_id, job_id)
+    ).fetchone()
+    if not room:
+        flash("Pick a room before adding an appliance.", "error")
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+    catalog_id = request.form.get("catalog_id", type=int)
+    if catalog_id:
+        appliance = db.execute(
+            "SELECT * FROM appliance_catalog WHERE id = ?", (catalog_id,)
+        ).fetchone()
+        if not appliance:
+            flash("Appliance not found in the catalog.", "error")
+            return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+        name = appliance["name"]
+        watts = appliance["avg_w"]
+        hrs = appliance["hrs_per_day"]
+        usage_type = appliance["usage_type"]
+    else:
+        name = request.form.get("custom_name", "").strip()
+        watts = _float(request.form.get("custom_watts"))
+        hrs = _float(request.form.get("custom_hrs"))
+        usage_type = request.form.get("custom_usage_type", "").strip()
+        if not name:
+            flash("Give the custom appliance a name.", "error")
+            return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+    qty = _float(request.form.get("qty"), 1) or 1
+    # Allow overriding hrs/day from the form even for a catalog pick.
+    hrs_override = request.form.get("hrs")
+    if hrs_override not in (None, ""):
+        hrs = _float(hrs_override, hrs)
+
+    db.execute(
+        "INSERT INTO job_load_items"
+        " (job_id, room_id, appliance, watts, qty, hrs, usage_type)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (job_id, room_id, name, watts, qty, hrs, usage_type),
+    )
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+@app.route("/jobs/<int:job_id>/loads/items/<int:item_id>/delete", methods=["POST"])
+def delete_load_item(job_id, item_id):
+    db = get_db()
+    db.execute("DELETE FROM job_load_items WHERE id = ? AND job_id = ?",
+               (item_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+@app.route("/jobs/<int:job_id>/loads/bom/add", methods=["POST"])
+def add_bom_item(job_id):
+    fetch_job(job_id)
+    db = get_db()
+    component_id = request.form.get("component_id", type=int)
+    qty = _float(request.form.get("qty"), 1) or 1
+    notes = request.form.get("notes", "").strip()
+    if component_id:
+        comp = db.execute(
+            "SELECT * FROM component_catalog WHERE id = ?", (component_id,)
+        ).fetchone()
+        if not comp:
+            flash("Component not found in the catalog.", "error")
+            return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+        # Adding the same component again increments quantity instead of
+        # creating a duplicate row.
+        existing = db.execute(
+            "SELECT * FROM job_bom WHERE job_id = ? AND component_id = ?",
+            (job_id, component_id),
+        ).fetchone()
+        if existing:
+            db.execute("UPDATE job_bom SET qty = qty + ? WHERE id = ?",
+                       (qty, existing["id"]))
+        else:
+            db.execute(
+                "INSERT INTO job_bom"
+                " (job_id, component_id, component_name, category, qty,"
+                "  unit_cost, notes)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (job_id, component_id, comp["name"], comp["category"], qty,
+                 comp["cost"], notes),
+            )
+    else:
+        name = request.form.get("custom_name", "").strip()
+        category = request.form.get("custom_category", "").strip()
+        cost = request.form.get("custom_cost")
+        if not name:
+            flash("Give the custom component a name.", "error")
+            return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+        db.execute(
+            "INSERT INTO job_bom"
+            " (job_id, component_id, component_name, category, qty,"
+            "  unit_cost, notes)"
+            " VALUES (?, NULL, ?, ?, ?, ?, ?)",
+            (job_id, name, category, qty, _float(cost, None) if cost else None, notes),
+        )
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+@app.route("/jobs/<int:job_id>/loads/bom/<int:bom_id>/delete", methods=["POST"])
+def delete_bom_item(job_id, bom_id):
+    db = get_db()
+    db.execute("DELETE FROM job_bom WHERE id = ? AND job_id = ?", (bom_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+@app.route("/jobs/<int:job_id>/loads/sizing", methods=["POST"])
+def update_sizing(job_id):
+    fetch_job(job_id)
+    db = get_db()
+    fetch_job_sizing(db, job_id)  # ensure the row exists
+
+    ui_mode = request.form.get("ui_mode", "designer")
+    if ui_mode not in UI_MODES:
+        ui_mode = "designer"
+    system_type = request.form.get("system_type", "custom")
+    if system_type not in ("offgrid", "gridtie", "custom"):
+        system_type = "custom"
+
+    derate_pct = _float(request.form.get("derate_pct"), 75)
+    autonomy_days = _float(request.form.get("autonomy_days"), 2)
+    # A preset system type overrides derate/autonomy with its fixed values,
+    # mirroring the standalone tool's auto-fill-then-revert-on-edit behavior.
+    if system_type in SYSTEM_TYPE_PRESETS:
+        preset = SYSTEM_TYPE_PRESETS[system_type]
+        derate_pct = preset["derate_pct"]
+        autonomy_days = preset["autonomy_days"]
+
+    selected_battery_id = request.form.get("selected_battery_id", type=int) or None
+    selected_pv_module_id = request.form.get("selected_pv_module_id", type=int) or None
+
+    db.execute(
+        "UPDATE job_sizing SET ui_mode = ?, system_type = ?, sun_hours = ?,"
+        " derate_pct = ?, autonomy_days = ?, solar_fraction_pct = ?,"
+        " panel_watts = ?, dod_pct = ?, round_trip_eff_pct = ?,"
+        " inverter_eff_pct = ?, max_input_v = ?, record_low_temp_f = ?,"
+        " backup_daily_kwh = ?, selected_battery_id = ?, selected_pv_module_id = ?,"
+        " updated_at = datetime('now')"
+        " WHERE job_id = ?",
+        (
+            ui_mode, system_type,
+            _float(request.form.get("sun_hours"), 5.5),
+            derate_pct, autonomy_days,
+            _float(request.form.get("solar_fraction_pct"), 100),
+            _float(request.form.get("panel_watts"), 400),
+            _float(request.form.get("dod_pct"), 80),
+            _float(request.form.get("round_trip_eff_pct"), 92),
+            _float(request.form.get("inverter_eff_pct"), 96),
+            _float(request.form.get("max_input_v"), 600),
+            _float(request.form.get("record_low_temp_f"), 5),
+            _float(request.form.get("backup_daily_kwh"), 0),
+            selected_battery_id, selected_pv_module_id, job_id,
+        ),
+    )
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+@app.route("/jobs/<int:job_id>/loads/mode", methods=["POST"])
+def set_ui_mode(job_id):
+    fetch_job(job_id)
+    db = get_db()
+    fetch_job_sizing(db, job_id)  # ensure the row exists
+    ui_mode = request.form.get("ui_mode", "designer")
+    if ui_mode not in UI_MODES:
+        ui_mode = "designer"
+    db.execute("UPDATE job_sizing SET ui_mode = ? WHERE job_id = ?",
+               (ui_mode, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+
+
+# ------------------------------------------------------------------ catalog
+@app.route("/catalog")
+def catalog_page():
+    db = get_db()
+    appliances = db.execute(
+        "SELECT * FROM appliance_catalog ORDER BY category, name"
+    ).fetchall()
+    components = db.execute(
+        "SELECT * FROM component_catalog ORDER BY category, name"
+    ).fetchall()
+    appliance_categories = sorted({a["category"] for a in appliances if a["category"]})
+    return render_template(
+        "catalog.html", appliances=appliances, components=components,
+        appliance_categories=appliance_categories,
+        component_categories=COMPONENT_CATEGORIES, load_eras=LOAD_ERAS,
+        load_usage_types=LOAD_USAGE_TYPES,
+    )
+
+
+@app.route("/catalog/appliances/add", methods=["POST"])
+def add_appliance_catalog():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Appliance name is required.", "error")
+        return redirect(url_for("catalog_page"))
+    db = get_db()
+    db.execute(
+        "INSERT INTO appliance_catalog"
+        " (name, category, era, low_w, high_w, avg_w, hrs_per_day, usage_type, notes)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            name, request.form.get("category", "").strip(),
+            request.form.get("era", "").strip(),
+            _float(request.form.get("low_w"), 0),
+            _float(request.form.get("high_w"), 0),
+            _float(request.form.get("avg_w"), 0),
+            _float(request.form.get("hrs_per_day"), 0),
+            request.form.get("usage_type", "").strip(),
+            request.form.get("notes", "").strip(),
+        ),
+    )
+    db.commit()
+    flash(f"Added {name} to the appliance catalog.")
+    return redirect(url_for("catalog_page"))
+
+
+@app.route("/catalog/appliances/<int:appliance_id>/delete", methods=["POST"])
+def delete_appliance_catalog(appliance_id):
+    db = get_db()
+    db.execute("DELETE FROM appliance_catalog WHERE id = ?", (appliance_id,))
+    db.commit()
+    return redirect(url_for("catalog_page"))
+
+
+@app.route("/catalog/components/add", methods=["POST"])
+def add_component_catalog():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Component name is required.", "error")
+        return redirect(url_for("catalog_page"))
+
+    def opt_float(field):
+        val = request.form.get(field)
+        return _float(val, None) if val not in (None, "") else None
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO component_catalog"
+        " (name, category, manufacturer, model, specs, watts, voc, vmp,"
+        "  temp_coef_voc, capacity_kwh_nameplate, dod, max_input_v,"
+        "  continuous_w, inverter_eff, cost, notes)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            name, request.form.get("category", "").strip(),
+            request.form.get("manufacturer", "").strip(),
+            request.form.get("model", "").strip(),
+            request.form.get("specs", "").strip(),
+            opt_float("watts"), opt_float("voc"), opt_float("vmp"),
+            opt_float("temp_coef_voc"), opt_float("capacity_kwh_nameplate"),
+            opt_float("dod"), opt_float("max_input_v"), opt_float("continuous_w"),
+            opt_float("inverter_eff"), opt_float("cost"),
+            request.form.get("notes", "").strip(),
+        ),
+    )
+    db.commit()
+    flash(f"Added {name} to the component catalog.")
+    return redirect(url_for("catalog_page"))
+
+
+@app.route("/catalog/components/<int:component_id>/delete", methods=["POST"])
+def delete_component_catalog(component_id):
+    db = get_db()
+    # job_bom.component_id and job_sizing.selected_battery_id /
+    # selected_pv_module_id all reference this table, and foreign_keys is ON
+    # (get_db()) — deleting a component still in use would otherwise fail
+    # with an IntegrityError. job_bom already snapshots name/category/cost
+    # at add-time, so clearing the link there just detaches history from a
+    # since-removed catalog entry rather than losing any data.
+    db.execute("UPDATE job_bom SET component_id = NULL WHERE component_id = ?",
+               (component_id,))
+    db.execute(
+        "UPDATE job_sizing SET selected_battery_id = NULL"
+        " WHERE selected_battery_id = ?", (component_id,))
+    db.execute(
+        "UPDATE job_sizing SET selected_pv_module_id = NULL"
+        " WHERE selected_pv_module_id = ?", (component_id,))
+    db.execute("DELETE FROM component_catalog WHERE id = ?", (component_id,))
+    db.commit()
+    return redirect(url_for("catalog_page"))
 
 
 # ---------------------------------------------------------------- materials

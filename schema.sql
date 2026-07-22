@@ -124,6 +124,108 @@ CREATE TABLE IF NOT EXISTS employee_files (
     uploaded_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 9: Electric Loads Calculator / System Sizing, ported from the
+-- standalone loads_calculator.html field tool. Catalogs are global
+-- reference data (shared across every job, editable at /catalog);
+-- the survey, bill of materials, and sizing inputs are per-job.
+CREATE TABLE IF NOT EXISTS appliance_catalog (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    category    TEXT DEFAULT '',
+    era         TEXT DEFAULT '',   -- Modern / Vintage / '' (era-agnostic)
+    low_w       REAL DEFAULT 0,
+    high_w      REAL DEFAULT 0,
+    avg_w       REAL DEFAULT 0,
+    hrs_per_day REAL DEFAULT 0,
+    usage_type  TEXT DEFAULT '',
+    notes       TEXT DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS component_catalog (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                   TEXT NOT NULL,
+    category               TEXT DEFAULT '',
+    manufacturer           TEXT DEFAULT '',
+    model                  TEXT DEFAULT '',
+    specs                  TEXT DEFAULT '',
+    watts                  REAL,
+    voc                    REAL,
+    vmp                    REAL,
+    temp_coef_voc          REAL,
+    capacity_kwh_nameplate REAL,
+    dod                    REAL,
+    max_input_v            REAL,
+    continuous_w           REAL,
+    inverter_eff           REAL,
+    cost                   REAL,
+    notes                  TEXT DEFAULT '',
+    created_at             TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- A room in a job's load survey. room_type 'scenario' marks a custom
+-- use-case room (seasonal/unusual load) that can be excluded from
+-- totals via `enabled` without deleting the data.
+CREATE TABLE IF NOT EXISTS job_load_rooms (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     INTEGER NOT NULL REFERENCES jobs(id),
+    name       TEXT NOT NULL,
+    room_type  TEXT NOT NULL DEFAULT 'standard',  -- standard / scenario
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS job_load_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     INTEGER NOT NULL REFERENCES jobs(id),
+    room_id    INTEGER NOT NULL REFERENCES job_load_rooms(id),
+    appliance  TEXT NOT NULL,
+    watts      REAL NOT NULL DEFAULT 0,
+    qty        REAL NOT NULL DEFAULT 1,
+    hrs        REAL NOT NULL DEFAULT 0,
+    usage_type TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Bill of materials per job, pulled from component_catalog (component_id
+-- set) or hand-entered (component_id NULL). Name/category/cost are
+-- snapshotted at add-time so catalog price edits don't rewrite history.
+CREATE TABLE IF NOT EXISTS job_bom (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id         INTEGER NOT NULL REFERENCES jobs(id),
+    component_id   INTEGER REFERENCES component_catalog(id),
+    component_name TEXT NOT NULL,
+    category       TEXT DEFAULT '',
+    qty            REAL NOT NULL DEFAULT 1,
+    unit_cost      REAL,
+    notes          TEXT DEFAULT '',
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One row per job: System Sizing inputs + the Sales/Designer view mode.
+-- Outputs (array kW, panel count, battery kWh, Voc string...) are
+-- computed on the fly from these inputs plus the load survey, not stored.
+CREATE TABLE IF NOT EXISTS job_sizing (
+    job_id              INTEGER PRIMARY KEY REFERENCES jobs(id),
+    ui_mode             TEXT NOT NULL DEFAULT 'designer',  -- sales / designer
+    system_type         TEXT NOT NULL DEFAULT 'custom',    -- offgrid / gridtie / custom
+    sun_hours           REAL DEFAULT 5.5,
+    derate_pct          REAL DEFAULT 75,
+    autonomy_days       REAL DEFAULT 2,
+    solar_fraction_pct  REAL DEFAULT 100,
+    panel_watts         REAL DEFAULT 400,
+    dod_pct             REAL DEFAULT 80,
+    round_trip_eff_pct  REAL DEFAULT 92,
+    inverter_eff_pct    REAL DEFAULT 96,
+    max_input_v         REAL DEFAULT 600,
+    record_low_temp_f   REAL DEFAULT 5,
+    backup_daily_kwh    REAL DEFAULT 0,
+    selected_battery_id INTEGER REFERENCES component_catalog(id),
+    selected_pv_module_id INTEGER REFERENCES component_catalog(id),
+    updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS resource_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     field_name  TEXT NOT NULL,

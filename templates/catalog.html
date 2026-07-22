@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Catalog{% endblock %}
+{% block content %}
+<div style="margin-bottom: 0.8rem;">
+  <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to clients</a>
+</div>
+<h1>Appliance &amp; component catalog</h1>
+<p class="muted">Reference data used by every job's <strong>Loads &amp; Sizing</strong>
+tab: the appliance list drives the electric load survey, and the component
+list drives the bill-of-materials picker and system sizing. Editing here
+applies everywhere immediately.</p>
+
+<div class="tab-bar">
+  <button class="tab-btn" data-tab="appliances">Appliances ({{ appliances|length }})</button>
+  <button class="tab-btn" data-tab="components">Components ({{ components|length }})</button>
+</div>
+
+<div class="tab-panel" id="tab-appliances">
+<form method="post" action="{{ url_for('add_appliance_catalog') }}" class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Add an appliance</h2>
+  <div class="form-grid">
+    <div class="field wide"><label>Name *</label><input name="name" required placeholder="e.g. Refrigerator, modern (top-freezer)"></div>
+    <div class="field">
+      <label>Category</label>
+      <input name="category" list="appliance-category-list" placeholder="e.g. Kitchen">
+      <datalist id="appliance-category-list">
+        {% for c in appliance_categories %}<option value="{{ c }}">{% endfor %}
+      </datalist>
+    </div>
+    <div class="field">
+      <label>Era</label>
+      <select name="era">
+        <option value="">— era-agnostic —</option>
+        {% for e in load_eras %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field"><label>Low W</label><input type="number" step="any" name="low_w"></div>
+    <div class="field"><label>High W</label><input type="number" step="any" name="high_w"></div>
+    <div class="field"><label>Avg W *</label><input type="number" step="any" name="avg_w" required></div>
+    <div class="field"><label>Typical hrs/day</label><input type="number" step="any" name="hrs_per_day"></div>
+    <div class="field">
+      <label>Usage type</label>
+      <select name="usage_type">
+        {% for u in load_usage_types %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field wide"><label>Notes</label><input name="notes"></div>
+  </div>
+  <div class="actions"><button type="submit" class="btn">＋ Add appliance</button></div>
+</form>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Appliances ({{ appliances|length }})</h2>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Name</th><th>Category</th><th>Era</th><th>Avg W</th><th>Hrs/day</th><th>Usage</th><th>Notes</th><th></th></tr></thead>
+    <tbody>
+      {% for a in appliances %}
+      <tr>
+        <td>{{ a["name"] }}</td>
+        <td class="muted">{{ a["category"] }}</td>
+        <td>{% if a["era"] %}<span class="badge">{{ a["era"] }}</span>{% endif %}</td>
+        <td>{{ a["avg_w"]|int }}</td>
+        <td>{{ a["hrs_per_day"] }}</td>
+        <td class="muted">{{ a["usage_type"] }}</td>
+        <td class="muted">{{ a["notes"] or "" }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_appliance_catalog', appliance_id=a['id']) }}"
+                onsubmit="return confirm('Delete this appliance from the catalog?');" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+</div>
+
+<div class="tab-panel" id="tab-components">
+<form method="post" action="{{ url_for('add_component_catalog') }}" class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Add a component</h2>
+  <div class="form-grid">
+    <div class="field wide"><label>Name *</label><input name="name" required placeholder="e.g. REC Alpha Pure 2 430W"></div>
+    <div class="field">
+      <label>Category</label>
+      <select name="category">
+        {% for c in component_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field"><label>Manufacturer</label><input name="manufacturer"></div>
+    <div class="field"><label>Model</label><input name="model"></div>
+    <div class="field wide"><label>Specs (free text)</label><input name="specs"></div>
+    <div class="field"><label>Watts</label><input type="number" step="any" name="watts"></div>
+    <div class="field"><label>Voc</label><input type="number" step="any" name="voc"></div>
+    <div class="field"><label>Vmp</label><input type="number" step="any" name="vmp"></div>
+    <div class="field"><label>Temp coef Voc (%/°C)</label><input type="number" step="any" name="temp_coef_voc"></div>
+    <div class="field"><label>Capacity (kWh nameplate)</label><input type="number" step="any" name="capacity_kwh_nameplate"></div>
+    <div class="field"><label>DoD (%)</label><input type="number" step="any" name="dod"></div>
+    <div class="field"><label>Max input V</label><input type="number" step="any" name="max_input_v"></div>
+    <div class="field"><label>Continuous W</label><input type="number" step="any" name="continuous_w"></div>
+    <div class="field"><label>Inverter eff (%)</label><input type="number" step="any" name="inverter_eff"></div>
+    <div class="field"><label>Cost ($)</label><input type="number" step="any" name="cost"></div>
+    <div class="field wide"><label>Notes</label><input name="notes"></div>
+  </div>
+  <div class="actions"><button type="submit" class="btn">＋ Add component</button></div>
+</form>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Components ({{ components|length }})</h2>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Name</th><th>Category</th><th>Manufacturer / model</th><th>Specs</th><th>Cost</th><th></th></tr></thead>
+    <tbody>
+      {% for c in components %}
+      <tr>
+        <td>{{ c["name"] }}</td>
+        <td><span class="badge">{{ c["category"] }}</span></td>
+        <td class="muted">{{ c["manufacturer"] }} {{ c["model"] }}</td>
+        <td class="muted">{{ c["specs"] or "" }}</td>
+        <td>{% if c["cost"] %}${{ "%.0f"|format(c["cost"]) }}{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_component_catalog', component_id=c['id']) }}"
+                onsubmit="return confirm('Delete this component from the catalog?');" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+</div>
+
+<script>
+  const TABS = ["appliances", "components"];
+  function activateTab(name, updateHash) {
+    if (!TABS.includes(name)) name = "appliances";
+    document.querySelectorAll(".tab-btn").forEach(b =>
+      b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll(".tab-panel").forEach(p =>
+      p.classList.toggle("active", p.id === "tab-" + name));
+    if (updateHash) history.replaceState(null, "", "#" + name);
+  }
+  document.querySelectorAll(".tab-btn").forEach(b =>
+    b.addEventListener("click", () => activateTab(b.dataset.tab, true)));
+  window.addEventListener("hashchange", () =>
+    activateTab(location.hash.slice(1) || "appliances", false));
+  activateTab(location.hash.slice(1) || "appliances", false);
+</script>
+{% endblock %}
