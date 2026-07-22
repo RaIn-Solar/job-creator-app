@@ -196,8 +196,8 @@
     {% if not login_active %}
     <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
       🔓 <strong>No logins set up.</strong> Anyone can access everything. To turn on
-      sign-in and admin permissions, open an employee's profile → Edit → set a
-      Username, Password, and Access level (Admin).
+      sign-in and admin permissions, go to <a href="{{ url_for('accounts_page') }}">Accounts</a>
+      and give someone a Username, Password, and Admin access level.
     </div>
     {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}

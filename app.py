@@ -564,7 +564,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 13.0"
+VERSION = "Piece 13.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2561,28 +2561,68 @@ def employees_page():
     return render_template("employees.html", employees=employees, summary=summary)
 
 
+@app.route("/accounts")
+@admin_required
+def accounts_page():
+    """Admin roster of who can sign in and at what level, plus the employees
+    who don't have a login yet."""
+    employees = get_db().execute(
+        "SELECT id, name, username, access_level, COALESCE(password_hash,'') AS pw"
+        " FROM employees ORDER BY name").fetchall()
+    with_login = [e for e in employees if (e["username"] or "")]
+    without_login = [e for e in employees if not (e["username"] or "")]
+    admin_count = sum(1 for e in with_login if e["access_level"] == "Admin")
+    return render_template("accounts.html", with_login=with_login,
+                           without_login=without_login, admin_count=admin_count)
+
+
 def _apply_employee_auth(db, employee_id):
     """Set or clear this employee's login from the form's Login & access
     fields. A blank/None level or blank username removes the login; the
     password hash is rewritten only when a new password is supplied, so
-    editing other fields never disturbs an existing password."""
+    editing other fields never disturbs an existing password. Guards against
+    leaving accounts configured with no admin (which would lock everyone out
+    of admin functions)."""
     level = request.form.get("access_level", "").strip()
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    if level in ACCESS_LEVELS and username:
+    setting_login = level in ACCESS_LEVELS and bool(username)
+
+    if setting_login:
         clash = db.execute(
             "SELECT id FROM employees WHERE username = ? AND id != ?",
             (username, employee_id)).fetchone()
         if clash:
             flash(f"Username “{username}” is already taken — login unchanged.", "error")
             return
+
+    existing_hash = db.execute(
+        "SELECT COALESCE(password_hash,'') FROM employees WHERE id = ?",
+        (employee_id,)).fetchone()[0]
+    this_usable = setting_login and (bool(password) or bool(existing_hash))
+    this_admin = this_usable and level == "Admin"
+    other_accounts = db.execute(
+        "SELECT COUNT(*) FROM employees WHERE id != ?"
+        " AND COALESCE(username,'') != '' AND COALESCE(password_hash,'') != ''",
+        (employee_id,)).fetchone()[0]
+    other_admins = db.execute(
+        "SELECT COUNT(*) FROM employees WHERE id != ? AND access_level = 'Admin'"
+        " AND COALESCE(username,'') != '' AND COALESCE(password_hash,'') != ''",
+        (employee_id,)).fetchone()[0]
+    total_accounts = other_accounts + (1 if this_usable else 0)
+    total_admins = other_admins + (1 if this_admin else 0)
+    if total_accounts > 0 and total_admins == 0:
+        flash("Keep at least one admin account — or remove every login to go"
+              " back to open access. Login unchanged.", "error")
+        return
+
+    if setting_login:
         db.execute("UPDATE employees SET username = ?, access_level = ? WHERE id = ?",
                    (username, level, employee_id))
         if password:
             db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
                        (generate_password_hash(password), employee_id))
-        elif not db.execute("SELECT COALESCE(password_hash,'') FROM employees"
-                            " WHERE id = ?", (employee_id,)).fetchone()[0]:
+        elif not existing_hash:
             flash("Login saved — set a password to activate it.", "error")
     else:
         db.execute(

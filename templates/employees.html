@@ -3,7 +3,12 @@
 {% block content %}
 <div class="toolbar">
   <h1>👥 Employees</h1>
-  {% if is_admin %}<a href="{{ url_for('new_employee') }}" class="btn">＋ New employee</a>{% endif %}
+  {% if is_admin %}
+  <div style="display:flex; gap:0.5rem;">
+    <a href="{{ url_for('accounts_page') }}" class="btn btn-secondary">🔑 Accounts</a>
+    <a href="{{ url_for('new_employee') }}" class="btn">＋ New employee</a>
+  </div>
+  {% endif %}
 </div>
 <p class="muted">ECC's crew: each person's roles, the licenses and
 certifications they hold, and their working schedule. Click a name to view
