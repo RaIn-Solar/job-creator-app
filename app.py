@@ -21,10 +21,13 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from functools import wraps
+
 from flask import (
     Flask, Response, abort, flash, g, redirect, render_template, request,
-    send_from_directory, url_for,
+    session, send_from_directory, url_for,
 )
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from bpmn_export import build_job_bpmn
@@ -87,6 +90,11 @@ JOB_FIELD_LABELS = {
 # certifications are structured rows in employee_credentials (Piece 8.1),
 # managed on the profile page.
 EMPLOYEE_FIELDS = ["name", "roles", "schedule"]
+# Piece 13: an employee becomes a login by gaining a username + password +
+# access level. Kept off the plain-text EMPLOYEE_FIELDS above and handled
+# separately so a normal profile edit never touches account data by accident.
+EMPLOYEE_AUTH_FIELDS = ["username", "password_hash", "access_level"]
+ACCESS_LEVELS = ["Standard", "Admin"]
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "roles": "Roles", "schedule": "Schedule",
 }
@@ -556,7 +564,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 12.2"
+VERSION = "Piece 13.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -673,6 +681,9 @@ def _audit_detail():
     for key in request.form:
         if key == "next":
             continue
+        if "password" in key.lower():
+            data[key] = "***"          # never log secrets
+            continue
         vals = request.form.getlist(key)
         val = vals if len(vals) > 1 else (vals[0] if vals else "")
         if isinstance(val, str) and len(val) > 300:
@@ -692,11 +703,13 @@ def audit(response):
         if (request.method in ("POST", "PUT", "PATCH", "DELETE")
                 and request.endpoint and request.endpoint not in AUDIT_SKIP_ENDPOINTS):
             db = get_db()
+            user = current_user()
             db.execute(
                 "INSERT INTO audit_log"
                 " (actor, action, endpoint, method, path, entity, detail, status, ip)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ("", _audit_action(request.endpoint), request.endpoint,
+                (user["name"] if user else "", _audit_action(request.endpoint),
+                 request.endpoint,
                  request.method, request.path,
                  json.dumps(request.view_args or {}, ensure_ascii=False),
                  _audit_detail(), response.status_code, request.remote_addr or ""),
@@ -705,6 +718,94 @@ def audit(response):
     except Exception:
         pass
     return response
+
+
+# --------------------------------------------------------------- auth (Piece 13)
+def accounts_exist():
+    """True once at least one employee has a usable login. Until then the
+    app runs in open mode (no login wall) so nothing locks up and setup is
+    possible."""
+    row = get_db().execute(
+        "SELECT COUNT(*) FROM employees"
+        " WHERE COALESCE(username,'') != '' AND COALESCE(password_hash,'') != ''"
+    ).fetchone()
+    return row[0] > 0
+
+
+def current_user():
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    return get_db().execute(
+        "SELECT * FROM employees WHERE id = ?", (uid,)).fetchone()
+
+
+def _is_admin():
+    """Admin, OR open mode (no accounts yet) so the first admin can be set up."""
+    if not accounts_exist():
+        return True
+    user = current_user()
+    return user is not None and user["access_level"] == "Admin"
+
+
+def admin_required(view):
+    """Guard admin-only actions (editing shared data + accounts + the log)."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not _is_admin():
+            flash("That action is limited to admin accounts.", "error")
+            return redirect(url_for("home"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@app.context_processor
+def inject_auth():
+    user = current_user()
+    return {"current_user": user, "login_active": accounts_exist(),
+            "is_admin": _is_admin()}
+
+
+@app.before_request
+def require_login():
+    """Once logins are configured, every page needs one (except the login
+    page itself and static files). In open mode this does nothing."""
+    if not accounts_exist():
+        return
+    if request.endpoint in ("login", "static", None):
+        return
+    if current_user() is None:
+        nxt = request.path if request.method == "GET" else None
+        return redirect(url_for("login", next=nxt))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user() is not None:
+        return redirect(url_for("home"))
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        user = get_db().execute(
+            "SELECT * FROM employees WHERE username = ? AND COALESCE(username,'') != ''",
+            (username,)).fetchone()
+        if user and user["password_hash"] and check_password_hash(
+                user["password_hash"], password):
+            session["user_id"] = user["id"]
+            flash(f"Signed in as {user['name']}.")
+            nxt = request.form.get("next") or ""
+            if nxt.startswith("/") and not nxt.startswith("//"):
+                return redirect(nxt)
+            return redirect(url_for("home"))
+        flash("Wrong username or password.", "error")
+    return render_template("login.html", next=request.args.get("next", ""))
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.pop("user_id", None)
+    flash("Signed out.")
+    return redirect(url_for("login"))
 
 
 def ensure_columns(db, table, columns):
@@ -730,7 +831,7 @@ def init_db():
     ensure_columns(db, "jobs", JOB_FIELDS + ["status"])
     # Existing jobs predate the status column; give blanks the default stage.
     db.execute("UPDATE jobs SET status = 'Lead' WHERE COALESCE(status, '') = ''")
-    ensure_columns(db, "employees", EMPLOYEE_FIELDS)
+    ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS)
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
@@ -1727,6 +1828,7 @@ def catalog_page():
 
 
 @app.route("/catalog/appliances/add", methods=["POST"])
+@admin_required
 def add_appliance_catalog():
     name = request.form.get("name", "").strip()
     if not name:
@@ -1754,6 +1856,7 @@ def add_appliance_catalog():
 
 
 @app.route("/catalog/appliances/<int:appliance_id>/delete", methods=["POST"])
+@admin_required
 def delete_appliance_catalog(appliance_id):
     db = get_db()
     db.execute("DELETE FROM appliance_catalog WHERE id = ?", (appliance_id,))
@@ -1762,6 +1865,7 @@ def delete_appliance_catalog(appliance_id):
 
 
 @app.route("/catalog/components/add", methods=["POST"])
+@admin_required
 def add_component_catalog():
     name = request.form.get("name", "").strip()
     if not name:
@@ -1797,6 +1901,7 @@ def add_component_catalog():
 
 
 @app.route("/catalog/components/<int:component_id>/delete", methods=["POST"])
+@admin_required
 def delete_component_catalog(component_id):
     db = get_db()
     # job_bom.component_id and job_sizing.selected_battery_id /
@@ -2296,6 +2401,7 @@ def rules_page():
 
 
 @app.route("/rules/new", methods=["POST"])
+@admin_required
 def add_rule():
     field_name = request.form.get("field_name", "").strip()
     field_value = request.form.get("field_value", "").strip()
@@ -2394,6 +2500,7 @@ def rule_directory():
 
 
 @app.route("/rules/<int:rule_id>/delete", methods=["POST"])
+@admin_required
 def delete_rule(rule_id):
     db = get_db()
     db.execute("DELETE FROM resource_rules WHERE id = ?", (rule_id,))
@@ -2422,7 +2529,7 @@ def read_employee_form():
     return values, errors
 
 
-def render_employee_form(values, employee_id=None):
+def render_employee_form(values, employee_id=None, username="", access_level=""):
     """Render the shared new/edit form, splitting stored roles back into
     the known checkbox roles and any free-typed extras."""
     stored = [r.strip() for r in (values.get("roles") or "").split(",") if r.strip()]
@@ -2431,6 +2538,7 @@ def render_employee_form(values, employee_id=None):
     return render_template(
         "employee_form.html", values=values, roles=EMPLOYEE_ROLES,
         selected=selected, roles_other=roles_other, employee_id=employee_id,
+        username=username, access_level=access_level, access_levels=ACCESS_LEVELS,
     )
 
 
@@ -2453,7 +2561,37 @@ def employees_page():
     return render_template("employees.html", employees=employees, summary=summary)
 
 
+def _apply_employee_auth(db, employee_id):
+    """Set or clear this employee's login from the form's Login & access
+    fields. A blank/None level or blank username removes the login; the
+    password hash is rewritten only when a new password is supplied, so
+    editing other fields never disturbs an existing password."""
+    level = request.form.get("access_level", "").strip()
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    if level in ACCESS_LEVELS and username:
+        clash = db.execute(
+            "SELECT id FROM employees WHERE username = ? AND id != ?",
+            (username, employee_id)).fetchone()
+        if clash:
+            flash(f"Username “{username}” is already taken — login unchanged.", "error")
+            return
+        db.execute("UPDATE employees SET username = ?, access_level = ? WHERE id = ?",
+                   (username, level, employee_id))
+        if password:
+            db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
+                       (generate_password_hash(password), employee_id))
+        elif not db.execute("SELECT COALESCE(password_hash,'') FROM employees"
+                            " WHERE id = ?", (employee_id,)).fetchone()[0]:
+            flash("Login saved — set a password to activate it.", "error")
+    else:
+        db.execute(
+            "UPDATE employees SET username = '', password_hash = '', access_level = ''"
+            " WHERE id = ?", (employee_id,))
+
+
 @app.route("/employees/new", methods=["GET", "POST"])
+@admin_required
 def new_employee():
     if request.method == "POST":
         values, errors = read_employee_form()
@@ -2466,6 +2604,7 @@ def new_employee():
             f" VALUES ({', '.join('?' * len(EMPLOYEE_FIELDS))})",
             [values[f] for f in EMPLOYEE_FIELDS],
         )
+        _apply_employee_auth(db, cur.lastrowid)
         db.commit()
         flash(f"Employee added: {values['name']}")
         return redirect(url_for("employee_detail", employee_id=cur.lastrowid))
@@ -2517,6 +2656,7 @@ def employee_detail(employee_id):
 
 
 @app.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
+@admin_required
 def edit_employee(employee_id):
     db = get_db()
     employee = db.execute(
@@ -2534,14 +2674,19 @@ def edit_employee(employee_id):
             " WHERE id = ?",
             [values[f] for f in EMPLOYEE_FIELDS] + [employee_id],
         )
+        _apply_employee_auth(db, employee_id)
         db.commit()
         flash(f"Employee updated: {values['name']}")
         return redirect(url_for("employee_detail", employee_id=employee_id))
     values = {f: employee[f] for f in EMPLOYEE_FIELDS}
-    return render_employee_form(values, employee_id=employee_id)
+    return render_employee_form(
+        values, employee_id=employee_id,
+        username=employee["username"] or "",
+        access_level=employee["access_level"] or "")
 
 
 @app.route("/employees/<int:employee_id>/delete", methods=["POST"])
+@admin_required
 def delete_employee(employee_id):
     db = get_db()
     # Remove the person's credentials and document records, and their files
@@ -2564,6 +2709,7 @@ def delete_employee(employee_id):
 
 # ---- employee licenses & certifications (structured, with expiry) --------
 @app.route("/employees/<int:employee_id>/credentials/add", methods=["POST"])
+@admin_required
 def add_credential(employee_id):
     if get_db().execute("SELECT id FROM employees WHERE id = ?",
                         (employee_id,)).fetchone() is None:
@@ -2591,6 +2737,7 @@ def add_credential(employee_id):
 
 @app.route("/employees/<int:employee_id>/credentials/<int:credential_id>/delete",
            methods=["POST"])
+@admin_required
 def delete_credential(employee_id, credential_id):
     db = get_db()
     db.execute("DELETE FROM employee_credentials WHERE id = ? AND employee_id = ?",
@@ -2608,6 +2755,7 @@ def employee_upload_dir(employee_id):
 
 
 @app.route("/employees/<int:employee_id>/files/upload", methods=["POST"])
+@admin_required
 def upload_employee_file(employee_id):
     if get_db().execute("SELECT id FROM employees WHERE id = ?",
                         (employee_id,)).fetchone() is None:
@@ -2650,6 +2798,7 @@ def download_employee_file(employee_id, file_id):
 
 @app.route("/employees/<int:employee_id>/files/<int:file_id>/delete",
            methods=["POST"])
+@admin_required
 def delete_employee_file(employee_id, file_id):
     db = get_db()
     record = db.execute(
@@ -2664,6 +2813,7 @@ def delete_employee_file(employee_id, file_id):
 
 
 @app.route("/audit")
+@admin_required
 def audit_log_page():
     """Read-only view of the system audit log, newest first, filterable by
     action. Admin-oriented — will sit behind role access once logins land."""

@@ -16,6 +16,7 @@ applies everywhere immediately.</p>
 </div>
 
 <div class="tab-panel" id="tab-appliances">
+{% if is_admin %}
 <form method="post" action="{{ url_for('add_appliance_catalog') }}" class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">Add an appliance</h2>
   <div class="form-grid">
@@ -48,6 +49,7 @@ applies everywhere immediately.</p>
   </div>
   <div class="actions"><button type="submit" class="btn">＋ Add appliance</button></div>
 </form>
+{% endif %}
 
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">Appliances ({{ appliances|length }})</h2>
@@ -65,10 +67,12 @@ applies everywhere immediately.</p>
         <td class="muted">{{ a["usage_type"] }}</td>
         <td class="muted">{{ a["notes"] or "" }}</td>
         <td>
+          {% if is_admin %}
           <form method="post" action="{{ url_for('delete_appliance_catalog', appliance_id=a['id']) }}"
                 onsubmit="return confirm('Delete this appliance from the catalog?');" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -79,6 +83,7 @@ applies everywhere immediately.</p>
 </div>
 
 <div class="tab-panel" id="tab-components">
+{% if is_admin %}
 <form method="post" action="{{ url_for('add_component_catalog') }}" class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">Add a component</h2>
   <div class="form-grid">
@@ -106,6 +111,7 @@ applies everywhere immediately.</p>
   </div>
   <div class="actions"><button type="submit" class="btn">＋ Add component</button></div>
 </form>
+{% endif %}
 
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">Components ({{ components|length }})</h2>
@@ -121,10 +127,12 @@ applies everywhere immediately.</p>
         <td class="muted">{{ c["specs"] or "" }}</td>
         <td>{% if c["cost"] %}${{ "%.0f"|format(c["cost"]) }}{% endif %}</td>
         <td>
+          {% if is_admin %}
           <form method="post" action="{{ url_for('delete_component_catalog', component_id=c['id']) }}"
                 onsubmit="return confirm('Delete this component from the catalog?');" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

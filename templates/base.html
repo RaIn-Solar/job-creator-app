@@ -176,14 +176,30 @@
   <header>
     <a href="/">☀️ Solbiz</a>
     <span class="sub">ECC Solar internal tool</span>
+    {% if current_user or not login_active %}
     <a href="/directory" style="margin-left:auto; font-size:0.9rem; font-weight:500;">📖 Directory</a>
     <a href="/catalog" style="font-size:0.9rem; font-weight:500;">🔌 Catalog</a>
     <a href="/rules" style="font-size:0.9rem; font-weight:500;">⚙️ Rules</a>
     <a href="/employees" style="font-size:0.9rem; font-weight:500;">👥 Employees</a>
     <a href="/tasks" style="font-size:0.9rem; font-weight:500;">✅ Tasks</a>
-    <a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>
+    {% if is_admin %}<a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>{% endif %}
+    {% endif %}
+    {% if login_active and current_user %}
+    <span style="font-size:0.85rem; opacity:0.9;{% if not current_user %} margin-left:auto;{% endif %}">
+      {{ current_user["name"] }}{% if current_user["access_level"] == "Admin" %} · admin{% endif %}</span>
+    <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+      <button type="submit" style="background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4); border-radius:6px; padding:0.3rem 0.6rem; font:inherit; font-size:0.8rem; cursor:pointer;">Log out</button>
+    </form>
+    {% endif %}
   </header>
   <main>
+    {% if not login_active %}
+    <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">
+      🔓 <strong>No logins set up.</strong> Anyone can access everything. To turn on
+      sign-in and admin permissions, open an employee's profile → Edit → set a
+      Username, Password, and Access level (Admin).
+    </div>
+    {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
         <div class="flash {{ category }}">{{ message }}</div>

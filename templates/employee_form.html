@@ -39,6 +39,39 @@
       <textarea id="schedule" name="schedule" rows="3"
                 placeholder="e.g. Mon–Fri 7:00 AM – 4:00 PM; on call alternate weekends">{{ values.get('schedule', '') }}</textarea>
     </div>
+
+    {% if is_admin %}
+    <div class="field wide">
+      <fieldset class="section">
+        <legend>Login &amp; access</legend>
+        <p class="muted" style="margin:0 0 0.6rem; font-size:0.85rem;">
+          Give this person a sign-in. <strong>Admin</strong> can edit Rules,
+          Catalog, Employees/accounts and view the Log; <strong>Standard</strong>
+          does everyday work (clients, jobs, tasks, documents). Leave Access
+          level as “No login” for no account.</p>
+        <div class="form-grid">
+          <div class="field">
+            <label for="access_level">Access level</label>
+            <select id="access_level" name="access_level">
+              <option value="" {% if not access_level %}selected{% endif %}>No login</option>
+              {% for lv in access_levels %}
+              <option value="{{ lv }}" {% if access_level == lv %}selected{% endif %}>{{ lv }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" name="username" value="{{ username }}" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="password">Password
+              <span class="muted">{% if username %}(leave blank to keep){% endif %}</span></label>
+            <input id="password" name="password" type="password" autocomplete="new-password">
+          </div>
+        </div>
+      </fieldset>
+    </div>
+    {% endif %}
   </div>
   <p class="muted" style="margin:0.6rem 0 0;">💡 Licenses, certifications
   (with expiry dates) and document copies are added on the employee's profile
