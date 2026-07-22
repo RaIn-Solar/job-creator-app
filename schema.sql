@@ -262,3 +262,21 @@ CREATE TABLE IF NOT EXISTS job_tasks (
     completed_at TEXT DEFAULT '',
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Piece 11: system-wide audit log. Every state-changing request (POST) is
+-- recorded centrally so nothing slips through. `actor` stays blank until
+-- logins land (Piece 8 backlog); `entity` holds the URL parameters (which
+-- record) and `detail` the submitted fields, both as JSON.
+CREATE TABLE IF NOT EXISTS audit_log (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts       TEXT NOT NULL DEFAULT (datetime('now')),
+    actor    TEXT DEFAULT '',       -- who (filled once logins exist)
+    action   TEXT NOT NULL DEFAULT '',
+    endpoint TEXT DEFAULT '',
+    method   TEXT DEFAULT '',
+    path     TEXT DEFAULT '',
+    entity   TEXT DEFAULT '',       -- JSON of URL params (job_id, ...)
+    detail   TEXT DEFAULT '',       -- JSON of submitted fields
+    status   INTEGER,
+    ip       TEXT DEFAULT ''
+);

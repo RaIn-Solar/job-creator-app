@@ -556,7 +556,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 10.2"
+VERSION = "Piece 11.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -628,6 +628,72 @@ def close_db(exc):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+
+
+# ------------------------------------------------------------- audit log
+# Friendlier names for a few endpoints; everything else is prettified from
+# the view function name (e.g. delete_component_catalog -> "Delete component
+# catalog"), so new routes are logged readably without extra wiring.
+ACTION_LABELS = {
+    "new_client": "Create client", "new_job": "Create job",
+    "edit_job": "Edit job", "add_rule": "Add rule", "delete_rule": "Delete rule",
+    "new_employee": "Add employee", "edit_employee": "Edit employee",
+    "delete_employee": "Delete employee", "upload_file": "Upload job document",
+    "generate_tasks": "Generate tasks from process",
+    "set_task_status": "Change task status", "set_task_assignee": "Reassign task",
+    "set_task_due": "Change task due date", "set_ui_mode": "Change sizing view mode",
+    "update_sizing": "Update system sizing",
+}
+# Endpoints whose POSTs are not user data changes worth logging.
+AUDIT_SKIP_ENDPOINTS = set()
+
+
+def _audit_action(endpoint):
+    if not endpoint:
+        return "Request"
+    return ACTION_LABELS.get(endpoint, endpoint.replace("_", " ").capitalize())
+
+
+def _audit_detail():
+    """A compact JSON snapshot of the submitted fields (the 'input'),
+    excluding the redirect helper and truncating long values; uploaded
+    file names are noted too."""
+    data = {}
+    for key in request.form:
+        if key == "next":
+            continue
+        vals = request.form.getlist(key)
+        val = vals if len(vals) > 1 else (vals[0] if vals else "")
+        if isinstance(val, str) and len(val) > 300:
+            val = val[:300] + "…"
+        data[key] = val
+    names = [f.filename for f in request.files.values() if f and f.filename]
+    if names:
+        data["_files"] = names
+    return json.dumps(data, ensure_ascii=False)[:2000]
+
+
+@app.after_request
+def audit(response):
+    """Record every state-changing request. Central by design: nothing a
+    feature does can bypass it. Never allowed to break a real request."""
+    try:
+        if (request.method in ("POST", "PUT", "PATCH", "DELETE")
+                and request.endpoint and request.endpoint not in AUDIT_SKIP_ENDPOINTS):
+            db = get_db()
+            db.execute(
+                "INSERT INTO audit_log"
+                " (actor, action, endpoint, method, path, entity, detail, status, ip)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("", _audit_action(request.endpoint), request.endpoint,
+                 request.method, request.path,
+                 json.dumps(request.view_args or {}, ensure_ascii=False),
+                 _audit_detail(), response.status_code, request.remote_addr or ""),
+            )
+            db.commit()
+    except Exception:
+        pass
+    return response
 
 
 def ensure_columns(db, table, columns):
@@ -2478,6 +2544,40 @@ def delete_employee_file(employee_id, file_id):
         db.commit()
         flash(f"Deleted: {record['original_name']}")
     return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
+
+
+@app.route("/audit")
+def audit_log_page():
+    """Read-only view of the system audit log, newest first, filterable by
+    action. Admin-oriented — will sit behind role access once logins land."""
+    db = get_db()
+    action = request.args.get("action", "")
+    sql = "SELECT * FROM audit_log"
+    params = []
+    if action:
+        sql += " WHERE action = ?"
+        params.append(action)
+    sql += " ORDER BY id DESC LIMIT 300"
+    entries = []
+    for e in db.execute(sql, params).fetchall():
+        try:
+            entity = json.loads(e["entity"] or "{}")
+        except ValueError:
+            entity = {}
+        try:
+            detail = json.loads(e["detail"] or "{}")
+        except ValueError:
+            detail = {}
+        entries.append({
+            "ts": e["ts"], "actor": e["actor"], "action": e["action"],
+            "path": e["path"], "status": e["status"], "ip": e["ip"],
+            "entity": entity, "detail": detail,
+        })
+    actions = [r["action"] for r in db.execute(
+        "SELECT DISTINCT action FROM audit_log ORDER BY action").fetchall()]
+    total = db.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+    return render_template("audit.html", entries=entries, actions=actions,
+                           action=action, total=total)
 
 
 if __name__ == "__main__":
