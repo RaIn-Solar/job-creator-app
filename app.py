@@ -556,7 +556,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 9.2"
+VERSION = "Piece 10.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -564,6 +564,8 @@ ALLOWED_EXTENSIONS = {
     "csv", "txt", "kmz", "kml", "zip", "bpmn",
 }
 MATERIAL_STATUSES = ["Needed", "Ordered", "Received", "Installed"]
+# Piece 10: per-job task assignment.
+TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
 
 # Piece 9: Electric Loads Calculator / System Sizing config (ported from
 # the standalone loads_calculator.html field tool). Catalogs themselves
@@ -706,6 +708,19 @@ def init_db():
                 (emp1, "OSHA 30", "", "", "2022-06-01", "", ""),
                 (emp2, "NABCEP PV Associate", "", "", "2024-01-10", "", ""),
                 (emp2, "First Aid / CPR", "", "", "2024-08-25", "2026-08-25", ""),
+            ],
+        )
+        # A few sample tasks so the Tasks tab isn't empty in the demo.
+        db.executemany(
+            "INSERT INTO job_tasks"
+            " (job_id, employee_id, title, status, due_date, notes, sort_order)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (1, emp1, "Pull electrical permit (MSMEC)", "In progress", "", "", 0),
+                (1, emp2, "Submit SMDTC 20% credit application", "To do", "", "client files", 1),
+                (1, emp1, "Schedule rough-in inspection", "To do", "", "", 2),
+                (3, emp1, "Fire authority plan review — commercial ESS", "Blocked", "", "waiting on AHJ", 0),
+                (3, emp2, "Order utility interconnection application (PNM)", "To do", "", "", 1),
             ],
         )
         db.commit()
@@ -1237,11 +1252,23 @@ def job_detail(job_id):
             )
     bom_total = sum((b["qty"] or 0) * (b["unit_cost"] or 0) for b in bom)
 
+    # Piece 10: tasks for this job, plus the crew list for the assignee
+    # picker. Assignee name comes along via a LEFT JOIN so unassigned tasks
+    # (employee_id NULL) still show.
+    tasks = db.execute(
+        "SELECT t.*, e.name AS assignee_name FROM job_tasks t"
+        " LEFT JOIN employees e ON e.id = t.employee_id"
+        " WHERE t.job_id = ? ORDER BY t.sort_order, t.id", (job_id,)
+    ).fetchall()
+    employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
+
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
         materials=materials, files=files, filed_labels=filed_labels,
         coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
+        tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
+        today=datetime.now().strftime("%Y-%m-%d"),
         rooms=rooms, items_by_room=items_by_room, sizing=sizing, bom=bom,
         bom_total=bom_total, appliances_by_category=appliances_by_category,
         components_by_category=components_by_category,
@@ -1644,6 +1671,79 @@ def delete_material(job_id, material_id):
                (material_id, job_id))
     db.commit()
     return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+
+
+# -------------------------------------------------------------------- tasks
+def _task_assignee(job_id):
+    """Read and validate an employee_id from the form: blank means
+    unassigned, a real employee id is kept, anything else is rejected."""
+    raw = request.form.get("employee_id", "").strip()
+    if not raw:
+        return None
+    emp = get_db().execute(
+        "SELECT id FROM employees WHERE id = ?", (raw,)).fetchone()
+    return emp["id"] if emp else None
+
+
+@app.route("/jobs/<int:job_id>/tasks/add", methods=["POST"])
+def add_task(job_id):
+    fetch_job(job_id)
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("A task needs a title.", "error")
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    status = request.form.get("status", "To do")
+    if status not in TASK_STATUSES:
+        status = "To do"
+    db = get_db()
+    next_order = db.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_tasks WHERE job_id = ?",
+        (job_id,)).fetchone()[0]
+    db.execute(
+        "INSERT INTO job_tasks"
+        " (job_id, employee_id, title, status, due_date, notes, sort_order,"
+        "  completed_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (job_id, _task_assignee(job_id), title, status,
+         request.form.get("due_date", "").strip(),
+         request.form.get("notes", "").strip(), next_order,
+         datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""),
+    )
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+
+
+@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/status", methods=["POST"])
+def set_task_status(job_id, task_id):
+    status = request.form.get("status", "")
+    if status in TASK_STATUSES:
+        db = get_db()
+        # Stamp (or clear) the completion date as the task enters/leaves Done.
+        completed = datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""
+        db.execute(
+            "UPDATE job_tasks SET status = ?, completed_at = ?"
+            " WHERE id = ? AND job_id = ?",
+            (status, completed, task_id, job_id))
+        db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+
+
+@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/assign", methods=["POST"])
+def set_task_assignee(job_id, task_id):
+    db = get_db()
+    db.execute("UPDATE job_tasks SET employee_id = ? WHERE id = ? AND job_id = ?",
+               (_task_assignee(job_id), task_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+
+
+@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/delete", methods=["POST"])
+def delete_task(job_id, task_id):
+    db = get_db()
+    db.execute("DELETE FROM job_tasks WHERE id = ? AND job_id = ?",
+               (task_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 
 
 # -------------------------------------------------------------------- files
@@ -2059,10 +2159,22 @@ def employee_detail(employee_id):
     license_labels = [r["label"] for r in db.execute(
         "SELECT DISTINCT label FROM resource_rules WHERE category = 'License'"
         " ORDER BY label").fetchall()]
+    # Piece 10: everything assigned to this person, across all jobs. Open
+    # (not-Done) tasks first, then by due date, so what's pending is on top.
+    assigned_tasks = db.execute(
+        "SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name"
+        " FROM job_tasks t"
+        " JOIN jobs j ON j.id = t.job_id"
+        " JOIN clients c ON c.id = j.client_id"
+        " WHERE t.employee_id = ?"
+        " ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date, t.id",
+        (employee_id,)).fetchall()
     return render_template(
         "employee_detail.html", employee=employee, roles=roles,
         credentials=credentials, files=files, license_labels=license_labels,
         cred_names=[c["row"]["name"] for c in credentials],
+        assigned_tasks=assigned_tasks, task_statuses=TASK_STATUSES,
+        today=datetime.now().strftime("%Y-%m-%d"),
     )
 
 
@@ -2102,6 +2214,10 @@ def delete_employee(employee_id):
         (employee_upload_dir(employee_id) / record["stored_name"]).unlink(missing_ok=True)
     db.execute("DELETE FROM employee_files WHERE employee_id = ?", (employee_id,))
     db.execute("DELETE FROM employee_credentials WHERE employee_id = ?", (employee_id,))
+    # Tasks belong to the job, not the person — unassign rather than delete
+    # them (and keep the FK happy, since foreign_keys is ON).
+    db.execute("UPDATE job_tasks SET employee_id = NULL WHERE employee_id = ?",
+               (employee_id,))
     db.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
     db.commit()
     flash("Employee removed.")

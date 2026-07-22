@@ -245,3 +245,20 @@ CREATE TABLE IF NOT EXISTS resource_rules (
 
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Piece 10: per-job tasks, each optionally assigned to an employee. The
+-- assignee is a nullable reference (NULL = unassigned); deleting an
+-- employee unassigns their tasks rather than removing the work. Drives the
+-- "Tasks" tab on a job and the "assigned to me" list on an employee.
+CREATE TABLE IF NOT EXISTS job_tasks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id       INTEGER NOT NULL REFERENCES jobs(id),
+    employee_id  INTEGER REFERENCES employees(id),   -- NULL = unassigned
+    title        TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'To do',      -- To do/In progress/Blocked/Done
+    due_date     TEXT DEFAULT '',                    -- YYYY-MM-DD; blank = none
+    notes        TEXT DEFAULT '',
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    completed_at TEXT DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);

@@ -17,6 +17,7 @@
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
   <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
   <button class="tab-btn" data-tab="loads">Loads &amp; Sizing</button>
+  <button class="tab-btn" data-tab="tasks">Tasks ({{ tasks|length }})</button>
 </div>
 
 <div class="tab-panel" id="tab-general">
@@ -442,10 +443,88 @@
 {% endif %}
 </div>
 
+<div class="tab-panel" id="tab-tasks">
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">✅ Tasks</h2>
+  {% if tasks %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Task</th><th>Assigned to</th><th>Due</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+    <tbody>
+      {% for t in tasks %}
+      {% set overdue = t["due_date"] and t["due_date"] < today and t["status"] != "Done" %}
+      <tr>
+        <td>{{ t["title"] }}</td>
+        <td>
+          <form method="post" action="{{ url_for('set_task_assignee', job_id=job['id'], task_id=t['id']) }}" style="margin:0;">
+            <select name="employee_id" onchange="this.form.submit()" style="padding:0.2rem;">
+              <option value="" {% if not t["employee_id"] %}selected{% endif %}>— Unassigned —</option>
+              {% for e in employees %}
+              <option value="{{ e['id'] }}" {% if t["employee_id"] == e["id"] %}selected{% endif %}>{{ e["name"] }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td>
+          {% if t["due_date"] %}
+            {{ t["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('set_task_status', job_id=job['id'], task_id=t['id']) }}" style="margin:0;">
+            <select name="status" onchange="this.form.submit()" style="padding:0.2rem;">
+              {% for s in task_statuses %}
+              <option value="{{ s }}" {% if t["status"] == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td class="muted">{{ t["notes"] }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_task', job_id=job['id'], task_id=t['id']) }}"
+                onsubmit="return confirm('Delete this task?');" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No tasks yet — add the first one below.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('add_task', job_id=job['id']) }}" style="margin-top:0.8rem;">
+    <div class="form-grid">
+      <div class="field wide"><label>Task *</label><input name="title" required placeholder="e.g. Pull electrical permit"></div>
+      <div class="field">
+        <label>Assign to</label>
+        <select name="employee_id">
+          <option value="">— Unassigned —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}">{{ e["name"] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field"><label>Due date</label><input type="date" name="due_date"></div>
+      <div class="field">
+        <label>Status</label>
+        <select name="status">
+          {% for s in task_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field"><label>Notes</label><input name="notes"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Add task</button></div>
+  </form>
+  <p class="muted" style="margin-bottom:0;">Each person's assigned tasks also
+  appear on their <a href="{{ url_for('employees_page') }}">employee profile</a>.</p>
+</div>
+</div>
+
 <script>
   // Tabs remember their state through the URL hash, so form posts that
   // redirect back (materials, uploads) land on the tab you were using.
-  const TABS = ["general", "requirements", "materials", "documents", "loads"];
+  const TABS = ["general", "requirements", "materials", "documents", "loads", "tasks"];
   function activateTab(name, updateHash) {
     if (!TABS.includes(name)) name = "general";
     document.querySelectorAll(".tab-btn").forEach(b =>
