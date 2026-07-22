@@ -14,7 +14,9 @@ then open http://127.0.0.1:5000 in your browser.
 
 import json
 import math
+import os
 import sqlite3
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -31,8 +33,15 @@ from nm_directory import (
 )
 from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
 
-BASE_DIR = Path(__file__).parent
-DATABASE = BASE_DIR / "job_creator.db"
+# Code assets (schema.sql, templates) sit next to this file — except under
+# a PyInstaller desktop build, where they're unpacked into sys._MEIPASS.
+BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+# The writable data (database + uploaded files) lives in DATA_DIR. Normally
+# that's the same folder; the desktop launcher points SOLBIZ_DATA_DIR at a
+# stable per-user folder so a packaged app doesn't lose data on update.
+DATA_DIR = Path(os.environ.get("SOLBIZ_DATA_DIR", BASE_DIR))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DATABASE = DATA_DIR / "job_creator.db"
 
 # The columns a user can fill in on the client form, in display order.
 CLIENT_FIELDS = [
@@ -547,9 +556,9 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 9.0"
+VERSION = "Piece 9.1"
 
-UPLOADS_DIR = BASE_DIR / "uploads"
+UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
     "pdf", "png", "jpg", "jpeg", "heic", "gif", "doc", "docx", "xls", "xlsx",
     "csv", "txt", "kmz", "kml", "zip", "bpmn",
@@ -575,7 +584,7 @@ SYSTEM_TYPE_PRESETS = {
 }
 UI_MODES = ["sales", "designer"]
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=str(BASE_DIR / "templates"))
 # Needed for flash messages; fine as a constant for an internal single-box tool.
 app.secret_key = "ecc-solar-job-creator"
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB per upload

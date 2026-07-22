@@ -222,3 +222,6 @@ job_creator.db
 
 # Uploaded job documents (local storage)
 uploads/
+
+# Keep the Solbiz desktop PyInstaller recipe (overrides *.spec above)
+!desktop/solbiz.spec
