@@ -95,6 +95,7 @@ EMPLOYEE_FIELDS = ["name", "roles", "schedule"]
 # separately so a normal profile edit never touches account data by accident.
 EMPLOYEE_AUTH_FIELDS = ["username", "password_hash", "access_level"]
 ACCESS_LEVELS = ["Standard", "Admin"]
+PASSWORD_MIN_LEN = 6
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "roles": "Roles", "schedule": "Schedule",
 }
@@ -564,7 +565,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 13.1"
+VERSION = "Piece 13.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -806,6 +807,61 @@ def logout():
     session.pop("user_id", None)
     flash("Signed out.")
     return redirect(url_for("login"))
+
+
+@app.route("/account")
+def account():
+    """The signed-in user's own page: change your password (with admin
+    approval) and see any pending request."""
+    user = current_user()
+    if user is None:
+        return redirect(url_for("home"))
+    pending = get_db().execute(
+        "SELECT * FROM password_requests WHERE employee_id = ? AND status = 'Pending'"
+        " ORDER BY id DESC LIMIT 1", (user["id"],)).fetchone()
+    return render_template("account.html", user=user, pending=pending)
+
+
+@app.route("/account/password", methods=["POST"])
+def request_password_change():
+    """Verify the current password, hash the proposed one, and queue it for
+    admin approval. The new password is stored only as a hash."""
+    user = current_user()
+    if user is None:
+        return redirect(url_for("home"))
+    current = request.form.get("current_password", "")
+    new = request.form.get("new_password", "")
+    confirm = request.form.get("confirm_password", "")
+    if not user["password_hash"] or not check_password_hash(user["password_hash"], current):
+        flash("Your current password is incorrect.", "error")
+    elif len(new) < PASSWORD_MIN_LEN:
+        flash(f"New password must be at least {PASSWORD_MIN_LEN} characters.", "error")
+    elif new != confirm:
+        flash("New password and confirmation don't match.", "error")
+    else:
+        db = get_db()
+        # One pending request at a time — a new one supersedes the old.
+        db.execute("DELETE FROM password_requests"
+                   " WHERE employee_id = ? AND status = 'Pending'", (user["id"],))
+        db.execute(
+            "INSERT INTO password_requests (employee_id, new_hash) VALUES (?, ?)",
+            (user["id"], generate_password_hash(new)))
+        db.commit()
+        flash("Password change submitted — it takes effect once an admin approves it.")
+    return redirect(url_for("account"))
+
+
+@app.route("/account/password/cancel", methods=["POST"])
+def cancel_password_change():
+    user = current_user()
+    if user is None:
+        return redirect(url_for("home"))
+    db = get_db()
+    db.execute("DELETE FROM password_requests"
+               " WHERE employee_id = ? AND status = 'Pending'", (user["id"],))
+    db.commit()
+    flash("Password request cancelled.")
+    return redirect(url_for("account"))
 
 
 def ensure_columns(db, table, columns):
@@ -2564,16 +2620,57 @@ def employees_page():
 @app.route("/accounts")
 @admin_required
 def accounts_page():
-    """Admin roster of who can sign in and at what level, plus the employees
-    who don't have a login yet."""
-    employees = get_db().execute(
+    """Admin roster of who can sign in and at what level, the employees
+    who don't have a login yet, and any pending password-change requests."""
+    db = get_db()
+    employees = db.execute(
         "SELECT id, name, username, access_level, COALESCE(password_hash,'') AS pw"
         " FROM employees ORDER BY name").fetchall()
     with_login = [e for e in employees if (e["username"] or "")]
     without_login = [e for e in employees if not (e["username"] or "")]
     admin_count = sum(1 for e in with_login if e["access_level"] == "Admin")
+    pending = db.execute(
+        "SELECT pr.*, e.name AS emp_name, e.username FROM password_requests pr"
+        " JOIN employees e ON e.id = pr.employee_id"
+        " WHERE pr.status = 'Pending' ORDER BY pr.requested_at").fetchall()
     return render_template("accounts.html", with_login=with_login,
-                           without_login=without_login, admin_count=admin_count)
+                           without_login=without_login, admin_count=admin_count,
+                           pending=pending)
+
+
+@app.route("/accounts/password-requests/<int:req_id>/approve", methods=["POST"])
+@admin_required
+def approve_password_change(req_id):
+    db = get_db()
+    req = db.execute(
+        "SELECT * FROM password_requests WHERE id = ? AND status = 'Pending'",
+        (req_id,)).fetchone()
+    if req:
+        db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
+                   (req["new_hash"], req["employee_id"]))
+        who = current_user()
+        db.execute(
+            "UPDATE password_requests SET status = 'Approved',"
+            " resolved_at = datetime('now'), resolved_by = ? WHERE id = ?",
+            (who["name"] if who else "", req_id))
+        db.commit()
+        flash("Password change approved and applied.")
+    return redirect(url_for("accounts_page"))
+
+
+@app.route("/accounts/password-requests/<int:req_id>/reject", methods=["POST"])
+@admin_required
+def reject_password_change(req_id):
+    db = get_db()
+    who = current_user()
+    db.execute(
+        "UPDATE password_requests SET status = 'Rejected',"
+        " resolved_at = datetime('now'), resolved_by = ?"
+        " WHERE id = ? AND status = 'Pending'",
+        (who["name"] if who else "", req_id))
+    db.commit()
+    flash("Password change rejected.")
+    return redirect(url_for("accounts_page"))
 
 
 def _apply_employee_auth(db, employee_id):

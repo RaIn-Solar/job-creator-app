@@ -185,8 +185,9 @@
     {% if is_admin %}<a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>{% endif %}
     {% endif %}
     {% if login_active and current_user %}
-    <span style="font-size:0.85rem; opacity:0.9;{% if not current_user %} margin-left:auto;{% endif %}">
-      {{ current_user["name"] }}{% if current_user["access_level"] == "Admin" %} · admin{% endif %}</span>
+    <a href="{{ url_for('account') }}" style="font-size:0.85rem; opacity:0.95; font-weight:500;"
+       title="My account">
+      {{ current_user["name"] }}{% if current_user["access_level"] == "Admin" %} · admin{% endif %}</a>
     <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
       <button type="submit" style="background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4); border-radius:6px; padding:0.3rem 0.6rem; font:inherit; font-size:0.8rem; cursor:pointer;">Log out</button>
     </form>

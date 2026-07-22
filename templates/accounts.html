@@ -17,6 +17,37 @@ everyday work.</p>
 </div>
 {% endif %}
 
+{% if pending %}
+<div class="card" style="border-color:#f5d9a2;">
+  <h2 style="margin-top:0; font-size:1.05rem;">⏳ Pending password changes ({{ pending|length }})</h2>
+  <p class="muted" style="margin-top:0;">Approve to apply the new password (you
+  don't see it — it's applied straight to their account), or reject to discard.</p>
+  <table>
+    <thead><tr><th>Employee</th><th>Username</th><th>Requested</th><th></th></tr></thead>
+    <tbody>
+      {% for r in pending %}
+      <tr>
+        <td>{{ r["emp_name"] }}</td>
+        <td>{{ r["username"] }}</td>
+        <td class="muted">{{ r["requested_at"][:16] }}</td>
+        <td>
+          <div style="display:flex; gap:0.4rem;">
+            <form method="post" action="{{ url_for('approve_password_change', req_id=r['id']) }}" style="margin:0;">
+              <button type="submit" class="btn" style="padding:0.2rem 0.7rem; font-size:0.8rem;">Approve</button>
+            </form>
+            <form method="post" action="{{ url_for('reject_password_change', req_id=r['id']) }}" style="margin:0;"
+                  onsubmit="return confirm('Reject this password change?');">
+              <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.7rem; font-size:0.8rem;">Reject</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.5rem;">
     <h2 style="margin:0; font-size:1.05rem;">Sign-in accounts ({{ with_login|length }})</h2>

@@ -264,6 +264,19 @@ CREATE TABLE IF NOT EXISTS job_tasks (
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 13.2: password self-service. A signed-in user proposes a new
+-- password (stored already-hashed, never plaintext); an admin approves or
+-- rejects it, and only on approval is it applied to the account.
+CREATE TABLE IF NOT EXISTS password_requests (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id  INTEGER NOT NULL REFERENCES employees(id),
+    new_hash     TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'Pending',  -- Pending / Approved / Rejected
+    requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at  TEXT DEFAULT '',
+    resolved_by  TEXT DEFAULT ''
+);
+
 -- Piece 12: client-level document storage — files that belong to the
 -- client across all their jobs (contracts, correspondence, intake, photos),
 -- kept separate from a job's requirement documents. Files on disk in
