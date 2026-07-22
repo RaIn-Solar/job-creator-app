@@ -263,6 +263,19 @@ CREATE TABLE IF NOT EXISTS job_tasks (
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 12: client-level document storage — files that belong to the
+-- client across all their jobs (contracts, correspondence, intake, photos),
+-- kept separate from a job's requirement documents. Files on disk in
+-- uploads/client_<id>/, only metadata here.
+CREATE TABLE IF NOT EXISTS client_files (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id     INTEGER NOT NULL REFERENCES clients(id),
+    category      TEXT DEFAULT '',   -- Contracts / Correspondence / Intake / Photos / Other
+    stored_name   TEXT NOT NULL,
+    original_name TEXT NOT NULL,
+    uploaded_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Piece 11: system-wide audit log. Every state-changing request (POST) is
 -- recorded centrally so nothing slips through. `actor` stays blank until
 -- logins land (Piece 8 backlog); `entity` holds the URL parameters (which

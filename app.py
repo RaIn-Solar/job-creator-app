@@ -556,7 +556,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 11.1"
+VERSION = "Piece 12.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -564,6 +564,9 @@ ALLOWED_EXTENSIONS = {
     "csv", "txt", "kmz", "kml", "zip", "bpmn",
 }
 MATERIAL_STATUSES = ["Needed", "Ordered", "Received", "Installed"]
+# Piece 12: categories for client-level documents (distinct from a job's
+# requirement categories — these describe the client relationship).
+CLIENT_FILE_CATEGORIES = ["Contracts", "Correspondence", "Intake", "Photos", "Other"]
 # Piece 10: per-job task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
 # Piece 10.2: when generating tasks from the process, map each BPMN lane
@@ -1081,7 +1084,74 @@ def client_detail(client_id):
         "SELECT * FROM jobs WHERE client_id = ? ORDER BY created_at DESC",
         (client_id,),
     ).fetchall()
-    return render_template("client_detail.html", client=client, jobs=jobs)
+    files = db.execute(
+        "SELECT * FROM client_files WHERE client_id = ? ORDER BY id", (client_id,)
+    ).fetchall()
+    return render_template("client_detail.html", client=client, jobs=jobs,
+                           files=files, file_categories=CLIENT_FILE_CATEGORIES)
+
+
+# ---- client-level documents (contracts, correspondence, intake, photos) ---
+def client_upload_dir(client_id):
+    directory = UPLOADS_DIR / f"client_{client_id}"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+@app.route("/clients/<int:client_id>/files/upload", methods=["POST"])
+def upload_client_file(client_id):
+    if get_db().execute("SELECT id FROM clients WHERE id = ?",
+                        (client_id,)).fetchone() is None:
+        abort(404)
+    upload = request.files.get("document")
+    if upload is None or not upload.filename:
+        flash("Choose a file to upload.", "error")
+        return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
+    extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    if extension not in ALLOWED_EXTENSIONS:
+        flash(f"File type .{extension} is not allowed.", "error")
+        return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
+    category = request.form.get("category", "").strip()
+    if category not in CLIENT_FILE_CATEGORIES:
+        category = ""
+    original = upload.filename
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
+    upload.save(client_upload_dir(client_id) / stored)
+    db = get_db()
+    db.execute(
+        "INSERT INTO client_files (client_id, category, stored_name, original_name)"
+        " VALUES (?, ?, ?, ?)",
+        (client_id, category, stored, original),
+    )
+    db.commit()
+    flash(f"Uploaded: {original}")
+    return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
+
+
+@app.route("/clients/<int:client_id>/files/<int:file_id>/download")
+def download_client_file(client_id, file_id):
+    record = get_db().execute(
+        "SELECT * FROM client_files WHERE id = ? AND client_id = ?",
+        (file_id, client_id)).fetchone()
+    if record is None:
+        abort(404)
+    return send_from_directory(
+        client_upload_dir(client_id), record["stored_name"],
+        as_attachment=True, download_name=record["original_name"])
+
+
+@app.route("/clients/<int:client_id>/files/<int:file_id>/delete", methods=["POST"])
+def delete_client_file(client_id, file_id):
+    db = get_db()
+    record = db.execute(
+        "SELECT * FROM client_files WHERE id = ? AND client_id = ?",
+        (file_id, client_id)).fetchone()
+    if record:
+        (client_upload_dir(client_id) / record["stored_name"]).unlink(missing_ok=True)
+        db.execute("DELETE FROM client_files WHERE id = ?", (record["id"],))
+        db.commit()
+        flash(f"Deleted: {record['original_name']}")
+    return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
 
 
 @app.route("/clients/<int:client_id>/jobs/new", methods=["GET", "POST"])
