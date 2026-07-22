@@ -8,13 +8,19 @@ survives replacing the app with a newer build.
 
 This file is the entry point PyInstaller bundles into Solbiz.exe; it also
 runs directly with `python desktop/run_solbiz.py` for testing.
+
+If anything goes wrong at startup, the error is written to
+<home>/Solbiz/solbiz-startup-error.log AND the window is kept open, so a
+crash never just "flashes and vanishes."
 """
 
 import os
 import socket
 import sys
 import threading
+import traceback
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 
 # Each person gets their own copy of the data here. Chosen BEFORE importing
@@ -22,14 +28,6 @@ from pathlib import Path
 DATA_DIR = Path.home() / "Solbiz"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("SOLBIZ_DATA_DIR", str(DATA_DIR))
-
-# When frozen, the bundled app package is on sys.path already; when running
-# from source, add the repo root (this file's parent's parent) so `app`
-# imports.
-if not getattr(sys, "frozen", False):
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from app import app, init_db  # noqa: E402
 
 
 def _free_port():
@@ -41,6 +39,13 @@ def _free_port():
 
 
 def main():
+    # Imported here (not at module top) so that a failure to load the app —
+    # e.g. a missing bundled file or system library — is caught and reported
+    # by the handler below instead of crashing before it can run.
+    if not getattr(sys, "frozen", False):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from app import app, init_db
+
     init_db()
     port = _free_port()
     url = f"http://127.0.0.1:{port}/"
@@ -59,5 +64,34 @@ def main():
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
 
 
+def _report_crash():
+    """Persist the traceback and hold the window open so the error is
+    readable even when Solbiz was started by double-clicking."""
+    tb = traceback.format_exc()
+    log = DATA_DIR / "solbiz-startup-error.log"
+    try:
+        with open(log, "a", encoding="utf-8") as fh:
+            fh.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} =====\n{tb}\n")
+    except Exception:
+        pass
+    print("\n" + "=" * 60)
+    print("  Solbiz could not start. What went wrong:")
+    print("=" * 60)
+    print(tb)
+    print(f"  A copy of this was saved to:\n    {log}")
+    print("  Send that file to whoever is helping you set up Solbiz.")
+    print("=" * 60)
+    try:
+        input("\n  Press Enter to close this window... ")
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException:
+        _report_crash()
+        sys.exit(1)
