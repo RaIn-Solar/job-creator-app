@@ -556,7 +556,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 9.1"
+VERSION = "Piece 9.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -622,8 +622,8 @@ def ensure_columns(db, table, columns):
 
 
 def init_db():
-    """Create tables if missing, upgrade older databases, and add two
-    sample clients the first time so the home page isn't empty."""
+    """Create tables if missing, upgrade older databases, and add three
+    sample clients (one job each) the first time so the app isn't empty."""
     db = sqlite3.connect(DATABASE)
     db.executescript((BASE_DIR / "schema.sql").read_text())
     # Field renamed after Piece 3.1: carry existing data over.
@@ -649,20 +649,42 @@ def init_db():
                  "902 Mesa Verde Dr, Las Vegas, NM 87701",
                  "PO Box 2210, Las Vegas, NM 87701",
                  "", "Neighbor referral — the Ortiz install"),
+                ("Sandia Ridge Winery (sample)", "505-555-0173",
+                 "58 Bonanza Creek Rd, Santa Fe, NM 87508",
+                 "PO Box 4415, Santa Fe, NM 87502",
+                 "office@sandiaridge.example.com", "Repeat commercial client"),
             ],
         )
-        db.execute(
+        # One sample job per client, chosen to show off different paths
+        # through the rules engine: residential grid-tie, off-grid multi-
+        # product, and a commercial install.
+        db.executemany(
             "INSERT INTO jobs (client_id, job_name, site_location, county,"
             " electric_loads, utility_provider, warranty_type, cost_method,"
             " tax_credit, expand_option, products, pv_utility_connection,"
-            " pv_mounting_type, battery_utility_connection, property_type)"
-            " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("Johnson PV + Battery (sample)",
-             "1247 Highway 518, Mora, NM 87732", "Mora County",
-             "3-ton AC, well pump, shop sub-panel", "MSMEC",
-             "Standard 10-year", "Cash", "Yes", "Yes",
-             "PV Systems, Battery Banks",
-             "Grid-tie", "Roof mounted", "Grid-tie", "Residential"),
+            " pv_mounting_type, pv_manufactured_house, generator_utility_connection,"
+            " battery_utility_connection, service_type, property_type)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (1, "Johnson PV + Battery (sample)",
+                 "1247 Highway 518, Mora, NM 87732", "Mora County",
+                 "3-ton AC, well pump, shop sub-panel", "MSMEC",
+                 "Standard 10-year", "Cash", "Yes", "Yes",
+                 "PV Systems, Battery Banks",
+                 "Grid-tie", "Roof mounted", "", "", "Grid-tie", "", "Residential"),
+                (2, "Rivera Off-Grid Cabin (sample)",
+                 "902 Mesa Verde Dr, Las Vegas, NM 87701", "San Miguel County",
+                 "Well pump, lighting, propane range, mini split", "Springer Electric",
+                 "Standard 10-year", "Finance", "Yes", "No",
+                 "PV Systems, Battery Banks, Generators",
+                 "Off-grid", "Ground mount", "", "Off-grid", "Off-grid", "", "Residential"),
+                (3, "Sandia Ridge Commercial PV (sample)",
+                 "58 Bonanza Creek Rd, Santa Fe, NM 87508", "Santa Fe County",
+                 "Winery process loads, cold storage, tasting room", "PNM",
+                 "Standard 10-year", "Cash", "No", "No",
+                 "PV Systems, Battery Banks",
+                 "Grid-tie", "Roof mounted", "", "", "Grid-tie", "", "Commercial"),
+            ],
         )
         emp1 = db.execute(
             "INSERT INTO employees (name, roles, schedule) VALUES (?, ?, ?)",
