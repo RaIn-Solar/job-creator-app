@@ -5,6 +5,11 @@
   <h1>Client profiles</h1>
   <a href="{{ url_for('new_client') }}" class="btn">＋ New client</a>
 </div>
+<form method="get" action="{{ url_for('search') }}" class="card"
+      style="display:flex; gap:0.5rem; align-items:center; padding:0.75rem 1rem;">
+  <input type="search" name="q" placeholder="🔍 Search clients &amp; jobs…" style="flex:1;">
+  <button type="submit" class="btn">Search</button>
+</form>
 <div class="card">
   {% if clients %}
   <table>

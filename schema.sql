@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     battery_utility_connection   TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
     service_type     TEXT DEFAULT '',   -- General service / Warranty service
     property_type    TEXT DEFAULT 'Residential',  -- Residential / Commercial
+    status           TEXT NOT NULL DEFAULT 'Lead',  -- Piece 12.1 pipeline stage
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

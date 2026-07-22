@@ -556,7 +556,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 12.0"
+VERSION = "Piece 12.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -567,6 +567,14 @@ MATERIAL_STATUSES = ["Needed", "Ordered", "Received", "Installed"]
 # Piece 12: categories for client-level documents (distinct from a job's
 # requirement categories — these describe the client relationship).
 CLIENT_FILE_CATEGORIES = ["Contracts", "Correspondence", "Intake", "Photos", "Other"]
+# Piece 12.1: job pipeline stage (surfaced as a status picker + badges).
+JOB_STATUSES = ["Lead", "Quoted", "Sold", "Permitting", "Scheduled",
+                "Installed", "Closed", "Lost"]
+JOB_STATUS_CLASS = {
+    "Lead": "neutral", "Quoted": "neutral", "Sold": "warn",
+    "Permitting": "warn", "Scheduled": "warn", "Installed": "",
+    "Closed": "", "Lost": "danger",
+}
 # Piece 10: per-job task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
 # Piece 10.2: when generating tasks from the process, map each BPMN lane
@@ -719,7 +727,9 @@ def init_db():
     if "street_address" in client_cols and "mailing_address" not in client_cols:
         db.execute("ALTER TABLE clients RENAME COLUMN street_address TO mailing_address")
     ensure_columns(db, "clients", CLIENT_FIELDS)
-    ensure_columns(db, "jobs", JOB_FIELDS)
+    ensure_columns(db, "jobs", JOB_FIELDS + ["status"])
+    # Existing jobs predate the status column; give blanks the default stage.
+    db.execute("UPDATE jobs SET status = 'Lead' WHERE COALESCE(status, '') = ''")
     ensure_columns(db, "employees", EMPLOYEE_FIELDS)
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
@@ -1051,6 +1061,30 @@ def home():
     return render_template("index.html", clients=clients)
 
 
+@app.route("/search")
+def search():
+    """Quick lookup across clients and jobs by name/address/phone/email/
+    county."""
+    q = (request.args.get("q") or "").strip()
+    clients, jobs = [], []
+    if q:
+        like = f"%{q}%"
+        db = get_db()
+        clients = db.execute(
+            "SELECT * FROM clients"
+            " WHERE name LIKE ? OR mailing_address LIKE ? OR billing_address LIKE ?"
+            " OR phone LIKE ? OR email LIKE ? ORDER BY name",
+            (like, like, like, like, like)).fetchall()
+        jobs = db.execute(
+            "SELECT j.*, c.name AS client_name FROM jobs j"
+            " JOIN clients c ON c.id = j.client_id"
+            " WHERE j.job_name LIKE ? OR j.site_location LIKE ? OR j.county LIKE ?"
+            " OR j.products LIKE ? OR c.name LIKE ? ORDER BY j.created_at DESC",
+            (like, like, like, like, like)).fetchall()
+    return render_template("search.html", q=q, clients=clients, jobs=jobs,
+                           job_status_class=JOB_STATUS_CLASS)
+
+
 @app.route("/clients/new", methods=["GET", "POST"])
 def new_client():
     if request.method == "POST":
@@ -1088,7 +1122,8 @@ def client_detail(client_id):
         "SELECT * FROM client_files WHERE client_id = ? ORDER BY id", (client_id,)
     ).fetchall()
     return render_template("client_detail.html", client=client, jobs=jobs,
-                           files=files, file_categories=CLIENT_FILE_CATEGORIES)
+                           files=files, file_categories=CLIENT_FILE_CATEGORIES,
+                           job_status_class=JOB_STATUS_CLASS)
 
 
 # ---- client-level documents (contracts, correspondence, intake, photos) ---
@@ -1421,6 +1456,7 @@ def job_detail(job_id):
         coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
         tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
+        job_statuses=JOB_STATUSES, job_status_class=JOB_STATUS_CLASS,
         today=datetime.now().strftime("%Y-%m-%d"),
         rooms=rooms, items_by_room=items_by_room, sizing=sizing, bom=bom,
         bom_total=bom_total, appliances_by_category=appliances_by_category,
@@ -1780,6 +1816,17 @@ def delete_component_catalog(component_id):
     db.execute("DELETE FROM component_catalog WHERE id = ?", (component_id,))
     db.commit()
     return redirect(url_for("catalog_page"))
+
+
+@app.route("/jobs/<int:job_id>/status", methods=["POST"])
+def set_job_status(job_id):
+    fetch_job(job_id)
+    status = request.form.get("status", "")
+    if status in JOB_STATUSES:
+        db = get_db()
+        db.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
+        db.commit()
+    return redirect(url_for("job_detail", job_id=job_id))
 
 
 # ---------------------------------------------------------------- materials
