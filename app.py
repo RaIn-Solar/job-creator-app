@@ -556,7 +556,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 10.0"
+VERSION = "Piece 10.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1713,6 +1713,45 @@ def add_task(job_id):
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 
 
+@app.route("/jobs/<int:job_id>/tasks/generate", methods=["POST"])
+def generate_tasks(job_id):
+    """Pre-load a job's task list from its process: run the same per-job
+    BPMN the Process chart uses, then turn each workflow step (skipping
+    start/end events and gateways) into a To-do task, in order, with the
+    responsible lane noted. Skips steps already on the list, so it's safe
+    to re-run after the job's fields change."""
+    job = fetch_job(job_id)
+    db = get_db()
+    rules = db.execute("SELECT * FROM resource_rules").fetchall()
+    _xml, details = build_job_bpmn(job, match_rules(job, rules))
+    steps = sorted(details.values(), key=lambda d: d["order"])
+    existing = {r["title"].strip().lower() for r in db.execute(
+        "SELECT title FROM job_tasks WHERE job_id = ?", (job_id,)).fetchall()}
+    base = db.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_tasks WHERE job_id = ?",
+        (job_id,)).fetchone()[0]
+    added = 0
+    for step in steps:
+        kind = step["kind"]
+        if kind.endswith("Event") or kind.endswith("Gateway"):
+            continue
+        title = (step["name"] or "").strip()
+        if not title or title.lower() in existing:
+            continue
+        note = f"Process step · {step['lane']}" if step.get("lane") else "Process step"
+        db.execute(
+            "INSERT INTO job_tasks"
+            " (job_id, employee_id, title, status, notes, sort_order)"
+            " VALUES (?, NULL, ?, 'To do', ?, ?)",
+            (job_id, title, note, base + added))
+        existing.add(title.lower())
+        added += 1
+    db.commit()
+    flash(f"Added {added} task{'s' if added != 1 else ''} from the job's process."
+          if added else "No new tasks — the process steps are already on the list.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+
+
 @app.route("/jobs/<int:job_id>/tasks/<int:task_id>/status", methods=["POST"])
 def set_task_status(job_id, task_id):
     status = request.form.get("status", "")
@@ -1725,6 +1764,11 @@ def set_task_status(job_id, task_id):
             " WHERE id = ? AND job_id = ?",
             (status, completed, task_id, job_id))
         db.commit()
+    # A dashboard passes ?next= so the status change returns there; only
+    # same-site relative paths are honored.
+    nxt = request.form.get("next", "")
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 
 
@@ -1744,6 +1788,43 @@ def delete_task(job_id, task_id):
                (task_id, job_id))
     db.commit()
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+
+
+@app.route("/tasks")
+def tasks_dashboard():
+    """Cross-job task board: every task in one place, filterable to one
+    person (or the unassigned pile) and to open vs. all. The home for
+    'what am I supposed to be doing' across every job."""
+    db = get_db()
+    employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
+    who = request.args.get("employee", "")   # "" (all) / "unassigned" / an id
+    show = request.args.get("show", "open")  # open / all
+    sql = ("SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name,"
+           " e.name AS assignee_name FROM job_tasks t"
+           " JOIN jobs j ON j.id = t.job_id"
+           " JOIN clients c ON c.id = j.client_id"
+           " LEFT JOIN employees e ON e.id = t.employee_id WHERE 1 = 1")
+    params = []
+    if who == "unassigned":
+        sql += " AND t.employee_id IS NULL"
+    elif who.isdigit():
+        sql += " AND t.employee_id = ?"
+        params.append(int(who))
+    if show == "open":
+        sql += " AND t.status != 'Done'"
+    # Open first, then soonest due (blank dues last), then by job.
+    sql += (" ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date,"
+            " j.id, t.sort_order, t.id")
+    tasks = db.execute(sql, params).fetchall()
+    counts = {}
+    for t in tasks:
+        counts[t["status"]] = counts.get(t["status"], 0) + 1
+    today = datetime.now().strftime("%Y-%m-%d")
+    overdue = sum(1 for t in tasks
+                  if t["due_date"] and t["due_date"] < today and t["status"] != "Done")
+    return render_template(
+        "tasks.html", tasks=tasks, employees=employees, who=who, show=show,
+        task_statuses=TASK_STATUSES, counts=counts, overdue=overdue, today=today)
 
 
 # -------------------------------------------------------------------- files
@@ -2233,7 +2314,7 @@ def add_credential(employee_id):
     name = request.form.get("name", "").strip()
     if not name:
         flash("A license/certification needs a name.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id))
+        return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
     db = get_db()
     db.execute(
         "INSERT INTO employee_credentials"
@@ -2248,7 +2329,7 @@ def add_credential(employee_id):
     )
     db.commit()
     flash(f"Added license/certification: {name}")
-    return redirect(url_for("employee_detail", employee_id=employee_id))
+    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
 
 
 @app.route("/employees/<int:employee_id>/credentials/<int:credential_id>/delete",
@@ -2259,7 +2340,7 @@ def delete_credential(employee_id, credential_id):
                (credential_id, employee_id))
     db.commit()
     flash("License/certification removed.")
-    return redirect(url_for("employee_detail", employee_id=employee_id))
+    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
 
 
 # ---- employee documents (copies of certifications, etc.) -----------------
@@ -2277,11 +2358,11 @@ def upload_employee_file(employee_id):
     upload = request.files.get("document")
     if upload is None or not upload.filename:
         flash("Choose a file to upload.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id))
+        return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
     extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
     if extension not in ALLOWED_EXTENSIONS:
         flash(f"File type .{extension} is not allowed.", "error")
-        return redirect(url_for("employee_detail", employee_id=employee_id))
+        return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
     original = upload.filename
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
     upload.save(employee_upload_dir(employee_id) / stored)
@@ -2295,7 +2376,7 @@ def upload_employee_file(employee_id):
     )
     db.commit()
     flash(f"Uploaded: {original}")
-    return redirect(url_for("employee_detail", employee_id=employee_id))
+    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
 
 
 @app.route("/employees/<int:employee_id>/files/<int:file_id>/download")
@@ -2322,7 +2403,7 @@ def delete_employee_file(employee_id, file_id):
         db.execute("DELETE FROM employee_files WHERE id = ?", (record["id"],))
         db.commit()
         flash(f"Deleted: {record['original_name']}")
-    return redirect(url_for("employee_detail", employee_id=employee_id))
+    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
 
 
 if __name__ == "__main__":

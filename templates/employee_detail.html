@@ -16,6 +16,14 @@
   </div>
 </div>
 
+<div class="tab-bar">
+  <button class="tab-btn" data-tab="details">Details</button>
+  <button class="tab-btn" data-tab="tasks">Tasks ({{ assigned_tasks|length }})</button>
+  <button class="tab-btn" data-tab="licenses">Licenses &amp; Certifications ({{ credentials|length }})</button>
+  <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
+</div>
+
+<div class="tab-panel" id="tab-details">
 <div class="card">
   <dl class="profile">
     <dt>Roles</dt>
@@ -31,11 +39,13 @@
   <p class="muted" style="margin:0.8rem 0 0; font-size:0.85rem;">
     <strong>Earlier free-text entry (from before structured tracking):</strong><br>
     <span style="white-space: pre-line;">{{ employee["licenses_certifications"] }}</span><br>
-    Re-enter these as rows below so expiry can be tracked.
+    Re-enter these under Licenses &amp; Certifications so expiry can be tracked.
   </p>
   {% endif %}
 </div>
+</div>
 
+<div class="tab-panel" id="tab-tasks">
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">✅ Assigned tasks</h2>
   {% if assigned_tasks %}
@@ -59,12 +69,15 @@
   </table>
   </div>
   <p class="muted" style="margin:0.5rem 0 0; font-size:0.85rem;">Open a job to
-  change a task's status or reassign it.</p>
+  change a task's status or reassign it, or use the
+  <a href="{{ url_for('tasks_dashboard', employee=employee['id']) }}">task board</a>.</p>
   {% else %}
   <p class="empty">Nothing assigned to this person right now.</p>
   {% endif %}
 </div>
+</div>
 
+<div class="tab-panel" id="tab-licenses">
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">🪪 Licenses &amp; Certifications</h2>
   {% if credentials %}
@@ -136,7 +149,9 @@
   to a job requirement lets each job page show whether someone on staff holds
   the licenses it needs — and warn when a credential has lapsed.</p>
 </div>
+</div>
 
+<div class="tab-panel" id="tab-documents">
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">📁 Document copies</h2>
   {% if files %}
@@ -175,4 +190,24 @@
     <div class="actions"><button type="submit" class="btn">⬆ Upload copy</button></div>
   </form>
 </div>
+</div>
+
+<script>
+  // Same hash-based tab persistence as the job page, so posts that redirect
+  // back (add a license, upload a doc) land on the tab you were using.
+  const TABS = ["details", "tasks", "licenses", "documents"];
+  function activateTab(name, updateHash) {
+    if (!TABS.includes(name)) name = "details";
+    document.querySelectorAll(".tab-btn").forEach(b =>
+      b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll(".tab-panel").forEach(p =>
+      p.classList.toggle("active", p.id === "tab-" + name));
+    if (updateHash) history.replaceState(null, "", "#" + name);
+  }
+  document.querySelectorAll(".tab-btn").forEach(b =>
+    b.addEventListener("click", () => activateTab(b.dataset.tab, true)));
+  window.addEventListener("hashchange", () =>
+    activateTab(location.hash.slice(1) || "details", false));
+  activateTab(location.hash.slice(1) || "details", false);
+</script>
 {% endblock %}

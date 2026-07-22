@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Tasks{% endblock %}
+{% block content %}
+{% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
+<h1>✅ Task board</h1>
+<p class="muted">Every task across every job in one place. Filter to a person
+to see just their work — the “my tasks” view for the whole team.</p>
+
+<form method="get" class="card" id="filter_form">
+  <div class="form-grid">
+    <div class="field">
+      <label for="employee">Who</label>
+      <select id="employee" name="employee">
+        <option value="" {% if who == "" %}selected{% endif %}>Everyone</option>
+        <option value="unassigned" {% if who == "unassigned" %}selected{% endif %}>— Unassigned —</option>
+        {% for e in employees %}
+        <option value="{{ e['id'] }}" {% if who == e['id']|string %}selected{% endif %}>{{ e["name"] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="show">Show</label>
+      <select id="show" name="show">
+        <option value="open" {% if show == "open" %}selected{% endif %}>Open (not done)</option>
+        <option value="all" {% if show == "all" %}selected{% endif %}>All, including done</option>
+      </select>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <p style="margin-top:0;">
+    <strong>{{ tasks|length }}</strong> task{{ "s" if tasks|length != 1 }}
+    {% for s in task_statuses %}{% if counts.get(s) %}<span class="badge {{ sc[s] }}">{{ counts[s] }} {{ s }}</span>{% endif %}{% endfor %}
+    {% if overdue %}<span class="badge danger">{{ overdue }} overdue</span>{% endif %}
+  </p>
+  {% if tasks %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Task</th><th>Job</th><th>Assigned to</th><th>Due</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for t in tasks %}
+      {% set overdue_t = t["due_date"] and t["due_date"] < today and t["status"] != "Done" %}
+      <tr{% if t["status"] == "Done" %} style="opacity:0.55;"{% endif %}>
+        <td>{{ t["title"] }}{% if t["notes"] %}<br><span class="muted" style="font-size:0.8rem;">{{ t["notes"] }}</span>{% endif %}</td>
+        <td><a href="{{ url_for('job_detail', job_id=t['job_id']) }}#tasks">{{ t["job_name"] or "Job #" ~ t["job_id"] }}</a><br><span class="muted" style="font-size:0.8rem;">{{ t["client_name"] }}</span></td>
+        <td>{{ t["assignee_name"] or "" }}{% if not t["assignee_name"] %}<span class="muted">— unassigned —</span>{% endif %}</td>
+        <td>{% if t["due_date"] %}{{ t["due_date"] }}{% if overdue_t %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('set_task_status', job_id=t['job_id'], task_id=t['id']) }}" style="margin:0;">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <select name="status" onchange="this.form.submit()" style="padding:0.2rem;">
+              {% for s in task_statuses %}
+              <option value="{{ s }}" {% if t["status"] == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No tasks match this view.</p>
+  {% endif %}
+</div>
+
+<script>
+  document.querySelectorAll("#filter_form select").forEach(sel =>
+    sel.addEventListener("change", () => document.getElementById("filter_form").submit()));
+</script>
+{% endblock %}

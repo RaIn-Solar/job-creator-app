@@ -445,7 +445,13 @@
 
 <div class="tab-panel" id="tab-tasks">
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">✅ Tasks</h2>
+  <div class="toolbar" style="margin-bottom:0.6rem;">
+    <h2 style="margin:0; font-size:1.1rem;">✅ Tasks</h2>
+    <form method="post" action="{{ url_for('generate_tasks', job_id=job['id']) }}" style="margin:0;"
+          onsubmit="return confirm('Add this job’s process steps as tasks? Steps already on the list are skipped.');">
+      <button type="submit" class="btn btn-secondary">⚙ Generate from process</button>
+    </form>
+  </div>
   {% if tasks %}
   <div style="overflow-x:auto;">
   <table>
