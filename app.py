@@ -18,7 +18,7 @@ import os
 import sqlite3
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from flask import (
@@ -556,7 +556,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 10.1"
+VERSION = "Piece 10.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -566,6 +566,23 @@ ALLOWED_EXTENSIONS = {
 MATERIAL_STATUSES = ["Needed", "Ordered", "Received", "Installed"]
 # Piece 10: per-job task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
+# Piece 10.2: when generating tasks from the process, map each BPMN lane
+# (the role responsible for a step) to the employee role(s) that would own
+# it, so a step can auto-assign to the person who holds that role. Lanes
+# not listed (Solbiz System, Authorities (CID), Utility Company) are
+# external/automated and never auto-assign.
+LANE_TO_ROLES = {
+    "Sales Rep": ["Outside Sales Rep", "Inside Sales Rep", "Sales and Marketing Manager"],
+    "System Designer": ["Designer"],
+    "Permit Coordinator": ["Permit Coordinator"],
+    "Warehouse Associate": ["Warehouse Associate", "Purchasing Agent"],
+    "Foreman": ["Lead Installer"],
+    "Finance Department": ["Finance Manager", "Bookkeeper", "Payroll Manager"],
+    "General Manager": ["General Manager"],
+}
+# Days between consecutive generated tasks when a target install date is
+# given — a rough schedule anchored on the Site Installation step.
+TASK_DUE_SPACING_DAYS = 2
 
 # Piece 9: Electric Loads Calculator / System Sizing config (ported from
 # the standalone loads_calculator.html field tool). Catalogs themselves
@@ -1713,42 +1730,90 @@ def add_task(job_id):
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 
 
+def _auto_assignee(lane, employees):
+    """The employee who should own a step in this lane — but only when the
+    match is unambiguous (exactly one employee holds a role mapped to the
+    lane). Zero or several matches → left unassigned for a human to pick."""
+    wanted = {r.lower() for r in LANE_TO_ROLES.get(lane, [])}
+    if not wanted:
+        return None
+    matches = [e for e in employees
+               if any(r.strip().lower() in wanted
+                      for r in (e["roles"] or "").split(","))]
+    return matches[0]["id"] if len(matches) == 1 else None
+
+
 @app.route("/jobs/<int:job_id>/tasks/generate", methods=["POST"])
 def generate_tasks(job_id):
     """Pre-load a job's task list from its process: run the same per-job
     BPMN the Process chart uses, then turn each workflow step (skipping
-    start/end events and gateways) into a To-do task, in order, with the
-    responsible lane noted. Skips steps already on the list, so it's safe
-    to re-run after the job's fields change."""
+    start/end events and gateways) into a To-do task, in order. Each step
+    auto-assigns to the employee whose role matches its lane (when
+    unambiguous), and — if a target install date is given — gets a due date
+    spaced around the Site Installation step. Skips steps already on the
+    list, so it's safe to re-run after the job's fields change."""
     job = fetch_job(job_id)
     db = get_db()
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
     _xml, details = build_job_bpmn(job, match_rules(job, rules))
-    steps = sorted(details.values(), key=lambda d: d["order"])
+    employees = db.execute("SELECT id, roles FROM employees").fetchall()
+
+    # Actionable workflow steps in order (no start/end events or gateways).
+    task_steps = [
+        s for s in sorted(details.values(), key=lambda d: d["order"])
+        if not (s["kind"].endswith("Event") or s["kind"].endswith("Gateway"))
+        and (s["name"] or "").strip()
+    ]
+    # Optional schedule anchored on Site Installation.
+    base_date = None
+    raw_install = request.form.get("install_date", "").strip()
+    if raw_install:
+        try:
+            base_date = datetime.strptime(raw_install, "%Y-%m-%d").date()
+        except ValueError:
+            base_date = None
+    install_idx = next((i for i, s in enumerate(task_steps)
+                        if s["name"].strip().lower().startswith("site installation")),
+                       None)
+
     existing = {r["title"].strip().lower() for r in db.execute(
         "SELECT title FROM job_tasks WHERE job_id = ?", (job_id,)).fetchall()}
     base = db.execute(
         "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_tasks WHERE job_id = ?",
         (job_id,)).fetchone()[0]
-    added = 0
-    for step in steps:
-        kind = step["kind"]
-        if kind.endswith("Event") or kind.endswith("Gateway"):
-            continue
-        title = (step["name"] or "").strip()
-        if not title or title.lower() in existing:
+    added = assigned = scheduled = 0
+    for pos, step in enumerate(task_steps):
+        title = step["name"].strip()
+        if title.lower() in existing:
             continue
         note = f"Process step · {step['lane']}" if step.get("lane") else "Process step"
+        assignee = _auto_assignee(step["lane"], employees)
+        due = ""
+        if base_date is not None and install_idx is not None:
+            offset = (pos - install_idx) * TASK_DUE_SPACING_DAYS
+            due = (base_date + timedelta(days=offset)).strftime("%Y-%m-%d")
         db.execute(
             "INSERT INTO job_tasks"
-            " (job_id, employee_id, title, status, notes, sort_order)"
-            " VALUES (?, NULL, ?, 'To do', ?, ?)",
-            (job_id, title, note, base + added))
+            " (job_id, employee_id, title, status, due_date, notes, sort_order)"
+            " VALUES (?, ?, ?, 'To do', ?, ?, ?)",
+            (job_id, assignee, title, due, note, base + added))
         existing.add(title.lower())
         added += 1
+        if assignee:
+            assigned += 1
+        if due:
+            scheduled += 1
     db.commit()
-    flash(f"Added {added} task{'s' if added != 1 else ''} from the job's process."
-          if added else "No new tasks — the process steps are already on the list.")
+    if added:
+        extra = []
+        if assigned:
+            extra.append(f"{assigned} auto-assigned by role")
+        if scheduled:
+            extra.append(f"due dates set around {raw_install}")
+        detail = f" ({'; '.join(extra)})" if extra else ""
+        flash(f"Added {added} task{'s' if added != 1 else ''} from the job's process{detail}.")
+    else:
+        flash("No new tasks — the process steps are already on the list.")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 
 
@@ -1777,6 +1842,15 @@ def set_task_assignee(job_id, task_id):
     db = get_db()
     db.execute("UPDATE job_tasks SET employee_id = ? WHERE id = ? AND job_id = ?",
                (_task_assignee(job_id), task_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+
+
+@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/due", methods=["POST"])
+def set_task_due(job_id, task_id):
+    db = get_db()
+    db.execute("UPDATE job_tasks SET due_date = ? WHERE id = ? AND job_id = ?",
+               (request.form.get("due_date", "").strip(), task_id, job_id))
     db.commit()
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 

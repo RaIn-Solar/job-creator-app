@@ -447,8 +447,13 @@
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.6rem;">
     <h2 style="margin:0; font-size:1.1rem;">✅ Tasks</h2>
-    <form method="post" action="{{ url_for('generate_tasks', job_id=job['id']) }}" style="margin:0;"
+    <form method="post" action="{{ url_for('generate_tasks', job_id=job['id']) }}"
+          style="margin:0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;"
           onsubmit="return confirm('Add this job’s process steps as tasks? Steps already on the list are skipped.');">
+      <label style="margin:0; font-size:0.8rem; color:var(--muted);"
+             title="Optional: gives each generated task a due date, spaced around the install">
+        Install date <input type="date" name="install_date" style="padding:0.3rem;">
+      </label>
       <button type="submit" class="btn btn-secondary">⚙ Generate from process</button>
     </form>
   </div>
@@ -472,9 +477,12 @@
           </form>
         </td>
         <td>
-          {% if t["due_date"] %}
-            {{ t["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}
-          {% else %}<span class="muted">—</span>{% endif %}
+          <form method="post" action="{{ url_for('set_task_due', job_id=job['id'], task_id=t['id']) }}"
+                style="margin:0; display:flex; gap:0.3rem; align-items:center;">
+            <input type="date" name="due_date" value="{{ t['due_date'] }}"
+                   onchange="this.form.submit()" style="padding:0.15rem;">
+            {% if overdue %}<span class="badge danger">overdue</span>{% endif %}
+          </form>
         </td>
         <td>
           <form method="post" action="{{ url_for('set_task_status', job_id=job['id'], task_id=t['id']) }}" style="margin:0;">
