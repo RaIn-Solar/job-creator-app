@@ -24,8 +24,8 @@ from pathlib import Path
 from functools import wraps
 
 from flask import (
-    Flask, Response, abort, flash, g, redirect, render_template, request,
-    session, send_from_directory, url_for,
+    Flask, Response, abort, flash, g, jsonify, redirect, render_template,
+    request, session, send_from_directory, url_for,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -565,7 +565,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 13.4"
+VERSION = "Piece 14.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -776,6 +776,8 @@ def require_login():
     if request.endpoint in ("login", "static", None):
         return
     if current_user() is None:
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "not signed in"}), 401
         nxt = request.path if request.method == "GET" else None
         return redirect(url_for("login", next=nxt))
 
@@ -887,6 +889,10 @@ def init_db():
     ensure_columns(db, "jobs", JOB_FIELDS + ["status"])
     # Existing jobs predate the status column; give blanks the default stage.
     db.execute("UPDATE jobs SET status = 'Lead' WHERE COALESCE(status, '') = ''")
+    # Piece 14: change-tracking for task sync; seed blanks from created_at.
+    ensure_columns(db, "job_tasks", ["updated_at"])
+    db.execute("UPDATE job_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
+               " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
     ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS)
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
@@ -2108,8 +2114,8 @@ def add_task(job_id):
     db.execute(
         "INSERT INTO job_tasks"
         " (job_id, employee_id, title, status, due_date, notes, sort_order,"
-        "  completed_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "  completed_at, updated_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
         (job_id, _task_assignee(job_id), title, status,
          request.form.get("due_date", "").strip(),
          request.form.get("notes", "").strip(), next_order,
@@ -2183,8 +2189,9 @@ def generate_tasks(job_id):
             due = (base_date + timedelta(days=offset)).strftime("%Y-%m-%d")
         db.execute(
             "INSERT INTO job_tasks"
-            " (job_id, employee_id, title, status, due_date, notes, sort_order)"
-            " VALUES (?, ?, ?, 'To do', ?, ?, ?)",
+            " (job_id, employee_id, title, status, due_date, notes, sort_order,"
+            "  updated_at)"
+            " VALUES (?, ?, ?, 'To do', ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (job_id, assignee, title, due, note, base + added))
         existing.add(title.lower())
         added += 1
@@ -2214,8 +2221,8 @@ def set_task_status(job_id, task_id):
         # Stamp (or clear) the completion date as the task enters/leaves Done.
         completed = datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""
         db.execute(
-            "UPDATE job_tasks SET status = ?, completed_at = ?"
-            " WHERE id = ? AND job_id = ?",
+            "UPDATE job_tasks SET status = ?, completed_at = ?,"
+            " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ? AND job_id = ?",
             (status, completed, task_id, job_id))
         db.commit()
     # A dashboard passes ?next= so the status change returns there; only
@@ -2229,7 +2236,8 @@ def set_task_status(job_id, task_id):
 @app.route("/jobs/<int:job_id>/tasks/<int:task_id>/assign", methods=["POST"])
 def set_task_assignee(job_id, task_id):
     db = get_db()
-    db.execute("UPDATE job_tasks SET employee_id = ? WHERE id = ? AND job_id = ?",
+    db.execute("UPDATE job_tasks SET employee_id = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+               " WHERE id = ? AND job_id = ?",
                (_task_assignee(job_id), task_id, job_id))
     db.commit()
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
@@ -2238,7 +2246,8 @@ def set_task_assignee(job_id, task_id):
 @app.route("/jobs/<int:job_id>/tasks/<int:task_id>/due", methods=["POST"])
 def set_task_due(job_id, task_id):
     db = get_db()
-    db.execute("UPDATE job_tasks SET due_date = ? WHERE id = ? AND job_id = ?",
+    db.execute("UPDATE job_tasks SET due_date = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+               " WHERE id = ? AND job_id = ?",
                (request.form.get("due_date", "").strip(), task_id, job_id))
     db.commit()
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
@@ -2251,7 +2260,8 @@ def edit_task(job_id, task_id):
         flash("A task needs a title.", "error")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
     db = get_db()
-    db.execute("UPDATE job_tasks SET title = ?, notes = ? WHERE id = ? AND job_id = ?",
+    db.execute("UPDATE job_tasks SET title = ?, notes = ?,"
+               " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ? AND job_id = ?",
                (title, request.form.get("notes", "").strip(), task_id, job_id))
     db.commit()
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
@@ -2301,6 +2311,79 @@ def tasks_dashboard():
     return render_template(
         "tasks.html", tasks=tasks, employees=employees, who=who, show=show,
         task_statuses=TASK_STATUSES, counts=counts, overdue=overdue, today=today)
+
+
+# ---------------------------------------------------- Piece 14: offline sync
+def _my_tasks_rows(db, employee_id):
+    return db.execute(
+        "SELECT t.id, t.title, t.status, t.due_date, t.notes, t.updated_at,"
+        " j.id AS job_id, j.job_name, c.name AS client_name"
+        " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+        " JOIN clients c ON c.id = j.client_id"
+        " WHERE t.employee_id = ?"
+        " ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date, t.id",
+        (employee_id,)).fetchall()
+
+
+@app.route("/field-tasks")
+def field_tasks():
+    """The offline-capable 'my tasks in the field' page. The task data and
+    sync happen in the browser via the /api endpoints below, so the page
+    keeps working through a dropped connection."""
+    return render_template("field_tasks.html", task_statuses=TASK_STATUSES)
+
+
+@app.route("/api/my-tasks")
+def api_my_tasks():
+    """Current user's assigned tasks as JSON (the offline client's pull)."""
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "not signed in"}), 401
+    rows = _my_tasks_rows(get_db(), user["id"])
+    return jsonify({"server_time": datetime.now().isoformat(timespec="seconds"),
+                    "user": user["name"], "tasks": [dict(r) for r in rows]})
+
+
+@app.route("/api/tasks/sync", methods=["POST"])
+def api_tasks_sync():
+    """Apply a batch of offline task edits (status/notes) for the signed-in
+    user's own tasks, last-write-wins: a change is rejected as a conflict if
+    the server's copy changed after the version the edit was based on."""
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "not signed in"}), 401
+    payload = request.get_json(silent=True) or {}
+    db = get_db()
+    results = []
+    for ch in payload.get("changes", []):
+        tid = ch.get("id")
+        row = db.execute(
+            "SELECT * FROM job_tasks WHERE id = ? AND employee_id = ?",
+            (tid, user["id"])).fetchone()
+        if row is None:
+            results.append({"id": tid, "result": "forbidden"})
+            continue
+        base = ch.get("base_updated_at") or ""
+        if row["updated_at"] and base and row["updated_at"] > base:
+            results.append({"id": tid, "result": "conflict",
+                            "server": {"status": row["status"],
+                                       "notes": row["notes"],
+                                       "updated_at": row["updated_at"]}})
+            continue
+        status = ch.get("status", row["status"])
+        if status not in TASK_STATUSES:
+            status = row["status"]
+        notes = ch.get("notes", row["notes"])
+        completed = datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""
+        db.execute(
+            "UPDATE job_tasks SET status = ?, notes = ?, completed_at = ?,"
+            " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
+            (status, notes, completed, tid))
+        results.append({"id": tid, "result": "applied"})
+    db.commit()
+    rows = _my_tasks_rows(db, user["id"])
+    return jsonify({"server_time": datetime.now().isoformat(timespec="seconds"),
+                    "results": results, "tasks": [dict(r) for r in rows]})
 
 
 # -------------------------------------------------------------------- files

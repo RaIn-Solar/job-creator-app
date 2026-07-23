@@ -15,6 +15,14 @@
 </div>
 
 <div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">📴 Field tasks</h2>
+  <p class="muted" style="margin-top:0;">Your assigned tasks in a page that keeps
+  working when you lose signal in the field — update them offline and they sync
+  to the office when you reconnect.</p>
+  <a href="{{ url_for('field_tasks') }}" class="btn">Open field tasks</a>
+</div>
+
+<div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">Change password</h2>
   {% if pending %}
   <div class="flash" style="background:#fff7e6; border-color:#f5d9a2; color:#7c4a03;">

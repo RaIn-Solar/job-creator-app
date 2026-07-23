@@ -2,9 +2,13 @@
 {% block title %}Tasks{% endblock %}
 {% block content %}
 {% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
-<h1>✅ Task board</h1>
+<div class="toolbar">
+  <h1>✅ Task board</h1>
+  <a href="{{ url_for('field_tasks') }}" class="btn btn-secondary">📴 My field tasks</a>
+</div>
 <p class="muted">Every task across every job in one place. Filter to a person
-to see just their work — the “my tasks” view for the whole team.</p>
+to see just their work — the “my tasks” view for the whole team.
+<strong>Field tasks</strong> is your own offline-capable list.</p>
 
 <form method="get" class="card" id="filter_form">
   <div class="form-grid">
