@@ -565,7 +565,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 13.2"
+VERSION = "Piece 13.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1261,6 +1261,33 @@ def new_client():
         flash(f"Client profile created: {values['name']}")
         return redirect(url_for("client_detail", client_id=cur.lastrowid))
     return render_template("client_form.html", values={})
+
+
+@app.route("/clients/<int:client_id>/edit", methods=["GET", "POST"])
+def edit_client(client_id):
+    db = get_db()
+    client = db.execute(
+        "SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+    if client is None:
+        abort(404)
+    if request.method == "POST":
+        values = {f: request.form.get(f, "").strip() for f in CLIENT_FIELDS}
+        missing = [label for field, label in REQUIRED_CLIENT_FIELDS.items()
+                   if not values[field]]
+        if missing:
+            flash(f"Required: {', '.join(missing)}.", "error")
+            return render_template("client_form.html", values=values,
+                                   client_id=client_id), 400
+        db.execute(
+            f"UPDATE clients SET {', '.join(f + ' = ?' for f in CLIENT_FIELDS)}"
+            " WHERE id = ?",
+            [values[f] for f in CLIENT_FIELDS] + [client_id],
+        )
+        db.commit()
+        flash(f"Client profile updated: {values['name']}")
+        return redirect(url_for("client_detail", client_id=client_id))
+    values = {f: client[f] for f in CLIENT_FIELDS}
+    return render_template("client_form.html", values=values, client_id=client_id)
 
 
 @app.route("/clients/<int:client_id>")

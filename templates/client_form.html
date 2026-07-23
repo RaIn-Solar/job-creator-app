@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}New client{% endblock %}
+{% block title %}{{ "Edit client" if client_id else "New client" }}{% endblock %}
 {% block content %}
-<h1>Create a client profile</h1>
+<h1>{{ "Edit client profile" if client_id else "Create a client profile" }}</h1>
 <form method="post" class="card">
   <div class="form-grid">
     <div class="field wide">
@@ -50,8 +50,12 @@
     </div>
   </div>
   <div class="actions">
-    <button type="submit" class="btn">Create client</button>
+    <button type="submit" class="btn">{{ "Save changes" if client_id else "Create client" }}</button>
+    {% if client_id %}
+    <a href="{{ url_for('client_detail', client_id=client_id) }}" class="btn btn-secondary">Cancel</a>
+    {% else %}
     <a href="{{ url_for('home') }}" class="btn btn-secondary">Cancel</a>
+    {% endif %}
   </div>
 </form>
 <script>
