@@ -565,7 +565,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 13.3"
+VERSION = "Piece 13.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2052,6 +2052,24 @@ def update_material_status(job_id, material_id):
     return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
 
 
+@app.route("/jobs/<int:job_id>/materials/<int:material_id>/edit", methods=["POST"])
+def edit_material(job_id, material_id):
+    item = request.form.get("item", "").strip()
+    if not item:
+        flash("Material item name is required.", "error")
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+    db = get_db()
+    db.execute(
+        "UPDATE job_materials SET item = ?, quantity = ?, unit = ?, supplier = ?,"
+        " notes = ? WHERE id = ? AND job_id = ?",
+        (item, request.form.get("quantity", "").strip(),
+         request.form.get("unit", "").strip(),
+         request.form.get("supplier", "").strip(),
+         request.form.get("notes", "").strip(), material_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
+
+
 @app.route("/jobs/<int:job_id>/materials/<int:material_id>/delete", methods=["POST"])
 def delete_material(job_id, material_id):
     db = get_db()
@@ -2222,6 +2240,19 @@ def set_task_due(job_id, task_id):
     db = get_db()
     db.execute("UPDATE job_tasks SET due_date = ? WHERE id = ? AND job_id = ?",
                (request.form.get("due_date", "").strip(), task_id, job_id))
+    db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+
+
+@app.route("/jobs/<int:job_id>/tasks/<int:task_id>/edit", methods=["POST"])
+def edit_task(job_id, task_id):
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("A task needs a title.", "error")
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+    db = get_db()
+    db.execute("UPDATE job_tasks SET title = ?, notes = ? WHERE id = ? AND job_id = ?",
+               (title, request.form.get("notes", "").strip(), task_id, job_id))
     db.commit()
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 
