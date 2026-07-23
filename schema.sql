@@ -291,6 +291,34 @@ CREATE TABLE IF NOT EXISTS client_files (
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 14.1: field work submissions. When a worker syncs completed work
+-- from the field, it is saved here as a PENDING copy (with their reported
+-- hours) — it does NOT change the authoritative task data or count as hours
+-- until a manager (admin) approves it. On approval the item changes are
+-- applied to job_tasks and approved_hours becomes the authoritative record.
+CREATE TABLE IF NOT EXISTS field_submissions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id    INTEGER NOT NULL REFERENCES employees(id),
+    work_date      TEXT DEFAULT '',       -- YYYY-MM-DD
+    reported_hours REAL,                  -- hours the worker reported
+    approved_hours REAL,                  -- hours the manager confirmed
+    note           TEXT DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'Pending',  -- Pending/Approved/Rejected
+    submitted_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    reviewed_by    TEXT DEFAULT '',
+    reviewed_at    TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS field_submission_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id   INTEGER NOT NULL REFERENCES field_submissions(id),
+    task_id         INTEGER NOT NULL REFERENCES job_tasks(id),
+    task_title      TEXT DEFAULT '',       -- snapshot, for the review screen
+    new_status      TEXT DEFAULT '',
+    new_notes       TEXT DEFAULT '',
+    base_updated_at TEXT DEFAULT ''        -- task version the field edit was based on
+);
+
 -- Piece 11: system-wide audit log. Every state-changing request (POST) is
 -- recorded centrally so nothing slips through. `actor` stays blank until
 -- logins land (Piece 8 backlog); `entity` holds the URL parameters (which

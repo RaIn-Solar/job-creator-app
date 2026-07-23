@@ -4,11 +4,11 @@
 {% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
 <div class="toolbar">
   <h1>✅ Task board</h1>
-  <a href="{{ url_for('field_tasks') }}" class="btn btn-secondary">📴 My field tasks</a>
+  <a href="{{ url_for('work_bag') }}" class="btn btn-secondary">🎒 My Work Bag</a>
 </div>
 <p class="muted">Every task across every job in one place. Filter to a person
 to see just their work — the “my tasks” view for the whole team.
-<strong>Field tasks</strong> is your own offline-capable list.</p>
+<strong>Work Bag</strong> is your own offline-capable field list.</p>
 
 <form method="get" class="card" id="filter_form">
   <div class="form-grid">

@@ -565,7 +565,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 14.0"
+VERSION = "Piece 14.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -763,8 +763,17 @@ def admin_required(view):
 @app.context_processor
 def inject_auth():
     user = current_user()
+    is_admin = _is_admin()
+    pending = 0
+    if is_admin:
+        try:
+            pending = get_db().execute(
+                "SELECT COUNT(*) FROM field_submissions WHERE status = 'Pending'"
+            ).fetchone()[0]
+        except Exception:
+            pending = 0
     return {"current_user": user, "login_active": accounts_exist(),
-            "is_admin": _is_admin()}
+            "is_admin": is_admin, "pending_submissions": pending}
 
 
 @app.before_request
@@ -2313,7 +2322,7 @@ def tasks_dashboard():
         task_statuses=TASK_STATUSES, counts=counts, overdue=overdue, today=today)
 
 
-# ---------------------------------------------------- Piece 14: offline sync
+# ------------------------------------------- Piece 14: Work Bag (offline sync)
 def _my_tasks_rows(db, employee_id):
     return db.execute(
         "SELECT t.id, t.title, t.status, t.due_date, t.notes, t.updated_at,"
@@ -2325,65 +2334,165 @@ def _my_tasks_rows(db, employee_id):
         (employee_id,)).fetchall()
 
 
-@app.route("/field-tasks")
-def field_tasks():
-    """The offline-capable 'my tasks in the field' page. The task data and
-    sync happen in the browser via the /api endpoints below, so the page
-    keeps working through a dropped connection."""
-    return render_template("field_tasks.html", task_statuses=TASK_STATUSES)
+def _to_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.route("/work-bag")
+def work_bag():
+    """The Work Bag: an offline-capable page holding the signed-in worker's
+    field tasks. Task data and submission happen in the browser via the /api
+    endpoints, so it keeps working through a dropped connection."""
+    return render_template("work_bag.html", task_statuses=TASK_STATUSES,
+                           today=datetime.now().strftime("%Y-%m-%d"))
 
 
 @app.route("/api/my-tasks")
 def api_my_tasks():
-    """Current user's assigned tasks as JSON (the offline client's pull)."""
+    """The worker's assigned tasks, their still-pending field edits, and a
+    short submission history — as JSON for the Work Bag."""
     user = current_user()
     if user is None:
         return jsonify({"error": "not signed in"}), 401
-    rows = _my_tasks_rows(get_db(), user["id"])
-    return jsonify({"server_time": datetime.now().isoformat(timespec="seconds"),
-                    "user": user["name"], "tasks": [dict(r) for r in rows]})
+    db = get_db()
+    rows = _my_tasks_rows(db, user["id"])
+    pend = db.execute(
+        "SELECT i.task_id, i.new_status, i.new_notes"
+        " FROM field_submission_items i"
+        " JOIN field_submissions s ON s.id = i.submission_id"
+        " WHERE s.employee_id = ? AND s.status = 'Pending'", (user["id"],)).fetchall()
+    subs = db.execute(
+        "SELECT id, work_date, reported_hours, approved_hours, status, submitted_at,"
+        " reviewed_at FROM field_submissions WHERE employee_id = ?"
+        " ORDER BY id DESC LIMIT 8", (user["id"],)).fetchall()
+    return jsonify({
+        "server_time": datetime.now().isoformat(timespec="seconds"),
+        "user": user["name"],
+        "tasks": [dict(r) for r in rows],
+        "pending_items": [dict(r) for r in pend],
+        "submissions": [dict(r) for r in subs],
+    })
 
 
-@app.route("/api/tasks/sync", methods=["POST"])
-def api_tasks_sync():
-    """Apply a batch of offline task edits (status/notes) for the signed-in
-    user's own tasks, last-write-wins: a change is rejected as a conflict if
-    the server's copy changed after the version the edit was based on."""
+@app.route("/api/work-bag/submit", methods=["POST"])
+def api_work_bag_submit():
+    """Save the worker's completed field work as a PENDING submission — a
+    copy in the database that does NOT change the authoritative task data or
+    count as hours until a manager approves it."""
     user = current_user()
     if user is None:
         return jsonify({"error": "not signed in"}), 401
     payload = request.get_json(silent=True) or {}
     db = get_db()
-    results = []
-    for ch in payload.get("changes", []):
-        tid = ch.get("id")
+    # Keep only edits to the worker's own tasks; snapshot title for review.
+    valid = []
+    for ch in payload.get("changes", []) or []:
         row = db.execute(
             "SELECT * FROM job_tasks WHERE id = ? AND employee_id = ?",
-            (tid, user["id"])).fetchone()
+            (ch.get("id"), user["id"])).fetchone()
         if row is None:
-            results.append({"id": tid, "result": "forbidden"})
-            continue
-        base = ch.get("base_updated_at") or ""
-        if row["updated_at"] and base and row["updated_at"] > base:
-            results.append({"id": tid, "result": "conflict",
-                            "server": {"status": row["status"],
-                                       "notes": row["notes"],
-                                       "updated_at": row["updated_at"]}})
             continue
         status = ch.get("status", row["status"])
         if status not in TASK_STATUSES:
             status = row["status"]
-        notes = ch.get("notes", row["notes"])
+        valid.append((row["id"], row["title"], status,
+                      ch.get("notes", row["notes"]), ch.get("base_updated_at") or ""))
+    reported_hours = _to_float(payload.get("reported_hours"))
+    if not valid and reported_hours is None:
+        return jsonify({"error": "nothing to submit"}), 400
+    cur = db.execute(
+        "INSERT INTO field_submissions (employee_id, work_date, reported_hours, note)"
+        " VALUES (?, ?, ?, ?)",
+        (user["id"], (payload.get("work_date") or "").strip(), reported_hours,
+         (payload.get("note") or "").strip()))
+    sub_id = cur.lastrowid
+    for task_id, title, status, notes, base in valid:
+        db.execute(
+            "INSERT INTO field_submission_items"
+            " (submission_id, task_id, task_title, new_status, new_notes, base_updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (sub_id, task_id, title, status, notes, base))
+    db.commit()
+    return jsonify({"submission_id": sub_id, "status": "Pending",
+                    "items": len(valid)})
+
+
+@app.route("/submissions")
+@admin_required
+def submissions_page():
+    """Manager review of field-work submissions: confirm hours and approve
+    (applies the task changes + logs hours) or reject."""
+    db = get_db()
+    show = request.args.get("show", "pending")
+    where = "WHERE s.status = 'Pending'" if show == "pending" else ""
+    subs = db.execute(
+        "SELECT s.*, e.name AS emp_name FROM field_submissions s"
+        " JOIN employees e ON e.id = s.employee_id"
+        f" {where} ORDER BY (s.status='Pending') DESC, s.id DESC LIMIT 100"
+    ).fetchall()
+    items_by_sub = {}
+    ids = [s["id"] for s in subs]
+    if ids:
+        q = ("SELECT * FROM field_submission_items WHERE submission_id IN (%s)"
+             " ORDER BY id" % ",".join("?" * len(ids)))
+        for it in db.execute(q, ids).fetchall():
+            items_by_sub.setdefault(it["submission_id"], []).append(it)
+    return render_template("submissions.html", subs=subs, items_by_sub=items_by_sub,
+                           show=show)
+
+
+@app.route("/submissions/<int:sub_id>/approve", methods=["POST"])
+@admin_required
+def approve_submission(sub_id):
+    db = get_db()
+    sub = db.execute(
+        "SELECT * FROM field_submissions WHERE id = ? AND status = 'Pending'",
+        (sub_id,)).fetchone()
+    if sub is None:
+        flash("Submission not found or already reviewed.", "error")
+        return redirect(url_for("submissions_page"))
+    approved_hours = _to_float(request.form.get("approved_hours"))
+    if approved_hours is None:
+        approved_hours = sub["reported_hours"]
+    # Now — and only now — apply the field edits to the authoritative tasks.
+    for it in db.execute(
+            "SELECT * FROM field_submission_items WHERE submission_id = ?",
+            (sub_id,)).fetchall():
+        row = db.execute("SELECT * FROM job_tasks WHERE id = ?",
+                         (it["task_id"],)).fetchone()
+        if row is None:
+            continue
+        status = it["new_status"] if it["new_status"] in TASK_STATUSES else row["status"]
         completed = datetime.now().strftime("%Y-%m-%d") if status == "Done" else ""
         db.execute(
             "UPDATE job_tasks SET status = ?, notes = ?, completed_at = ?,"
             " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
-            (status, notes, completed, tid))
-        results.append({"id": tid, "result": "applied"})
+            (status, it["new_notes"], completed, it["task_id"]))
+    who = current_user()
+    db.execute(
+        "UPDATE field_submissions SET status = 'Approved', approved_hours = ?,"
+        " reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ?",
+        (approved_hours, who["name"] if who else "", sub_id))
     db.commit()
-    rows = _my_tasks_rows(db, user["id"])
-    return jsonify({"server_time": datetime.now().isoformat(timespec="seconds"),
-                    "results": results, "tasks": [dict(r) for r in rows]})
+    flash("Submission approved — task changes applied and hours logged.")
+    return redirect(url_for("submissions_page"))
+
+
+@app.route("/submissions/<int:sub_id>/reject", methods=["POST"])
+@admin_required
+def reject_submission(sub_id):
+    who = current_user()
+    db = get_db()
+    db.execute(
+        "UPDATE field_submissions SET status = 'Rejected', reviewed_by = ?,"
+        " reviewed_at = datetime('now') WHERE id = ? AND status = 'Pending'",
+        (who["name"] if who else "", sub_id))
+    db.commit()
+    flash("Submission rejected — no changes were applied.")
+    return redirect(url_for("submissions_page"))
 
 
 # -------------------------------------------------------------------- files

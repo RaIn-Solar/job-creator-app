@@ -182,6 +182,8 @@
     <a href="/rules" style="font-size:0.9rem; font-weight:500;">⚙️ Rules</a>
     <a href="/employees" style="font-size:0.9rem; font-weight:500;">👥 Employees</a>
     <a href="/tasks" style="font-size:0.9rem; font-weight:500;">✅ Tasks</a>
+    <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
+    {% if is_admin %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
     {% if is_admin %}<a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>{% endif %}
     {% endif %}
     {% if login_active and current_user %}
