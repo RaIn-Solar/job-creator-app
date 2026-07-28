@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 15.0** (footer shows it plainly as "Version 15.0" — the "did my pull work?" check)
+**Current build:** **Piece 15.1** (footer shows it plainly as "Version 15.1" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -63,11 +63,15 @@ footer with the build version. Flash messages render at the top of `main`.
   with the changed-field labels flagged, who edited, and when. Newest first.
 
 ### Job profile — `/jobs/<id>` (`job_detail.html`, tabbed)
-- Header: **status picker** (Lead→Quoted→Sold→Permitting→Scheduled→Installed→Closed/Lost),
-  **✎ Edit job**, **Process chart**, **← Client profile**.
+- Header buttons: **status picker** (Lead→Quoted→Sold→Permitting→Scheduled→Installed→Closed/Lost),
+  **✎ Edit job**, **⚡ Loads & Sizing** (own page, Piece 15.1), **Process chart**,
+  **← Client profile**.
+- **Tabs (5):** General details · **LPC** · Materials · Documents · Tasks.
+  ("LPC" is the abbreviated Licenses/Permits/Compliance tab, Piece 15.1; hover
+  shows the full name.)
 - **General details tab:** all job fields + **version history** (JSON snapshot per edit).
-- **Licenses, Permits & Compliance tab:** requirements resolved live from the rules
-  engine, grouped (Technician licenses / Permits / Compliance / Online Portals /
+- **LPC tab (Licenses, Permits & Compliance):** requirements resolved live from the
+  rules engine, grouped (Technician licenses / Permits / Compliance / Online Portals /
   Phone / Documents), each linked to its NM source + phone. **📎 filing-coverage
   badges** (N/M on file). License items show **👷 who on staff holds it** (green/amber/
   red by credential expiry) or **⚠ no one on staff holds this**. **⬇ Export report**.
@@ -75,14 +79,17 @@ footer with the build version. Flash messages render at the top of `main`.
   (item/qty/unit/supplier/notes + Save), status dropdown, add, delete.
 - **Documents tab:** upload/download/delete job files, optionally filed under a
   requirement (drives the coverage badges).
-- **Loads & Sizing tab (Piece 9):** Sales/Designer mode toggle; room-nested load
-  survey (from the appliance catalog or custom); live daily-kWh/peak summary;
-  **System Sizing** (off-grid/grid-tie presets → array kW/panel count, battery kWh/
-  units, NEC 690.7 cold-temp Voc string sizing); **Components / bill of materials**.
 - **Tasks tab (Piece 10):** per-job tasks — inline-editable title/notes (Save),
   inline assignee/status/due (auto-save), overdue flag, add, delete. **⚙ Generate
   from process** (with optional install date) auto-creates the job's process-step
   checklist, auto-assigned by role and due-dated around the install.
+
+### Loads & Sizing — `/jobs/<id>/loads` (`job_loads.html`, Piece 9; own page since 15.1)
+- Reached from the **⚡ Loads & Sizing** button on the job header. Sales/Designer
+  mode toggle; room-nested load survey (from the appliance catalog or custom);
+  live daily-kWh/peak summary; **System Sizing** (off-grid/grid-tie presets → array
+  kW/panel count, battery kWh/units, NEC 690.7 cold-temp Voc string sizing);
+  **Components / bill of materials**.
 
 ### New / Edit job — `/clients/<id>/jobs/new`, `/jobs/<id>/edit` (`job_form.html`)
 - All product/variant fields; service-ticket pre-fill from an existing job.

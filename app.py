@@ -606,7 +606,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 15.0"
+VERSION = "Piece 15.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1715,7 +1715,36 @@ def job_detail(job_id):
         for heading, items in groups
     ]
 
-    # Piece 9: Loads & Sizing tab.
+    # Piece 15.1: Loads & Sizing moved to its own page (job_loads); its data
+    # is no longer computed here.
+
+    # Piece 10: tasks for this job, plus the crew list for the assignee
+    # picker. Assignee name comes along via a LEFT JOIN so unassigned tasks
+    # (employee_id NULL) still show.
+    tasks = db.execute(
+        "SELECT t.*, e.name AS assignee_name FROM job_tasks t"
+        " LEFT JOIN employees e ON e.id = t.employee_id"
+        " WHERE t.job_id = ? ORDER BY t.sort_order, t.id", (job_id,)
+    ).fetchall()
+    employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
+
+    return render_template(
+        "job_detail.html", job=job, groups=groups, versions=versions,
+        materials=materials, files=files, filed_labels=filed_labels,
+        coverage=coverage, requirement_groups=requirement_groups,
+        material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
+        tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
+        job_statuses=JOB_STATUSES, job_status_class=JOB_STATUS_CLASS,
+        today=datetime.now().strftime("%Y-%m-%d"),
+    )
+
+
+@app.route("/jobs/<int:job_id>/loads")
+def job_loads(job_id):
+    """Piece 15.1: Electric loads & system sizing — its own page (was a tab
+    on the job detail page)."""
+    job = fetch_job(job_id)
+    db = get_db()
     rooms = db.execute(
         "SELECT * FROM job_load_rooms WHERE job_id = ? ORDER BY sort_order, id",
         (job_id,),
@@ -1777,24 +1806,8 @@ def job_detail(job_id):
             )
     bom_total = sum((b["qty"] or 0) * (b["unit_cost"] or 0) for b in bom)
 
-    # Piece 10: tasks for this job, plus the crew list for the assignee
-    # picker. Assignee name comes along via a LEFT JOIN so unassigned tasks
-    # (employee_id NULL) still show.
-    tasks = db.execute(
-        "SELECT t.*, e.name AS assignee_name FROM job_tasks t"
-        " LEFT JOIN employees e ON e.id = t.employee_id"
-        " WHERE t.job_id = ? ORDER BY t.sort_order, t.id", (job_id,)
-    ).fetchall()
-    employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
-
     return render_template(
-        "job_detail.html", job=job, groups=groups, versions=versions,
-        materials=materials, files=files, filed_labels=filed_labels,
-        coverage=coverage, requirement_groups=requirement_groups,
-        material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
-        tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
-        job_statuses=JOB_STATUSES, job_status_class=JOB_STATUS_CLASS,
-        today=datetime.now().strftime("%Y-%m-%d"),
+        "job_loads.html", job=job,
         rooms=rooms, items_by_room=items_by_room, sizing=sizing, bom=bom,
         bom_total=bom_total, appliances_by_category=appliances_by_category,
         components_by_category=components_by_category,
@@ -1825,7 +1838,7 @@ def add_load_room(job_id):
         room_type = "standard"
     if not name:
         flash("Room name is required.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+        return redirect(url_for("job_loads", job_id=job_id))
     db = get_db()
     next_order = db.execute(
         "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_load_rooms WHERE job_id = ?",
@@ -1837,7 +1850,7 @@ def add_load_room(job_id):
         (job_id, name, room_type, next_order),
     )
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/toggle", methods=["POST"])
@@ -1848,7 +1861,7 @@ def toggle_load_room(job_id, room_id):
         (room_id, job_id),
     )
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/delete", methods=["POST"])
@@ -1859,7 +1872,7 @@ def delete_load_room(job_id, room_id):
     db.execute("DELETE FROM job_load_rooms WHERE id = ? AND job_id = ?",
                (room_id, job_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/loads/items/add", methods=["POST"])
@@ -1872,7 +1885,7 @@ def add_load_item(job_id):
     ).fetchone()
     if not room:
         flash("Pick a room before adding an appliance.", "error")
-        return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+        return redirect(url_for("job_loads", job_id=job_id))
 
     catalog_id = request.form.get("catalog_id", type=int)
     if catalog_id:
@@ -1881,7 +1894,7 @@ def add_load_item(job_id):
         ).fetchone()
         if not appliance:
             flash("Appliance not found in the catalog.", "error")
-            return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+            return redirect(url_for("job_loads", job_id=job_id))
         name = appliance["name"]
         watts = appliance["avg_w"]
         hrs = appliance["hrs_per_day"]
@@ -1893,7 +1906,7 @@ def add_load_item(job_id):
         usage_type = request.form.get("custom_usage_type", "").strip()
         if not name:
             flash("Give the custom appliance a name.", "error")
-            return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+            return redirect(url_for("job_loads", job_id=job_id))
 
     qty = _float(request.form.get("qty"), 1) or 1
     # Allow overriding hrs/day from the form even for a catalog pick.
@@ -1908,7 +1921,7 @@ def add_load_item(job_id):
         (job_id, room_id, name, watts, qty, hrs, usage_type),
     )
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/loads/items/<int:item_id>/delete", methods=["POST"])
@@ -1917,7 +1930,7 @@ def delete_load_item(job_id, item_id):
     db.execute("DELETE FROM job_load_items WHERE id = ? AND job_id = ?",
                (item_id, job_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/loads/bom/add", methods=["POST"])
@@ -1933,7 +1946,7 @@ def add_bom_item(job_id):
         ).fetchone()
         if not comp:
             flash("Component not found in the catalog.", "error")
-            return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+            return redirect(url_for("job_loads", job_id=job_id))
         # Adding the same component again increments quantity instead of
         # creating a duplicate row.
         existing = db.execute(
@@ -1958,7 +1971,7 @@ def add_bom_item(job_id):
         cost = request.form.get("custom_cost")
         if not name:
             flash("Give the custom component a name.", "error")
-            return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+            return redirect(url_for("job_loads", job_id=job_id))
         db.execute(
             "INSERT INTO job_bom"
             " (job_id, component_id, component_name, category, qty,"
@@ -1967,7 +1980,7 @@ def add_bom_item(job_id):
             (job_id, name, category, qty, _float(cost, None) if cost else None, notes),
         )
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/loads/bom/<int:bom_id>/delete", methods=["POST"])
@@ -1975,7 +1988,7 @@ def delete_bom_item(job_id, bom_id):
     db = get_db()
     db.execute("DELETE FROM job_bom WHERE id = ? AND job_id = ?", (bom_id, job_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/loads/sizing", methods=["POST"])
@@ -2027,7 +2040,7 @@ def update_sizing(job_id):
         ),
     )
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 @app.route("/jobs/<int:job_id>/loads/mode", methods=["POST"])
@@ -2041,7 +2054,7 @@ def set_ui_mode(job_id):
     db.execute("UPDATE job_sizing SET ui_mode = ? WHERE job_id = ?",
                (ui_mode, job_id))
     db.commit()
-    return redirect(url_for("job_detail", job_id=job_id, _anchor="loads"))
+    return redirect(url_for("job_loads", job_id=job_id))
 
 
 # ------------------------------------------------------------------ catalog
