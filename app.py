@@ -718,7 +718,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 17.1"
+VERSION = "Piece 17.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -768,6 +768,35 @@ LANE_TO_ROLES = {
 # Days between consecutive generated tasks when a target install date is
 # given — a rough schedule anchored on the Site Installation step.
 TASK_DUE_SPACING_DAYS = 2
+
+# Piece 17.2: for tasks that don't carry a process lane in their notes (the
+# demo/hand-added ones), infer the responsible lane from keywords in the
+# title, so they can be role-assigned too. First match wins. (Rough — meant
+# to be standardized later.)
+TITLE_LANE_KEYWORDS = [
+    ("interconnection", "Permit Coordinator"),
+    ("plan review", "Permit Coordinator"),
+    ("permit", "Permit Coordinator"),
+    ("inspection", "Permit Coordinator"),
+    ("zoning", "Permit Coordinator"),
+    ("credit", "Finance Department"),
+    ("invoice", "Finance Department"),
+    ("deposit", "Finance Department"),
+    ("payment", "Finance Department"),
+    ("design", "System Designer"),
+    ("order", "Warehouse Associate"),
+    ("material", "Warehouse Associate"),
+    ("component", "Warehouse Associate"),
+    ("install", "Foreman"),
+    ("walkthrough", "Foreman"),
+    ("monitoring", "Foreman"),
+    ("doc tube", "Foreman"),
+    ("contract", "Sales Rep"),
+    ("site visit", "Sales Rep"),
+    ("questionnaire", "Sales Rep"),
+    ("proposal", "Sales Rep"),
+    ("paperwork", "General Manager"),
+]
 
 # Piece 9: Electric Loads Calculator / System Sizing config (ported from
 # the standalone loads_calculator.html field tool). Catalogs themselves
@@ -1560,6 +1589,7 @@ def init_db():
         )
         db.commit()
     seed_org_team(db)
+    assign_tasks_by_role(db)
     db.close()
 
 
@@ -2849,17 +2879,76 @@ def add_task(job_id):
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 
 
-def _auto_assignee(lane, employees):
-    """The employee who should own a step in this lane — but only when the
-    match is unambiguous (exactly one employee holds a role mapped to the
-    lane). Zero or several matches → left unassigned for a human to pick."""
-    wanted = {r.lower() for r in LANE_TO_ROLES.get(lane, [])}
-    if not wanted:
+def best_assignee_for_lane(lane, employees):
+    """The most sensible employee to own a step in this lane (Piece 17.2).
+    Among everyone who holds a role mapped to the lane, prefer: a non-GM over
+    the General Manager (who holds many roles), then the better-matching role
+    (LANE_TO_ROLES is in priority order), then the most specialized person
+    (fewest roles). Deterministic; None if no one holds a mapped role."""
+    roles = LANE_TO_ROLES.get(lane, [])
+    if not roles:
         return None
-    matches = [e for e in employees
-               if any(r.strip().lower() in wanted
-                      for r in (e["roles"] or "").split(","))]
-    return matches[0]["id"] if len(matches) == 1 else None
+    priority = {r.lower(): i for i, r in enumerate(roles)}
+    best_key = best_id = None
+    for e in employees:
+        emp_roles = [r.strip().lower() for r in (e["roles"] or "").split(",") if r.strip()]
+        matched = [priority[r] for r in emp_roles if r in priority]
+        if not matched:
+            continue
+        name = e["name"] if "name" in e.keys() else ""
+        # Prefer real staff over the demo employees, then a specialist over the
+        # General Manager, then the better-matching role, then fewest roles.
+        key = ("(sample)" in (name or ""), "general manager" in emp_roles,
+               min(matched), len(emp_roles), e["id"])
+        if best_key is None or key < best_key:
+            best_key, best_id = key, e["id"]
+    return best_id
+
+
+def _auto_assignee(lane, employees):
+    """Assignee for a generated step — the most sensible role-holder."""
+    return best_assignee_for_lane(lane, employees)
+
+
+def _lane_from_task(notes, title):
+    """The responsible lane for an existing task: from its 'Process step ·
+    <lane>' note if present, else inferred from title keywords."""
+    n = (notes or "").strip()
+    if "·" in n and n.lower().startswith("process step"):
+        return n.split("·", 1)[1].strip()
+    t = (title or "").lower()
+    for keyword, lane in TITLE_LANE_KEYWORDS:
+        if keyword in t:
+            return lane
+    return None
+
+
+def assign_tasks_by_role(db):
+    """One-time (Piece 17.2): give every existing task a sensible assignee by
+    role. Runs once per DB; leaves tasks already assigned to real staff alone,
+    and (re)assigns unassigned or sample-assigned tasks."""
+    if db.execute("SELECT 1 FROM meta WHERE key = 'tasks_role_assigned'").fetchone():
+        return
+    db.row_factory = sqlite3.Row  # init_db's connection isn't Row-based
+    employees = db.execute("SELECT id, name, roles FROM employees").fetchall()
+    if employees:
+        tasks = db.execute(
+            "SELECT t.id, t.title, t.notes, t.employee_id, e.name AS assignee"
+            " FROM job_tasks t LEFT JOIN employees e ON e.id = t.employee_id"
+        ).fetchall()
+        for t in tasks:
+            if t["employee_id"] and t["assignee"] and "(sample)" not in (t["assignee"] or ""):
+                continue  # keep deliberate assignments to real staff
+            lane = _lane_from_task(t["notes"], t["title"])
+            aid = best_assignee_for_lane(lane, employees) if lane else None
+            if aid:
+                db.execute(
+                    "UPDATE job_tasks SET employee_id = ?,"
+                    " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
+                    (aid, t["id"]))
+    db.execute("INSERT INTO meta (key, value) VALUES ('tasks_role_assigned', '1')"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    db.commit()
 
 
 @app.route("/jobs/<int:job_id>/tasks/generate", methods=["POST"])
@@ -2875,7 +2964,7 @@ def generate_tasks(job_id):
     db = get_db()
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
     _xml, details = build_job_bpmn(job, match_rules(job, rules))
-    employees = db.execute("SELECT id, roles FROM employees").fetchall()
+    employees = db.execute("SELECT id, name, roles FROM employees").fetchall()
 
     # Actionable workflow steps in order (no start/end events or gateways).
     task_steps = [

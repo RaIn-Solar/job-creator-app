@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 17.1** (footer shows it plainly as "Version 17.1" — the "did my pull work?" check)
+**Current build:** **Piece 17.2** (footer shows it plainly as "Version 17.2" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -100,7 +100,14 @@ footer with the build version. Flash messages render at the top of `main`.
 - **Tasks tab (Piece 10):** per-job tasks — inline-editable title/notes (Save),
   inline assignee/status/due (auto-save), overdue flag, add, delete. **⚙ Generate
   from process** (with optional install date) auto-creates the job's process-step
-  checklist, auto-assigned by role and due-dated around the install.
+  checklist, **auto-assigned to the most sensible role-holder** and due-dated around
+  the install.
+- **Role-based assignment (Piece 17.2):** `best_assignee_for_lane` maps a step's
+  BPMN lane (via `LANE_TO_ROLES`) to the best person — preferring a real (non-demo),
+  non-GM specialist with the fewest roles. A one-time migration (`assign_tasks_by_role`,
+  `meta.tasks_role_assigned`) back-filled existing tasks: lane from the task's note,
+  or inferred from title keywords (`TITLE_LANE_KEYWORDS`) for hand-added ones. It
+  leaves tasks already assigned to real staff alone. Provisional — to be standardized.
 
 ### Loads & Sizing — `/jobs/<id>/loads` (`job_loads.html`, Piece 9; own page since 15.1)
 - Reached from the **⚡ Loads & Sizing** button on the job header. Sales/Designer
