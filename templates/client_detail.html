@@ -15,6 +15,16 @@
 </div>
 
 <div class="tab-panel" id="tab-overview">
+{% if edit_count %}
+<div class="flash" style="background:#eef2f7; border-color:#d6dee8; color:#334155; display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+  <span>✏️ This profile has been changed <strong>{{ edit_count }} time{{ "s" if edit_count != 1 }}</strong>.
+    {% if last_edit %}<span class="muted">Last change {{ last_edit["saved_at"][:16] }}{% if last_edit["edited_by"] %} by {{ last_edit["edited_by"] }}{% endif %}.</span>{% endif %}
+    {% if not is_admin %}<span class="muted">Earlier information is hidden; an admin can review it.</span>{% endif %}</span>
+  {% if is_admin %}
+  <a href="{{ url_for('client_history', client_id=client['id']) }}" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; white-space:nowrap;">🔒 View change history</a>
+  {% endif %}
+</div>
+{% endif %}
 <div class="card">
   <dl class="profile">
     <dt>Phone</dt><dd>{{ client["phone"] or "—" }}</dd>

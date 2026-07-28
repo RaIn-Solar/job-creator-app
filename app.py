@@ -47,18 +47,59 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE = DATA_DIR / "job_creator.db"
 
 # The columns a user can fill in on the client form, in display order.
-CLIENT_FIELDS = [
-    "name", "phone", "mailing_address", "billing_address",
-    "email", "referral_source", "notes",
-]
+# Piece 15: addresses are entered as separate parts (fewer typos). The parts
+# are stored, and the full mailing_address / billing_address strings are
+# composed from them so search, the roster, and job pre-fill keep working.
+MAILING_PARTS = ["mailing_street", "mailing_city", "mailing_state", "mailing_zip"]
+BILLING_PARTS = ["billing_street", "billing_city", "billing_state", "billing_zip"]
+CLIENT_SIMPLE_FIELDS = ["name", "phone", "email", "referral_source", "notes"]
+# What the form posts (everything the user types).
+CLIENT_FORM_FIELDS = CLIENT_SIMPLE_FIELDS + MAILING_PARTS + BILLING_PARTS
+# Every stored column, including the two composed full-address strings.
+CLIENT_FIELDS = CLIENT_FORM_FIELDS + ["mailing_address", "billing_address"]
+
+# Human labels for change-history and error messages.
+CLIENT_FIELD_LABELS = {
+    "name": "Client name", "phone": "Phone number", "email": "Email address",
+    "referral_source": "Referral source", "notes": "Notes",
+    "mailing_street": "Mailing street", "mailing_city": "Mailing city",
+    "mailing_state": "Mailing state", "mailing_zip": "Mailing ZIP",
+    "billing_street": "Billing street", "billing_city": "Billing city",
+    "billing_state": "Billing state", "billing_zip": "Billing ZIP",
+    "mailing_address": "Mailing address", "billing_address": "Billing address",
+}
 
 # Fields that must not be blank, with the labels shown in error messages.
 REQUIRED_CLIENT_FIELDS = {
     "name": "Client name",
     "phone": "Phone number",
-    "mailing_address": "Mailing address",
-    "billing_address": "Billing address",
+    "mailing_street": "Mailing street address",
+    "mailing_city": "Mailing city",
+    "mailing_state": "Mailing state",
+    "mailing_zip": "Mailing ZIP code",
+    "billing_street": "Billing street address",
+    "billing_city": "Billing city",
+    "billing_state": "Billing state",
+    "billing_zip": "Billing ZIP code",
 }
+
+
+def compose_address(street, city, state, zip_code):
+    """Build a single-line address from its parts, skipping blank pieces."""
+    region = " ".join(p for p in (state, zip_code) if p)
+    return ", ".join(p for p in (street, city, region) if p)
+
+
+def read_client_form():
+    """Pull the posted client fields and compose the full address strings."""
+    values = {f: request.form.get(f, "").strip() for f in CLIENT_FORM_FIELDS}
+    values["mailing_address"] = compose_address(
+        values["mailing_street"], values["mailing_city"],
+        values["mailing_state"], values["mailing_zip"])
+    values["billing_address"] = compose_address(
+        values["billing_street"], values["billing_city"],
+        values["billing_state"], values["billing_zip"])
+    return values
 
 # Job profile columns (products is stored as a comma-separated list).
 JOB_FIELDS = [
@@ -565,7 +606,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 14.2"
+VERSION = "Piece 15.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -909,24 +950,31 @@ def init_db():
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
+        # (name, phone, email, referral, mailing parts, billing parts)
+        samples = [
+            ("Johnson Residence (sample)", "575-555-0142",
+             "mjohnson@example.com", "Google search",
+             ("1247 Highway 518", "Mora", "NM", "87732"),
+             ("1247 Highway 518", "Mora", "NM", "87732")),
+            ("Rivera Residence (sample)", "505-555-0189",
+             "", "Neighbor referral — the Ortiz install",
+             ("902 Mesa Verde Dr", "Las Vegas", "NM", "87701"),
+             ("PO Box 2210", "Las Vegas", "NM", "87701")),
+            ("Sandia Ridge Winery (sample)", "505-555-0173",
+             "office@sandiaridge.example.com", "Repeat commercial client",
+             ("58 Bonanza Creek Rd", "Santa Fe", "NM", "87508"),
+             ("PO Box 4415", "Santa Fe", "NM", "87502")),
+        ]
         db.executemany(
             "INSERT INTO clients"
-            " (name, phone, mailing_address, billing_address, email, referral_source)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            [
-                ("Johnson Residence (sample)", "575-555-0142",
-                 "1247 Highway 518, Mora, NM 87732",
-                 "1247 Highway 518, Mora, NM 87732",
-                 "mjohnson@example.com", "Google search"),
-                ("Rivera Residence (sample)", "505-555-0189",
-                 "902 Mesa Verde Dr, Las Vegas, NM 87701",
-                 "PO Box 2210, Las Vegas, NM 87701",
-                 "", "Neighbor referral — the Ortiz install"),
-                ("Sandia Ridge Winery (sample)", "505-555-0173",
-                 "58 Bonanza Creek Rd, Santa Fe, NM 87508",
-                 "PO Box 4415, Santa Fe, NM 87502",
-                 "office@sandiaridge.example.com", "Repeat commercial client"),
-            ],
+            " (name, phone, email, referral_source,"
+            "  mailing_street, mailing_city, mailing_state, mailing_zip,"
+            "  billing_street, billing_city, billing_state, billing_zip,"
+            "  mailing_address, billing_address)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(name, phone, email, referral, *mail, *bill,
+              compose_address(*mail), compose_address(*bill))
+             for name, phone, email, referral, mail, bill in samples],
         )
         # One sample job per client, chosen to show off different paths
         # through the rules engine: residential grid-tie, off-grid multi-
@@ -1233,7 +1281,8 @@ def home():
     clients = get_db().execute(
         "SELECT * FROM clients ORDER BY name"
     ).fetchall()
-    return render_template("index.html", clients=clients)
+    return render_template("index.html", clients=clients,
+                           job_status_class_json=json.dumps(JOB_STATUS_CLASS))
 
 
 @app.route("/search")
@@ -1263,7 +1312,7 @@ def search():
 @app.route("/clients/new", methods=["GET", "POST"])
 def new_client():
     if request.method == "POST":
-        values = {f: request.form.get(f, "").strip() for f in CLIENT_FIELDS}
+        values = read_client_form()
         missing = [label for field, label in REQUIRED_CLIENT_FIELDS.items()
                    if not values[field]]
         if missing:
@@ -1289,13 +1338,30 @@ def edit_client(client_id):
     if client is None:
         abort(404)
     if request.method == "POST":
-        values = {f: request.form.get(f, "").strip() for f in CLIENT_FIELDS}
+        values = read_client_form()
         missing = [label for field, label in REQUIRED_CLIENT_FIELDS.items()
                    if not values[field]]
         if missing:
             flash(f"Required: {', '.join(missing)}.", "error")
             return render_template("client_form.html", values=values,
                                    client_id=client_id), 400
+        # Record what changed before overwriting, so the old data is kept
+        # (hidden on the profile; admins can open the history).
+        changed = [CLIENT_FIELD_LABELS.get(f, f) for f in CLIENT_FORM_FIELDS
+                   if (client[f] or "") != values[f]]
+        if changed:
+            snapshot = {f: client[f] for f in CLIENT_FIELDS}
+            version = db.execute(
+                "SELECT COALESCE(MAX(version), 0) + 1 FROM client_versions"
+                " WHERE client_id = ?", (client_id,)).fetchone()[0]
+            editor = current_user()
+            db.execute(
+                "INSERT INTO client_versions"
+                " (client_id, version, data, changed_fields, edited_by)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (client_id, version, json.dumps(snapshot),
+                 json.dumps(changed), editor["name"] if editor else ""),
+            )
         db.execute(
             f"UPDATE clients SET {', '.join(f + ' = ?' for f in CLIENT_FIELDS)}"
             " WHERE id = ?",
@@ -1304,7 +1370,13 @@ def edit_client(client_id):
         db.commit()
         flash(f"Client profile updated: {values['name']}")
         return redirect(url_for("client_detail", client_id=client_id))
-    values = {f: client[f] for f in CLIENT_FIELDS}
+    values = {f: client[f] for f in CLIENT_FORM_FIELDS}
+    # Legacy fallback: clients created before the split have only the composed
+    # address. Drop it into the street line so nothing is lost when editing.
+    if not any(values[p] for p in MAILING_PARTS) and client["mailing_address"]:
+        values["mailing_street"] = client["mailing_address"]
+    if not any(values[p] for p in BILLING_PARTS) and client["billing_address"]:
+        values["billing_street"] = client["billing_address"]
     return render_template("client_form.html", values=values, client_id=client_id)
 
 
@@ -1323,9 +1395,72 @@ def client_detail(client_id):
     files = db.execute(
         "SELECT * FROM client_files WHERE client_id = ? ORDER BY id", (client_id,)
     ).fetchall()
+    edit_count = db.execute(
+        "SELECT COUNT(*) FROM client_versions WHERE client_id = ?", (client_id,)
+    ).fetchone()[0]
+    last_edit = db.execute(
+        "SELECT edited_by, saved_at FROM client_versions"
+        " WHERE client_id = ? ORDER BY version DESC LIMIT 1", (client_id,)
+    ).fetchone()
     return render_template("client_detail.html", client=client, jobs=jobs,
                            files=files, file_categories=CLIENT_FILE_CATEGORIES,
-                           job_status_class=JOB_STATUS_CLASS)
+                           job_status_class=JOB_STATUS_CLASS,
+                           edit_count=edit_count, last_edit=last_edit)
+
+
+@app.route("/clients/<int:client_id>/history")
+@admin_required
+def client_history(client_id):
+    """Admin-only: the hidden older versions of a client profile."""
+    db = get_db()
+    client = db.execute(
+        "SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+    if client is None:
+        abort(404)
+    rows = db.execute(
+        "SELECT * FROM client_versions WHERE client_id = ?"
+        " ORDER BY version DESC", (client_id,)).fetchall()
+    versions = []
+    for r in rows:
+        versions.append({
+            "version": r["version"],
+            "edited_by": r["edited_by"],
+            "saved_at": r["saved_at"],
+            "changed": json.loads(r["changed_fields"] or "[]"),
+            "data": json.loads(r["data"] or "{}"),
+        })
+    return render_template("client_history.html", client=client,
+                           versions=versions, labels=CLIENT_FIELD_LABELS)
+
+
+@app.route("/api/search")
+def api_search():
+    """Live type-ahead preview for the clients landing page: a few matching
+    clients and jobs as JSON."""
+    q = (request.args.get("q") or "").strip()
+    result = {"clients": [], "jobs": []}
+    if len(q) >= 1:
+        like = f"%{q}%"
+        db = get_db()
+        for c in db.execute(
+                "SELECT id, name, phone, mailing_address FROM clients"
+                " WHERE name LIKE ? OR mailing_address LIKE ? OR billing_address"
+                " LIKE ? OR phone LIKE ? OR email LIKE ? ORDER BY name LIMIT 6",
+                (like, like, like, like, like)).fetchall():
+            result["clients"].append({
+                "id": c["id"], "name": c["name"], "phone": c["phone"],
+                "address": c["mailing_address"]})
+        for j in db.execute(
+                "SELECT j.id, j.job_name, j.status, c.name AS client_name"
+                " FROM jobs j JOIN clients c ON c.id = j.client_id"
+                " WHERE j.job_name LIKE ? OR j.site_location LIKE ?"
+                " OR j.county LIKE ? OR j.products LIKE ? OR c.name LIKE ?"
+                " ORDER BY j.created_at DESC LIMIT 6",
+                (like, like, like, like, like)).fetchall():
+            result["jobs"].append({
+                "id": j["id"], "name": j["job_name"] or f"Job #{j['id']}",
+                "status": j["status"] or "Lead", "client_name": j["client_name"]})
+    return jsonify(result)
 
 
 # ---- client-level documents (contracts, correspondence, intake, photos) ---

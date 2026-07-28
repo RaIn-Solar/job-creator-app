@@ -18,11 +18,31 @@
     </div>
     <fieldset class="section wide" style="grid-column: 1 / -1;">
       <legend>📍 Mailing address — where the client receives mail</legend>
-      <div class="field">
-        <label for="mailing_address">Mailing address *</label>
-        <input id="mailing_address" name="mailing_address"
-               placeholder="123 Main St NW, Albuquerque, NM 87102"
-               value="{{ values.get('mailing_address', '') }}" required>
+      <div class="form-grid">
+        <div class="field wide">
+          <label for="mailing_street">Street address *</label>
+          <input id="mailing_street" name="mailing_street" data-mail="street"
+                 placeholder="123 Main St NW"
+                 value="{{ values.get('mailing_street', '') }}" required>
+        </div>
+        <div class="field">
+          <label for="mailing_city">City *</label>
+          <input id="mailing_city" name="mailing_city" data-mail="city"
+                 placeholder="Albuquerque"
+                 value="{{ values.get('mailing_city', '') }}" required>
+        </div>
+        <div class="field">
+          <label for="mailing_state">State *</label>
+          <input id="mailing_state" name="mailing_state" data-mail="state"
+                 placeholder="NM" maxlength="20"
+                 value="{{ values.get('mailing_state', '') or 'NM' }}" required>
+        </div>
+        <div class="field">
+          <label for="mailing_zip">ZIP code *</label>
+          <input id="mailing_zip" name="mailing_zip" data-mail="zip"
+                 placeholder="87102" inputmode="numeric"
+                 value="{{ values.get('mailing_zip', '') }}" required>
+        </div>
       </div>
     </fieldset>
     <fieldset class="section wide" style="grid-column: 1 / -1;">
@@ -31,11 +51,31 @@
         <input type="checkbox" id="same_as_mailing" style="width:auto;">
         Same as mailing address
       </label>
-      <div class="field">
-        <label for="billing_address">Billing address *</label>
-        <input id="billing_address" name="billing_address"
-               placeholder="PO Box or other invoice address"
-               value="{{ values.get('billing_address', '') }}" required>
+      <div class="form-grid" id="billing_fields">
+        <div class="field wide">
+          <label for="billing_street">Street address *</label>
+          <input id="billing_street" name="billing_street" data-bill="street"
+                 placeholder="PO Box 45 or other invoice address"
+                 value="{{ values.get('billing_street', '') }}" required>
+        </div>
+        <div class="field">
+          <label for="billing_city">City *</label>
+          <input id="billing_city" name="billing_city" data-bill="city"
+                 placeholder="Albuquerque"
+                 value="{{ values.get('billing_city', '') }}" required>
+        </div>
+        <div class="field">
+          <label for="billing_state">State *</label>
+          <input id="billing_state" name="billing_state" data-bill="state"
+                 placeholder="NM" maxlength="20"
+                 value="{{ values.get('billing_state', '') or 'NM' }}" required>
+        </div>
+        <div class="field">
+          <label for="billing_zip">ZIP code *</label>
+          <input id="billing_zip" name="billing_zip" data-bill="zip"
+                 placeholder="87102" inputmode="numeric"
+                 value="{{ values.get('billing_zip', '') }}" required>
+        </div>
       </div>
     </fieldset>
     <div class="field wide">
@@ -59,19 +99,26 @@
   </div>
 </form>
 <script>
-  // "Same as mailing address": mirror the mailing address into billing while checked.
-  const mailing = document.getElementById("mailing_address");
-  const billing = document.getElementById("billing_address");
+  // "Same as mailing address": mirror each mailing part into its billing twin.
+  const PARTS = ["street", "city", "state", "zip"];
   const same = document.getElementById("same_as_mailing");
+  const mail = k => document.querySelector('[data-mail="' + k + '"]');
+  const bill = k => document.querySelector('[data-bill="' + k + '"]');
   function syncBilling() {
-    if (same.checked) {
-      billing.value = mailing.value;
-      billing.readOnly = true;
-    } else {
-      billing.readOnly = false;
-    }
+    PARTS.forEach(k => {
+      if (same.checked) {
+        bill(k).value = mail(k).value;
+        bill(k).readOnly = true;
+      } else {
+        bill(k).readOnly = false;
+      }
+    });
+    document.getElementById("billing_fields").style.opacity = same.checked ? 0.6 : 1;
   }
   same.addEventListener("change", syncBilling);
-  mailing.addEventListener("input", syncBilling);
+  PARTS.forEach(k => mail(k).addEventListener("input", () => { if (same.checked) syncBilling(); }));
+  // Pre-check the box on new clients when billing exactly matches mailing.
+  const allMatch = PARTS.every(k => mail(k).value === bill(k).value && mail(k).value !== "");
+  if (allMatch && PARTS.some(k => bill(k).value !== "")) { same.checked = true; syncBilling(); }
 </script>
 {% endblock %}

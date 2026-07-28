@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 14.1** (shown in every page footer — the "did my pull work?" check)
+**Current build:** **Piece 15.0** (footer shows it plainly as "Version 15.0" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -32,6 +32,8 @@ footer with the build version. Flash messages render at the top of `main`.
 ### Home / Clients — `/` (`index.html`)
 - Lists all client profiles (name → profile, phone, mailing address, referral).
 - **Search box** (clients + jobs) and a **＋ New client** button.
+- **Live search preview (Piece 15):** as you type, a dropdown previews matching
+  clients and jobs (via `/api/search`); Enter still runs the full search page.
 
 ### Search — `/search` (`search.html`)
 - One box searches **clients** (name/address/phone/email) and **jobs**
@@ -41,11 +43,24 @@ footer with the build version. Flash messages render at the top of `main`.
 - **✎ Edit client information** button (Piece 13.3).
 - **Overview tab:** contact/address/referral/notes/"client since"; **Jobs** table
   (each with a **status badge**) + **＋ New job**.
+- **Change note (Piece 15):** if the profile has been edited, a note shows how
+  many times + last editor/date. Older values are hidden; **admins** get a
+  **🔒 View change history** button (non-admins just see the note).
 - **Documents tab (Piece 12):** client-level files (Contracts / Correspondence /
   Intake / Photos / Other), upload/download/delete — kept separate from job docs.
 
 ### New / Edit client — `/clients/new`, `/clients/<id>/edit` (`client_form.html`)
-- All ECC intake fields; "same as mailing address" helper for billing.
+- All ECC intake fields. **Addresses are separate fields (Piece 15):** street /
+  city / state (defaults NM) / ZIP for mailing and billing, with a "same as
+  mailing address" helper that mirrors all four billing parts. The parts compose
+  into the stored full-address strings used by search/roster/job pre-fill.
+- Editing snapshots the outgoing values into `client_versions` (only when
+  something actually changed); legacy single-line addresses drop into the street
+  line so nothing is lost on first edit.
+
+### Client change history — `/clients/<id>/history` (`client_history.html`, **admin**)
+- The hidden older versions of a profile: each edit's prior values (full snapshot)
+  with the changed-field labels flagged, who edited, and when. Newest first.
 
 ### Job profile — `/jobs/<id>` (`job_detail.html`, tabbed)
 - Header: **status picker** (Lead→Quoted→Sold→Permitting→Scheduled→Installed→Closed/Lost),
@@ -158,6 +173,11 @@ link and **Change password** (submits for admin approval).
   estimates — spot-check before a stamped design). Sales/Designer mode is labeled a
   *"view toggle, not access control."*
 
+**Client change history (Piece 15)**
+- Profile note: *"This profile has been changed N times…"* — for non-admins,
+  *"Earlier information is hidden; an admin can review it."* The old values live
+  only on the admin-only history page.
+
 **Data / migration**
 - Employee profile shows any pre-Piece-8.1 free-text credentials under *"Earlier
   free-text entry (from before structured tracking)"* with a nudge to re-enter as rows.
@@ -201,10 +221,11 @@ link and **Change password** (submits for admin approval).
   `loads_seed.py` (379 appliances + 62 components); `bpmn_export.py`;
   `templates/` (Jinja; `base.html` holds styling + tab CSS + nav);
   `docs/reference/00–04*.md` (verified July-2026 NM permit/AHJ/utility source set).
-- **Tables (22):** clients, jobs, job_versions, job_materials, job_files, job_tasks,
-  resource_rules, meta, employees, employee_credentials, employee_files, client_files,
-  appliance_catalog, component_catalog, job_load_rooms, job_load_items, job_bom,
-  job_sizing, password_requests, field_submissions, field_submission_items, audit_log.
+- **Tables (23):** clients, client_versions, jobs, job_versions, job_materials,
+  job_files, job_tasks, resource_rules, meta, employees, employee_credentials,
+  employee_files, client_files, appliance_catalog, component_catalog,
+  job_load_rooms, job_load_items, job_bom, job_sizing, password_requests,
+  field_submissions, field_submission_items, audit_log.
 
 # 4) Working conventions
 - Bump `VERSION` in `app.py` per change; verify with a running server (curl + Playwright

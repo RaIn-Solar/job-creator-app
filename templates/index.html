@@ -5,11 +5,21 @@
   <h1>Client profiles</h1>
   <a href="{{ url_for('new_client') }}" class="btn">＋ New client</a>
 </div>
-<form method="get" action="{{ url_for('search') }}" class="card"
-      style="display:flex; gap:0.5rem; align-items:center; padding:0.75rem 1rem;">
-  <input type="search" name="q" placeholder="🔍 Search clients &amp; jobs…" style="flex:1;">
-  <button type="submit" class="btn">Search</button>
-</form>
+<div style="position:relative;">
+  <form method="get" action="{{ url_for('search') }}" class="card" id="search_form"
+        style="display:flex; gap:0.5rem; align-items:center; padding:0.75rem 1rem; margin-bottom:0;"
+        autocomplete="off">
+    <input type="search" name="q" id="q" placeholder="🔍 Search clients &amp; jobs…"
+           style="flex:1;" aria-expanded="false" aria-controls="preview">
+    <button type="submit" class="btn">Search</button>
+  </form>
+  <div id="preview" role="listbox"
+       style="display:none; position:absolute; left:0; right:0; top:100%; z-index:20;
+              background:var(--card); border:1px solid var(--border); border-top:none;
+              border-radius:0 0 10px 10px; box-shadow:0 8px 20px rgba(0,0,0,0.08);
+              max-height:22rem; overflow-y:auto;"></div>
+</div>
+<div style="height:1rem;"></div>
 <div class="card">
   {% if clients %}
   <table>
@@ -38,4 +48,69 @@
 </div>
 <p class="muted">Open a client to see their jobs folder and create job
 profiles. Piece 4 adds automatic resources on each job page.</p>
+
+<script>
+  // Live preview of search matches as you type, without leaving the page.
+  const input = document.getElementById("q");
+  const box = document.getElementById("preview");
+  const statusClass = {{ job_status_class_json | default('{}') | safe }};
+  let timer = null, lastQ = "";
+
+  const esc = s => (s || "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  function hide() { box.style.display = "none"; input.setAttribute("aria-expanded", "false"); }
+  function row(href, main, sub, badge) {
+    return '<a href="' + href + '" style="display:block; padding:0.55rem 0.9rem;'
+      + ' border-bottom:1px solid var(--border); text-decoration:none; color:var(--text);">'
+      + '<span style="font-weight:600; color:var(--brand-dark);">' + esc(main) + '</span>'
+      + (badge || '')
+      + (sub ? '<br><span class="muted" style="font-size:0.82rem;">' + esc(sub) + '</span>' : '')
+      + '</a>';
+  }
+
+  function render(data) {
+    let html = "";
+    if (data.clients.length) {
+      html += '<div class="muted" style="padding:0.4rem 0.9rem; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; background:#fafbf9;">Clients</div>';
+      data.clients.forEach(c => {
+        const sub = [c.phone, c.address].filter(Boolean).join(" · ");
+        html += row("/clients/" + c.id, c.name, sub, "");
+      });
+    }
+    if (data.jobs.length) {
+      html += '<div class="muted" style="padding:0.4rem 0.9rem; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; background:#fafbf9;">Jobs</div>';
+      data.jobs.forEach(j => {
+        const badge = ' <span class="badge ' + (statusClass[j.status] || "neutral")
+          + '" style="font-size:0.7rem;">' + esc(j.status) + '</span>';
+        html += row("/jobs/" + j.id, j.name, j.client_name, badge);
+      });
+    }
+    if (!html) {
+      html = '<div class="muted" style="padding:0.7rem 0.9rem;">No matches. Press Enter for a full search.</div>';
+    }
+    box.innerHTML = html;
+    box.style.display = "block";
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  input.addEventListener("input", () => {
+    const q = input.value.trim();
+    if (q === lastQ) return;
+    lastQ = q;
+    clearTimeout(timer);
+    if (!q) { hide(); return; }
+    timer = setTimeout(() => {
+      fetch("/api/search?q=" + encodeURIComponent(q))
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(render)
+        .catch(() => hide());
+    }, 180);
+  });
+  input.addEventListener("focus", () => { if (box.innerHTML && input.value.trim()) box.style.display = "block"; });
+  document.addEventListener("click", e => {
+    if (!box.contains(e.target) && e.target !== input) hide();
+  });
+  input.addEventListener("keydown", e => { if (e.key === "Escape") hide(); });
+</script>
 {% endblock %}

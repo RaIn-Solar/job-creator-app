@@ -7,12 +7,36 @@ CREATE TABLE IF NOT EXISTS clients (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL,
     phone           TEXT DEFAULT '',
+    -- Piece 15: addresses are captured as separate fields to reduce typos.
+    -- mailing_address / billing_address stay as the composed full strings
+    -- (used by search, the roster, and job pre-fill) built from the parts.
+    mailing_street  TEXT DEFAULT '',
+    mailing_city    TEXT DEFAULT '',
+    mailing_state   TEXT DEFAULT '',
+    mailing_zip     TEXT DEFAULT '',
+    billing_street  TEXT DEFAULT '',
+    billing_city    TEXT DEFAULT '',
+    billing_state   TEXT DEFAULT '',
+    billing_zip     TEXT DEFAULT '',
     mailing_address TEXT DEFAULT '',
     billing_address TEXT DEFAULT '',
     email           TEXT DEFAULT '',
     referral_source TEXT DEFAULT '',
     notes           TEXT DEFAULT '',
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Piece 15: prior-version history for client profiles. Each edit snapshots
+-- the outgoing values (JSON) plus the list of changed-field labels. The old
+-- data is hidden from the profile; only admins can open the history.
+CREATE TABLE IF NOT EXISTS client_versions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id      INTEGER NOT NULL REFERENCES clients(id),
+    version        INTEGER NOT NULL,
+    data           TEXT NOT NULL,          -- JSON snapshot of the old values
+    changed_fields TEXT NOT NULL DEFAULT '[]',  -- JSON list of changed labels
+    edited_by      TEXT DEFAULT '',
+    saved_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS jobs (
