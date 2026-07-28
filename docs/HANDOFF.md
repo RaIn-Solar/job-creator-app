@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 17.0** (footer shows it plainly as "Version 17.0" — the "did my pull work?" check)
+**Current build:** **Piece 17.1** (footer shows it plainly as "Version 17.1" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -164,9 +164,19 @@ footer with the build version. Flash messages render at the top of `main`.
   `has_permission(perm)`; `admin_required` maps each gated view to a permission via
   `VIEW_PERMISSION`, and templates gate UI with `can('<perm>')`. Permissions catalog
   lives in `PERMISSIONS`; grants (with expiry) in `permission_grants`.
-- **Deletion (Stage 2, not yet built):** GM-only-or-granted deletion, in-use checks,
-  and a trash can are the next step — the "delete" permission is already grantable
-  but delete routes aren't yet re-gated/soft-deleted.
+- **Deletion & trash (Piece 17.1, done):** every UI delete now requires the **delete**
+  permission (`@delete_required`) → runs an **in-use check** (blocks with an error
+  listing what references it) → otherwise **soft-deletes to the `trash` table** (full
+  original row as JSON + origin table + a "found in" label). The `TRASH_REGISTRY`
+  defines each entity's label / found-in / in-use rules (+ file path for uploads).
+  Restore re-inserts the row to its origin table (original id preserved when free);
+  **permanent purge is GM-only** (`gm_required`) and unlinks any on-disk file. Delete
+  buttons are hidden unless `can('delete')`.
+
+### Trash — `/trash` (`trash.html`, delete-permission holders; purge = GM only)
+- Deleted items with what they were and where they lived; **↩ Restore** or (GM only)
+  **🗑 Delete permanently**. In-use items never reach here — they're blocked at delete
+  time. Cold-lead purge is also delete-gated (its own graveyard, not the trash).
 
 ### Task board — `/tasks` (`tasks.html`)
 - Every task across all jobs; filter by person/unassigned and open/all; status tally +
@@ -274,7 +284,7 @@ link and **Change password** (submits for admin approval).
   `loads_seed.py` (379 appliances + 62 components); `bpmn_export.py`;
   `templates/` (Jinja; `base.html` holds styling + tab CSS + nav);
   `docs/reference/00–04*.md` (verified July-2026 NM permit/AHJ/utility source set).
-- **Tables (26):** clients, client_versions, lead_followups, cold_leads, permission_grants, jobs,
+- **Tables (27):** clients, client_versions, lead_followups, cold_leads, permission_grants, trash, jobs,
   job_versions, job_materials, job_files, job_tasks, resource_rules, meta,
   employees, employee_credentials, employee_files, client_files,
   appliance_catalog, component_catalog, job_load_rooms, job_load_items, job_bom,

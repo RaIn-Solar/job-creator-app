@@ -10,8 +10,10 @@
   <div style="display:flex; gap:0.5rem;">
     {% if can('employees.manage') %}
     <a href="{{ url_for('edit_employee', employee_id=employee['id']) }}" class="btn">Edit</a>
+    {% endif %}
+    {% if can('delete') %}
     <form method="post" action="{{ url_for('delete_employee', employee_id=employee['id']) }}"
-          onsubmit="return confirm('Remove this employee and all their credentials and documents?');" style="margin:0;">
+          onsubmit="return confirm('Send this employee to the trash? (Blocked if they still own tasks, are a sales rep, or have submissions.)');" style="margin:0;">
       <button type="submit" class="btn btn-secondary">Delete</button>
     </form>
     {% endif %}
@@ -99,9 +101,9 @@
         <td class="muted">{{ r["rule_label"] or "—" }}</td>
         <td>{% if c.documented %}📎 yes{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
-          {% if can('employees.manage') %}
+          {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_credential', employee_id=employee['id'], credential_id=r['id']) }}"
-                onsubmit="return confirm('Remove this license/certification?');" style="margin:0;">
+                onsubmit="return confirm('Send this license/certification to the trash?');" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -167,9 +169,9 @@
       <a href="{{ url_for('download_employee_file', employee_id=employee['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
       {% if f["credential_name"] %}<span class="badge">{{ f["credential_name"] }}</span>{% endif %}
       <span class="muted">{{ f["uploaded_at"][:10] }}</span>
-      {% if can('employees.manage') %}
+      {% if can('delete') %}
       <form method="post" action="{{ url_for('delete_employee_file', employee_id=employee['id'], file_id=f['id']) }}"
-            onsubmit="return confirm('Delete this document?');" style="display:inline; margin:0 0 0 0.4rem;">
+            onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
         <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
       </form>
       {% endif %}

@@ -185,6 +185,7 @@
     <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
     {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
     {% if can('audit.view') %}<a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>{% endif %}
+    {% if can('delete') %}<a href="/trash" style="font-size:0.9rem; font-weight:500;">🗑 Trash</a>{% endif %}
     {% if is_gm %}<a href="/access" style="font-size:0.9rem; font-weight:500;">🔐 Access</a>{% endif %}
     {% endif %}
     {% if login_active and current_user %}

@@ -126,10 +126,12 @@
         <td>{% if f["category"] %}<span class="badge">{{ f["category"] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="muted">{{ f["uploaded_at"][:10] }}</td>
         <td>
+          {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_client_file', client_id=client['id'], file_id=f['id']) }}"
-                onsubmit="return confirm('Delete this document?');" style="margin:0;">
+                onsubmit="return confirm('Send this document to the trash?');" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

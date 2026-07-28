@@ -151,10 +151,12 @@
           <form id="{{ mf }}" method="post" action="{{ url_for('edit_material', job_id=job['id'], material_id=m['id']) }}" style="display:inline; margin:0;">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Save changes to this row">Save</button>
           </form>
+          {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_material', job_id=job['id'], material_id=m['id']) }}"
-                onsubmit="return confirm('Remove this material?');" style="display:inline; margin:0;">
+                onsubmit="return confirm('Send this material to the trash?');" style="display:inline; margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -186,10 +188,12 @@
       <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
       {% if f["rule_label"] %}<span class="badge">{{ f["rule_label"] }}</span>{% endif %}
       <span class="muted">{{ f["uploaded_at"][:10] }}</span>
+      {% if can('delete') %}
       <form method="post" action="{{ url_for('delete_file', job_id=job['id'], file_id=f['id']) }}"
-            onsubmit="return confirm('Delete this document?');" style="display:inline; margin:0 0 0 0.4rem;">
+            onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
         <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
       </form>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -282,10 +286,12 @@
           <form id="{{ tf }}" method="post" action="{{ url_for('edit_task', job_id=job['id'], task_id=t['id']) }}" style="display:inline; margin:0;">
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Save the task name/notes">Save</button>
           </form>
+          {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_task', job_id=job['id'], task_id=t['id']) }}"
-                onsubmit="return confirm('Delete this task?');" style="display:inline; margin:0;">
+                onsubmit="return confirm('Send this task to the trash?');" style="display:inline; margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

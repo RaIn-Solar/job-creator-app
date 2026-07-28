@@ -32,6 +32,22 @@ CREATE TABLE IF NOT EXISTS clients (
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 17.1: soft-delete trash. A deleted row is snapshotted here (full
+-- original row as JSON, plus its origin table + a "where it was" label) and
+-- removed from its own table, so it can be restored to exactly where it came
+-- from or permanently purged by the General Manager.
+CREATE TABLE IF NOT EXISTS trash (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type  TEXT NOT NULL,
+    origin_table TEXT NOT NULL,
+    original_id  INTEGER,
+    found_in     TEXT DEFAULT '',
+    label        TEXT DEFAULT '',
+    payload      TEXT NOT NULL,
+    deleted_by   TEXT DEFAULT '',
+    deleted_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Piece 17: granular per-employee access grants handed out by the General
 -- Manager. Each row = "this employee has this permission until expires_on"
 -- (blank expires_on = no expiry).

@@ -102,9 +102,9 @@ matching job page updates immediately. No code changes needed.</p>
         </td>
         <td class="muted">{{ r["notes"] }}</td>
         <td>
-          {% if can('rules.manage') %}
+          {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
-                onsubmit="return confirm('Delete this rule?');" style="margin:0;">
+                onsubmit="return confirm('Send this rule to the trash?');" style="margin:0;">
             {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>

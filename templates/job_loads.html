@@ -46,9 +46,11 @@
           <td class="muted">{{ it["usage_type"] }}</td>
           <td>{{ "%.2f"|format((it["watts"] or 0) * (it["qty"] or 0) * (it["hrs"] or 0) / 1000) }}</td>
           <td>
+            {% if can('delete') %}
             <form method="post" action="{{ url_for('delete_load_item', job_id=job['id'], item_id=it['id']) }}" style="margin:0;">
               <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">✕</button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% else %}
@@ -91,10 +93,12 @@
       <form method="post" action="{{ url_for('toggle_load_room', job_id=job['id'], room_id=room['id']) }}" style="margin:0;">
         <button type="submit" class="btn btn-secondary">{{ "Exclude from totals" if room["enabled"] else "Include in totals" }}</button>
       </form>
+      {% if can('delete') %}
       <form method="post" action="{{ url_for('delete_load_room', job_id=job['id'], room_id=room['id']) }}"
-            onsubmit="return confirm('Delete this room and all its appliances?');" style="margin:0;">
+            onsubmit="return confirm('Send this room to the trash? (Remove its appliances first if any.)');" style="margin:0;">
         <button type="submit" class="btn btn-secondary">Delete room</button>
       </form>
+      {% endif %}
     </div>
   </fieldset>
   {% else %}
@@ -198,9 +202,11 @@
         <td>{% if b["unit_cost"] %}${{ "%.0f"|format((b["qty"] or 0) * (b["unit_cost"] or 0)) }}{% endif %}</td>
         <td class="muted">{{ b["notes"] }}</td>
         <td>
+          {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_bom_item', job_id=job['id'], bom_id=b['id']) }}" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">✕</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

@@ -718,7 +718,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 17.0"
+VERSION = "Piece 17.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1076,6 +1076,194 @@ def save_access(employee_id):
     db.commit()
     flash(f"Access updated for {emp['name']}.")
     return redirect(url_for("access_console", _anchor=f"emp{employee_id}"))
+
+
+# ===================== Piece 17.1: soft-delete / trash / in-use checks ======
+def delete_required(view):
+    """Deletion is GM-only or granted (the 'delete' permission)."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not has_permission("delete"):
+            flash("Deleting is limited to the General Manager (or staff granted "
+                  "the Delete permission).", "error")
+            return redirect(request.referrer or url_for("home"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def _count(db, sql, params):
+    return db.execute(sql, params).fetchone()[0]
+
+
+def _job_name(db, jid):
+    r = db.execute("SELECT job_name FROM jobs WHERE id = ?", (jid,)).fetchone()
+    return (r["job_name"] if r and r["job_name"] else f"Job #{jid}")
+
+
+def _client_name(db, cid):
+    r = db.execute("SELECT name FROM clients WHERE id = ?", (cid,)).fetchone()
+    return r["name"] if r else f"Client #{cid}"
+
+
+def _emp_name(db, eid):
+    r = db.execute("SELECT name FROM employees WHERE id = ?", (eid,)).fetchone()
+    return r["name"] if r else f"Employee #{eid}"
+
+
+def _component_uses(db, cid):
+    uses = []
+    n = _count(db, "SELECT COUNT(*) FROM job_bom WHERE component_id = ?", (cid,))
+    if n:
+        uses.append(f"{n} job bill-of-materials line(s)")
+    n = _count(db, "SELECT COUNT(*) FROM job_sizing WHERE selected_battery_id = ?"
+               " OR selected_pv_module_id = ?", (cid, cid))
+    if n:
+        uses.append(f"{n} job sizing selection(s)")
+    return uses
+
+
+def _employee_uses(db, eid):
+    uses = []
+    n = _count(db, "SELECT COUNT(*) FROM job_tasks WHERE employee_id = ?", (eid,))
+    if n:
+        uses.append(f"{n} assigned task(s)")
+    n = _count(db, "SELECT COUNT(*) FROM clients WHERE assigned_rep_id = ?", (eid,))
+    if n:
+        uses.append(f"{n} client(s) where they're the sales rep")
+    n = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE employee_id = ?", (eid,))
+    if n:
+        uses.append(f"{n} field-work submission(s)")
+    return uses
+
+
+# entity_type -> how to label it, where it lived, what would block its delete,
+# and (for file rows) where its file sits on disk.
+TRASH_REGISTRY = {
+    "rule": {"table": "resource_rules", "label": lambda r: r["label"],
+             "found_in": lambda db, r: "Rules",
+             "in_use": lambda db, r: (
+                 [f"{_count(db, 'SELECT COUNT(*) FROM job_files WHERE rule_label = ?', (r['label'],))} filed document(s)"]
+                 if _count(db, "SELECT COUNT(*) FROM job_files WHERE rule_label = ?", (r["label"],)) else [])},
+    "appliance": {"table": "appliance_catalog", "label": lambda r: r["name"],
+                  "found_in": lambda db, r: "Appliance catalog",
+                  "in_use": lambda db, r: []},
+    "component": {"table": "component_catalog", "label": lambda r: r["name"],
+                  "found_in": lambda db, r: "Component catalog",
+                  "in_use": lambda db, r: _component_uses(db, r["id"])},
+    "material": {"table": "job_materials", "label": lambda r: r["item"],
+                 "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Materials",
+                 "in_use": lambda db, r: []},
+    "task": {"table": "job_tasks", "label": lambda r: r["title"],
+             "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Tasks",
+             "in_use": lambda db, r: (
+                 [f"{_count(db, 'SELECT COUNT(*) FROM field_submission_items WHERE task_id = ?', (r['id'],))} field submission(s)"]
+                 if _count(db, "SELECT COUNT(*) FROM field_submission_items WHERE task_id = ?", (r["id"],)) else [])},
+    "load_room": {"table": "job_load_rooms", "label": lambda r: r["name"],
+                  "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Loads",
+                  "in_use": lambda db, r: (
+                      [f"{_count(db, 'SELECT COUNT(*) FROM job_load_items WHERE room_id = ?', (r['id'],))} appliance(s) in the room"]
+                      if _count(db, "SELECT COUNT(*) FROM job_load_items WHERE room_id = ?", (r["id"],)) else [])},
+    "load_item": {"table": "job_load_items", "label": lambda r: r["appliance"],
+                  "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Loads",
+                  "in_use": lambda db, r: []},
+    "bom": {"table": "job_bom", "label": lambda r: r["component_name"],
+            "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Components",
+            "in_use": lambda db, r: []},
+    "job_file": {"table": "job_files", "label": lambda r: r["original_name"],
+                 "found_in": lambda db, r: f"{_job_name(db, r['job_id'])} — Documents",
+                 "in_use": lambda db, r: [],
+                 "file": lambda r: UPLOADS_DIR / f"job_{r['job_id']}" / r["stored_name"]},
+    "client_file": {"table": "client_files", "label": lambda r: r["original_name"],
+                    "found_in": lambda db, r: f"{_client_name(db, r['client_id'])} — Documents",
+                    "in_use": lambda db, r: [],
+                    "file": lambda r: UPLOADS_DIR / f"client_{r['client_id']}" / r["stored_name"]},
+    "credential": {"table": "employee_credentials", "label": lambda r: r["name"],
+                   "found_in": lambda db, r: f"{_emp_name(db, r['employee_id'])} — Credentials",
+                   "in_use": lambda db, r: []},
+    "employee_file": {"table": "employee_files", "label": lambda r: r["original_name"],
+                      "found_in": lambda db, r: f"{_emp_name(db, r['employee_id'])} — Documents",
+                      "in_use": lambda db, r: [],
+                      "file": lambda r: UPLOADS_DIR / f"employee_{r['employee_id']}" / r["stored_name"]},
+    "employee": {"table": "employees", "label": lambda r: r["name"],
+                 "found_in": lambda db, r: "Employees",
+                 "in_use": lambda db, r: _employee_uses(db, r["id"])},
+}
+
+
+def trash_item(entity_type, row_id):
+    """Move a row to the trash if it isn't in use. Returns (ok, message)."""
+    cfg = TRASH_REGISTRY[entity_type]
+    db = get_db()
+    row = db.execute(f"SELECT * FROM {cfg['table']} WHERE id = ?", (row_id,)).fetchone()
+    if row is None:
+        return False, "That item no longer exists."
+    blockers = cfg["in_use"](db, row)
+    if blockers:
+        return False, (f"Can't delete “{cfg['label'](row)}” — it's still in use by "
+                       + "; ".join(blockers) + ". Remove those first.")
+    user = current_user()
+    db.execute(
+        "INSERT INTO trash (entity_type, origin_table, original_id, found_in,"
+        " label, payload, deleted_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (entity_type, cfg["table"], row_id, cfg["found_in"](db, row),
+         cfg["label"](row), json.dumps({k: row[k] for k in row.keys()}),
+         user["name"] if user else ""))
+    db.execute(f"DELETE FROM {cfg['table']} WHERE id = ?", (row_id,))
+    db.commit()
+    return True, f"Moved to trash: {cfg['label'](row)}. Restore it from the Trash page."
+
+
+@app.route("/trash")
+@delete_required
+def trash_page():
+    db = get_db()
+    rows = db.execute("SELECT * FROM trash ORDER BY deleted_at DESC").fetchall()
+    return render_template("trash.html", rows=rows)
+
+
+@app.route("/trash/<int:trash_id>/restore", methods=["POST"])
+@delete_required
+def restore_trash(trash_id):
+    db = get_db()
+    t = db.execute("SELECT * FROM trash WHERE id = ?", (trash_id,)).fetchone()
+    if t is None:
+        abort(404)
+    payload = json.loads(t["payload"])
+    cols = list(payload.keys())
+    placeholders = ", ".join("?" * len(cols))
+    try:
+        db.execute(f"INSERT INTO {t['origin_table']} ({', '.join(cols)})"
+                   f" VALUES ({placeholders})", [payload[c] for c in cols])
+    except sqlite3.IntegrityError:
+        # Original id was taken since deletion — restore under a fresh id.
+        cols = [c for c in cols if c != "id"]
+        placeholders = ", ".join("?" * len(cols))
+        db.execute(f"INSERT INTO {t['origin_table']} ({', '.join(cols)})"
+                   f" VALUES ({placeholders})", [payload[c] for c in cols])
+    db.execute("DELETE FROM trash WHERE id = ?", (trash_id,))
+    db.commit()
+    flash(f"Restored: {t['label']} (back in {t['found_in']}).")
+    return redirect(url_for("trash_page"))
+
+
+@app.route("/trash/<int:trash_id>/purge", methods=["POST"])
+@gm_required
+def purge_trash(trash_id):
+    """Permanent deletion — General Manager only."""
+    db = get_db()
+    t = db.execute("SELECT * FROM trash WHERE id = ?", (trash_id,)).fetchone()
+    if t is None:
+        abort(404)
+    cfg = TRASH_REGISTRY.get(t["entity_type"], {})
+    if "file" in cfg:
+        try:
+            cfg["file"](json.loads(t["payload"])).unlink(missing_ok=True)
+        except Exception:
+            pass
+    db.execute("DELETE FROM trash WHERE id = ?", (trash_id,))
+    db.commit()
+    flash(f"Permanently deleted: {t['label']}.")
+    return redirect(url_for("trash_page"))
 
 
 @app.before_request
@@ -1845,7 +2033,7 @@ def restore_cold_lead(cold_id):
 
 
 @app.route("/cold-leads/<int:cold_id>/delete", methods=["POST"])
-@admin_required
+@delete_required
 def purge_cold_lead(cold_id):
     db = get_db()
     cl = db.execute("SELECT name FROM cold_leads WHERE id = ?",
@@ -1908,16 +2096,10 @@ def download_client_file(client_id, file_id):
 
 
 @app.route("/clients/<int:client_id>/files/<int:file_id>/delete", methods=["POST"])
+@delete_required
 def delete_client_file(client_id, file_id):
-    db = get_db()
-    record = db.execute(
-        "SELECT * FROM client_files WHERE id = ? AND client_id = ?",
-        (file_id, client_id)).fetchone()
-    if record:
-        (client_upload_dir(client_id) / record["stored_name"]).unlink(missing_ok=True)
-        db.execute("DELETE FROM client_files WHERE id = ?", (record["id"],))
-        db.commit()
-        flash(f"Deleted: {record['original_name']}")
+    ok, msg = trash_item("client_file", file_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
 
 
@@ -2266,13 +2448,10 @@ def toggle_load_room(job_id, room_id):
 
 
 @app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/delete", methods=["POST"])
+@delete_required
 def delete_load_room(job_id, room_id):
-    db = get_db()
-    db.execute("DELETE FROM job_load_items WHERE room_id = ? AND job_id = ?",
-               (room_id, job_id))
-    db.execute("DELETE FROM job_load_rooms WHERE id = ? AND job_id = ?",
-               (room_id, job_id))
-    db.commit()
+    ok, msg = trash_item("load_room", room_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("job_loads", job_id=job_id))
 
 
@@ -2326,11 +2505,10 @@ def add_load_item(job_id):
 
 
 @app.route("/jobs/<int:job_id>/loads/items/<int:item_id>/delete", methods=["POST"])
+@delete_required
 def delete_load_item(job_id, item_id):
-    db = get_db()
-    db.execute("DELETE FROM job_load_items WHERE id = ? AND job_id = ?",
-               (item_id, job_id))
-    db.commit()
+    ok, msg = trash_item("load_item", item_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("job_loads", job_id=job_id))
 
 
@@ -2385,10 +2563,10 @@ def add_bom_item(job_id):
 
 
 @app.route("/jobs/<int:job_id>/loads/bom/<int:bom_id>/delete", methods=["POST"])
+@delete_required
 def delete_bom_item(job_id, bom_id):
-    db = get_db()
-    db.execute("DELETE FROM job_bom WHERE id = ? AND job_id = ?", (bom_id, job_id))
-    db.commit()
+    ok, msg = trash_item("bom", bom_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("job_loads", job_id=job_id))
 
 
@@ -2506,11 +2684,10 @@ def add_appliance_catalog():
 
 
 @app.route("/catalog/appliances/<int:appliance_id>/delete", methods=["POST"])
-@admin_required
+@delete_required
 def delete_appliance_catalog(appliance_id):
-    db = get_db()
-    db.execute("DELETE FROM appliance_catalog WHERE id = ?", (appliance_id,))
-    db.commit()
+    ok, msg = trash_item("appliance", appliance_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("catalog_page"))
 
 
@@ -2551,25 +2728,12 @@ def add_component_catalog():
 
 
 @app.route("/catalog/components/<int:component_id>/delete", methods=["POST"])
-@admin_required
+@delete_required
 def delete_component_catalog(component_id):
-    db = get_db()
-    # job_bom.component_id and job_sizing.selected_battery_id /
-    # selected_pv_module_id all reference this table, and foreign_keys is ON
-    # (get_db()) — deleting a component still in use would otherwise fail
-    # with an IntegrityError. job_bom already snapshots name/category/cost
-    # at add-time, so clearing the link there just detaches history from a
-    # since-removed catalog entry rather than losing any data.
-    db.execute("UPDATE job_bom SET component_id = NULL WHERE component_id = ?",
-               (component_id,))
-    db.execute(
-        "UPDATE job_sizing SET selected_battery_id = NULL"
-        " WHERE selected_battery_id = ?", (component_id,))
-    db.execute(
-        "UPDATE job_sizing SET selected_pv_module_id = NULL"
-        " WHERE selected_pv_module_id = ?", (component_id,))
-    db.execute("DELETE FROM component_catalog WHERE id = ?", (component_id,))
-    db.commit()
+    # Piece 17.1: blocked (with an error) if the component is still used by any
+    # job BOM line or sizing selection; otherwise it goes to the trash.
+    ok, msg = trash_item("component", component_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("catalog_page"))
 
 
@@ -2638,11 +2802,10 @@ def edit_material(job_id, material_id):
 
 
 @app.route("/jobs/<int:job_id>/materials/<int:material_id>/delete", methods=["POST"])
+@delete_required
 def delete_material(job_id, material_id):
-    db = get_db()
-    db.execute("DELETE FROM job_materials WHERE id = ? AND job_id = ?",
-               (material_id, job_id))
-    db.commit()
+    ok, msg = trash_item("material", material_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="materials"))
 
 
@@ -2829,11 +2992,10 @@ def edit_task(job_id, task_id):
 
 
 @app.route("/jobs/<int:job_id>/tasks/<int:task_id>/delete", methods=["POST"])
+@delete_required
 def delete_task(job_id, task_id):
-    db = get_db()
-    db.execute("DELETE FROM job_tasks WHERE id = ? AND job_id = ?",
-               (task_id, job_id))
-    db.commit()
+    ok, msg = trash_item("task", task_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
 
 
@@ -3097,17 +3259,10 @@ def download_file(job_id, file_id):
 
 
 @app.route("/jobs/<int:job_id>/files/<int:file_id>/delete", methods=["POST"])
+@delete_required
 def delete_file(job_id, file_id):
-    db = get_db()
-    record = db.execute(
-        "SELECT * FROM job_files WHERE id = ? AND job_id = ?",
-        (file_id, job_id),
-    ).fetchone()
-    if record:
-        (job_upload_dir(job_id) / record["stored_name"]).unlink(missing_ok=True)
-        db.execute("DELETE FROM job_files WHERE id = ?", (record["id"],))
-        db.commit()
-        flash(f"Deleted: {record['original_name']}")
+    ok, msg = trash_item("job_file", file_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
 
 
@@ -3361,12 +3516,10 @@ def rule_directory():
 
 
 @app.route("/rules/<int:rule_id>/delete", methods=["POST"])
-@admin_required
+@delete_required
 def delete_rule(rule_id):
-    db = get_db()
-    db.execute("DELETE FROM resource_rules WHERE id = ?", (rule_id,))
-    db.commit()
-    flash("Rule deleted.")
+    ok, msg = trash_item("rule", rule_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("rules_page",
                             from_job=request.form.get("from_job") or None))
 
@@ -3629,25 +3782,15 @@ def edit_employee(employee_id):
 
 
 @app.route("/employees/<int:employee_id>/delete", methods=["POST"])
-@admin_required
+@delete_required
 def delete_employee(employee_id):
-    db = get_db()
-    # Remove the person's credentials and document records, and their files
-    # on disk, so nothing is orphaned.
-    for record in db.execute(
-            "SELECT stored_name FROM employee_files WHERE employee_id = ?",
-            (employee_id,)).fetchall():
-        (employee_upload_dir(employee_id) / record["stored_name"]).unlink(missing_ok=True)
-    db.execute("DELETE FROM employee_files WHERE employee_id = ?", (employee_id,))
-    db.execute("DELETE FROM employee_credentials WHERE employee_id = ?", (employee_id,))
-    # Tasks belong to the job, not the person — unassign rather than delete
-    # them (and keep the FK happy, since foreign_keys is ON).
-    db.execute("UPDATE job_tasks SET employee_id = NULL WHERE employee_id = ?",
-               (employee_id,))
-    db.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
-    db.commit()
-    flash("Employee removed.")
-    return redirect(url_for("employees_page"))
+    # Piece 17.1: blocked (with an error) if they still own tasks, are a
+    # client's sales rep, or have field submissions — otherwise trashed (their
+    # credentials/documents travel with them and reconnect on restore).
+    ok, msg = trash_item("employee", employee_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("employee_detail", employee_id=employee_id)
+                    if not ok else url_for("employees_page"))
 
 
 # ---- employee licenses & certifications (structured, with expiry) --------
@@ -3680,13 +3823,10 @@ def add_credential(employee_id):
 
 @app.route("/employees/<int:employee_id>/credentials/<int:credential_id>/delete",
            methods=["POST"])
-@admin_required
+@delete_required
 def delete_credential(employee_id, credential_id):
-    db = get_db()
-    db.execute("DELETE FROM employee_credentials WHERE id = ? AND employee_id = ?",
-               (credential_id, employee_id))
-    db.commit()
-    flash("License/certification removed.")
+    ok, msg = trash_item("credential", credential_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
 
 
@@ -3741,17 +3881,10 @@ def download_employee_file(employee_id, file_id):
 
 @app.route("/employees/<int:employee_id>/files/<int:file_id>/delete",
            methods=["POST"])
-@admin_required
+@delete_required
 def delete_employee_file(employee_id, file_id):
-    db = get_db()
-    record = db.execute(
-        "SELECT * FROM employee_files WHERE id = ? AND employee_id = ?",
-        (file_id, employee_id)).fetchone()
-    if record:
-        (employee_upload_dir(employee_id) / record["stored_name"]).unlink(missing_ok=True)
-        db.execute("DELETE FROM employee_files WHERE id = ?", (record["id"],))
-        db.commit()
-        flash(f"Deleted: {record['original_name']}")
+    ok, msg = trash_item("employee_file", file_id)
+    flash(msg, "" if ok else "error")
     return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
 
 

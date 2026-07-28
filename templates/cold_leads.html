@@ -29,10 +29,12 @@ deleted automatically.</p>
         <form method="post" action="{{ url_for('restore_cold_lead', cold_id=l['id']) }}" style="display:inline; margin:0;">
           <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">↩ Restore</button>
         </form>
+        {% if can('delete') %}
         <form method="post" action="{{ url_for('purge_cold_lead', cold_id=l['id']) }}" style="display:inline; margin:0;"
               onsubmit="return confirm('Permanently delete this cold lead? This cannot be undone.');">
           <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕ Delete</button>
         </form>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}

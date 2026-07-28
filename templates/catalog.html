@@ -67,9 +67,9 @@ applies everywhere immediately.</p>
         <td class="muted">{{ a["usage_type"] }}</td>
         <td class="muted">{{ a["notes"] or "" }}</td>
         <td>
-          {% if can('catalog.manage') %}
+          {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_appliance_catalog', appliance_id=a['id']) }}"
-                onsubmit="return confirm('Delete this appliance from the catalog?');" style="margin:0;">
+                onsubmit="return confirm('Send this appliance to the trash?');" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -127,9 +127,9 @@ applies everywhere immediately.</p>
         <td class="muted">{{ c["specs"] or "" }}</td>
         <td>{% if c["cost"] %}${{ "%.0f"|format(c["cost"]) }}{% endif %}</td>
         <td>
-          {% if can('catalog.manage') %}
+          {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_component_catalog', component_id=c['id']) }}"
-                onsubmit="return confirm('Delete this component from the catalog?');" style="margin:0;">
+                onsubmit="return confirm('Send this component to the trash?');" style="margin:0;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
