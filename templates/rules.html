@@ -14,7 +14,7 @@
 link, or phone number. Jobs read these rules live — add a rule here and every
 matching job page updates immediately. No code changes needed.</p>
 
-{% if is_admin %}
+{% if can('rules.manage') %}
 <form method="post" action="{{ url_for('add_rule') }}" class="card">
   {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
   <h2 style="margin-top:0; font-size:1.05rem;">Add a rule</h2>
@@ -102,7 +102,7 @@ matching job page updates immediately. No code changes needed.</p>
         </td>
         <td class="muted">{{ r["notes"] }}</td>
         <td>
-          {% if is_admin %}
+          {% if can('rules.manage') %}
           <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
                 onsubmit="return confirm('Delete this rule?');" style="margin:0;">
             {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}

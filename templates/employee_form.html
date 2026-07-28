@@ -52,7 +52,7 @@
                 placeholder="e.g. Mon–Fri 7:00 AM – 4:00 PM; on call alternate weekends">{{ values.get('schedule', '') }}</textarea>
     </div>
 
-    {% if is_admin %}
+    {% if can('employees.manage') %}
     <div class="field wide">
       <fieldset class="section">
         <legend>Login &amp; access</legend>

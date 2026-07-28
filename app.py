@@ -198,6 +198,20 @@ EMPLOYEE_FIELDS = ["name", "roles", "schedule"]
 # separately so a normal profile edit never touches account data by accident.
 EMPLOYEE_AUTH_FIELDS = ["username", "password_hash", "access_level"]
 ACCESS_LEVELS = ["Standard", "Admin"]
+
+# Piece 17: the tools/functions a General Manager can grant to an individual
+# (with an optional expiry). GM ⇒ all of these automatically; Admin ⇒ every
+# tool below except "delete"; Standard ⇒ only what's granted.
+PERMISSIONS = {
+    "rules.manage": "Manage rules",
+    "catalog.manage": "Manage catalog (appliances & components)",
+    "employees.manage": "Manage employees & accounts",
+    "approvals": "Approve field work",
+    "audit.view": "View the audit log",
+    "leads.manage": "Manage cold leads",
+    "clients.history": "View client change history",
+    "delete": "Delete data (sends it to the trash)",
+}
 PASSWORD_MIN_LEN = 6
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "roles": "Roles", "schedule": "Schedule",
@@ -704,7 +718,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 16.1"
+VERSION = "Piece 17.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -895,20 +909,111 @@ def current_user():
         "SELECT * FROM employees WHERE id = ?", (uid,)).fetchone()
 
 
+def _has_gm_role(user):
+    """A General Manager is anyone whose roles include 'General Manager'
+    (Piece 17 — GM access is derived from the org-chart role)."""
+    if user is None:
+        return False
+    return "General Manager" in [r.strip() for r in (user["roles"] or "").split(",")]
+
+
+def is_gm():
+    """GM tier — unfettered access. Open mode counts as GM so the very first
+    account can be set up."""
+    if not accounts_exist():
+        return True
+    return _has_gm_role(current_user())
+
+
 def _is_admin():
-    """Admin, OR open mode (no accounts yet) so the first admin can be set up."""
+    """GM or Admin, OR open mode (no accounts yet) so setup can happen."""
     if not accounts_exist():
         return True
     user = current_user()
-    return user is not None and user["access_level"] == "Admin"
+    return user is not None and (
+        _has_gm_role(user) or user["access_level"] == "Admin")
+
+
+def _has_grant(user, perm):
+    """A live (unexpired) permission grant for this user."""
+    if user is None:
+        return False
+    today = datetime.now().strftime("%Y-%m-%d")
+    return get_db().execute(
+        "SELECT 1 FROM permission_grants WHERE employee_id = ? AND permission = ?"
+        " AND (COALESCE(expires_on, '') = '' OR expires_on >= ?) LIMIT 1",
+        (user["id"], perm, today)).fetchone() is not None
+
+
+def has_permission(perm):
+    """Central access check. GM ⇒ everything. 'delete' is GM-or-granted only
+    (never automatic for Admin). Other tools: Admin ⇒ yes, else a live grant.
+    perm=None is the generic Admin/GM gate."""
+    if not accounts_exist():
+        return True
+    user = current_user()
+    if user is None:
+        return False
+    if _has_gm_role(user):
+        return True
+    if perm == "delete":
+        return _has_grant(user, "delete")
+    if perm is None:
+        return user["access_level"] == "Admin"
+    if user["access_level"] == "Admin":
+        return True
+    return _has_grant(user, perm)
+
+
+# Which permission each admin-gated view needs (Piece 17). Views not listed
+# fall back to the generic Admin/GM gate (perm=None).
+VIEW_PERMISSION = {
+    "client_history": "clients.history",
+    "cold_leads_page": "leads.manage",
+    "restore_cold_lead": "leads.manage",
+    "purge_cold_lead": "leads.manage",
+    "add_appliance_catalog": "catalog.manage",
+    "delete_appliance_catalog": "catalog.manage",
+    "add_component_catalog": "catalog.manage",
+    "delete_component_catalog": "catalog.manage",
+    "submissions_page": "approvals",
+    "approve_submission": "approvals",
+    "reject_submission": "approvals",
+    "add_rule": "rules.manage",
+    "delete_rule": "rules.manage",
+    "accounts_page": "employees.manage",
+    "approve_password_change": "employees.manage",
+    "reject_password_change": "employees.manage",
+    "new_employee": "employees.manage",
+    "edit_employee": "employees.manage",
+    "delete_employee": "employees.manage",
+    "add_credential": "employees.manage",
+    "delete_credential": "employees.manage",
+    "upload_employee_file": "employees.manage",
+    "delete_employee_file": "employees.manage",
+    "audit_log_page": "audit.view",
+}
 
 
 def admin_required(view):
-    """Guard admin-only actions (editing shared data + accounts + the log)."""
+    """Guard a shared-data view by the permission it maps to (or the generic
+    Admin/GM gate). Granting that permission to a Standard user opens exactly
+    this tool for them."""
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if not _is_admin():
-            flash("That action is limited to admin accounts.", "error")
+        if not has_permission(VIEW_PERMISSION.get(view.__name__)):
+            flash("You don't have access to that. Ask a General Manager.", "error")
+            return redirect(url_for("home"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def gm_required(view):
+    """General-Manager-only actions (the access console; trash management)."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not is_gm():
+            flash("That's limited to the General Manager.", "error")
             return redirect(url_for("home"))
         return view(*args, **kwargs)
     return wrapped
@@ -917,9 +1022,8 @@ def admin_required(view):
 @app.context_processor
 def inject_auth():
     user = current_user()
-    is_admin = _is_admin()
     pending = 0
-    if is_admin:
+    if has_permission("approvals"):
         try:
             pending = get_db().execute(
                 "SELECT COUNT(*) FROM field_submissions WHERE status = 'Pending'"
@@ -927,7 +1031,51 @@ def inject_auth():
         except Exception:
             pending = 0
     return {"current_user": user, "login_active": accounts_exist(),
-            "is_admin": is_admin, "pending_submissions": pending}
+            "is_admin": _is_admin(), "is_gm": is_gm(), "can": has_permission,
+            "pending_submissions": pending}
+
+
+@app.route("/access")
+@gm_required
+def access_console():
+    """GM console: grant individual tools to people (with optional expiry)."""
+    db = get_db()
+    people = db.execute(
+        "SELECT * FROM employees WHERE COALESCE(username,'') != '' ORDER BY name"
+    ).fetchall()
+    grants = {}
+    for g in db.execute(
+            "SELECT employee_id, permission, expires_on FROM permission_grants"):
+        grants.setdefault(g["employee_id"], {})[g["permission"]] = g["expires_on"] or ""
+    rows = [{
+        "id": p["id"], "name": p["name"], "is_gm": _has_gm_role(p),
+        "level": p["access_level"] or "Standard", "grants": grants.get(p["id"], {}),
+    } for p in people]
+    return render_template("access.html", rows=rows, permissions=PERMISSIONS,
+                           today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/access/<int:employee_id>", methods=["POST"])
+@gm_required
+def save_access(employee_id):
+    db = get_db()
+    emp = db.execute("SELECT * FROM employees WHERE id = ?",
+                     (employee_id,)).fetchone()
+    if emp is None:
+        abort(404)
+    gm = current_user()
+    granter = gm["name"] if gm else "General Manager"
+    db.execute("DELETE FROM permission_grants WHERE employee_id = ?", (employee_id,))
+    for key in PERMISSIONS:
+        if request.form.get(f"perm_{key}"):
+            db.execute(
+                "INSERT INTO permission_grants (employee_id, permission,"
+                " granted_by, expires_on) VALUES (?, ?, ?, ?)",
+                (employee_id, key, granter,
+                 request.form.get(f"exp_{key}", "").strip()))
+    db.commit()
+    flash(f"Access updated for {emp['name']}.")
+    return redirect(url_for("access_console", _anchor=f"emp{employee_id}"))
 
 
 @app.before_request

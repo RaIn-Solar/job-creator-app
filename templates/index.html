@@ -4,7 +4,7 @@
 <div class="toolbar">
   <h1>Client profiles</h1>
   <div style="display:flex; gap:0.5rem; align-items:center;">
-    {% if is_admin and cold_count %}
+    {% if can('leads.manage') and cold_count %}
     <a href="{{ url_for('cold_leads_page') }}" class="btn btn-secondary">❄ Cold leads ({{ cold_count }})</a>
     {% endif %}
     <a href="{{ url_for('new_client') }}" class="btn">＋ New client</a>

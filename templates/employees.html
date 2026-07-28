@@ -3,7 +3,7 @@
 {% block content %}
 <div class="toolbar">
   <h1>👥 Employees</h1>
-  {% if is_admin %}
+  {% if can('employees.manage') %}
   <div style="display:flex; gap:0.5rem;">
     <a href="{{ url_for('accounts_page') }}" class="btn btn-secondary">🔑 Accounts</a>
     <a href="{{ url_for('new_employee') }}" class="btn">＋ New employee</a>

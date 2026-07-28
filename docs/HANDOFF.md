@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 16.1** (footer shows it plainly as "Version 16.1" — the "did my pull work?" check)
+**Current build:** **Piece 17.0** (footer shows it plainly as "Version 17.0" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -151,6 +151,23 @@ footer with the build version. Flash messages render at the top of `main`.
 - Who can sign in + access level + password-set status; employees without a login;
   and **⏳ Pending password changes** (approve/reject self-service requests).
 
+### Access console — `/access` (`access.html`, **GM only**, Piece 17)
+- The General Manager grants individual tools to people who sign in, each with an
+  optional **expiry date** (temporary access lapses on its own). GMs show "Full
+  access"; Admin rows note "Admin already has this" (except Delete). One save form
+  per person writes `permission_grants`.
+
+### Access model (Piece 17, cross-cutting)
+- **GM = anyone holding the "General Manager" role** (`_has_gm_role`) — unfettered
+  access + the console + (delegatable) delete. **Admin** keeps every tool below GM
+  **except Delete**. **Standard** gets only granted tools. Central check is
+  `has_permission(perm)`; `admin_required` maps each gated view to a permission via
+  `VIEW_PERMISSION`, and templates gate UI with `can('<perm>')`. Permissions catalog
+  lives in `PERMISSIONS`; grants (with expiry) in `permission_grants`.
+- **Deletion (Stage 2, not yet built):** GM-only-or-granted deletion, in-use checks,
+  and a trash can are the next step — the "delete" permission is already grantable
+  but delete routes aren't yet re-gated/soft-deleted.
+
 ### Task board — `/tasks` (`tasks.html`)
 - Every task across all jobs; filter by person/unassigned and open/all; status tally +
   overdue count; inline status change; link to **🎒 My Work Bag**.
@@ -257,7 +274,7 @@ link and **Change password** (submits for admin approval).
   `loads_seed.py` (379 appliances + 62 components); `bpmn_export.py`;
   `templates/` (Jinja; `base.html` holds styling + tab CSS + nav);
   `docs/reference/00–04*.md` (verified July-2026 NM permit/AHJ/utility source set).
-- **Tables (25):** clients, client_versions, lead_followups, cold_leads, jobs,
+- **Tables (26):** clients, client_versions, lead_followups, cold_leads, permission_grants, jobs,
   job_versions, job_materials, job_files, job_tasks, resource_rules, meta,
   employees, employee_credentials, employee_files, client_files,
   appliance_catalog, component_catalog, job_load_rooms, job_load_items, job_bom,

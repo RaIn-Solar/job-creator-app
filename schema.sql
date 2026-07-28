@@ -32,6 +32,18 @@ CREATE TABLE IF NOT EXISTS clients (
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 17: granular per-employee access grants handed out by the General
+-- Manager. Each row = "this employee has this permission until expires_on"
+-- (blank expires_on = no expiry).
+CREATE TABLE IF NOT EXISTS permission_grants (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL REFERENCES employees(id),
+    permission  TEXT NOT NULL,
+    granted_by  TEXT DEFAULT '',
+    granted_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_on  TEXT DEFAULT ''
+);
+
 -- Piece 16: scheduled follow-ups for a new lead (7 days / 2 weeks / 1 month).
 -- Generated on demand; surfaced on the home page and the task board.
 CREATE TABLE IF NOT EXISTS lead_followups (
