@@ -3,8 +3,46 @@
 {% block content %}
 <div class="toolbar">
   <h1>Client profiles</h1>
-  <a href="{{ url_for('new_client') }}" class="btn">＋ New client</a>
+  <div style="display:flex; gap:0.5rem; align-items:center;">
+    {% if is_admin and cold_count %}
+    <a href="{{ url_for('cold_leads_page') }}" class="btn btn-secondary">❄ Cold leads ({{ cold_count }})</a>
+    {% endif %}
+    <a href="{{ url_for('new_client') }}" class="btn">＋ New client</a>
+  </div>
 </div>
+
+{% if followups %}
+<div class="card" style="border-left:4px solid #f5a623;">
+  <h2 style="margin-top:0; font-size:1.1rem;">🔔 Follow-ups due ({{ followups|length }})</h2>
+  <p class="muted" style="margin-top:0;">New leads on the 7-day / 2-week / 1-month
+  cadence. Log the contact, convert the lead by entering job details, or mark it cold.</p>
+  <table>
+    <thead><tr><th>Lead</th><th>Follow-up</th><th>Due</th><th>Sales rep</th><th></th></tr></thead>
+    <tbody>
+      {% for f in followups %}
+      <tr>
+        <td><a href="{{ url_for('client_detail', client_id=f['client_id']) }}">{{ f["client_name"] }}</a>
+          {% if f["client_phone"] %}<br><span class="muted" style="font-size:0.8rem;">{{ f["client_phone"] }}</span>{% endif %}</td>
+        <td><span class="badge neutral">{{ f["milestone"] }}</span></td>
+        <td>{{ f["due_date"] }}{% if f["due_date"] < today %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td>{{ f["rep_name"] or "— unassigned —" }}</td>
+        <td style="white-space:nowrap;">
+          <a href="{{ url_for('new_job', client_id=f['client_id']) }}" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Enter job details</a>
+          <form method="post" action="{{ url_for('followup_done', followup_id=f['id']) }}" style="display:inline; margin:0;">
+            <input type="hidden" name="next" value="{{ url_for('home') }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Log that you followed up">✓ Logged</button>
+          </form>
+          <form method="post" action="{{ url_for('mark_cold', client_id=f['client_id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Move this lead to cold leads? It leaves the active list.');">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">❄ Cold</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 <div style="position:relative;">
   <form method="get" action="{{ url_for('search') }}" class="card" id="search_form"
         style="display:flex; gap:0.5rem; align-items:center; padding:0.75rem 1rem; margin-bottom:0;"
@@ -34,7 +72,8 @@
     <tbody>
       {% for c in clients %}
       <tr>
-        <td><a href="{{ url_for('client_detail', client_id=c['id']) }}">{{ c["name"] }}</a></td>
+        <td><a href="{{ url_for('client_detail', client_id=c['id']) }}">{{ c["name"] }}</a>
+          {% if c["lead_status"] == "Lead" %}<span class="badge warn" style="font-size:0.7rem;">Lead</span>{% endif %}</td>
         <td>{{ c["phone"] }}</td>
         <td>{{ c["mailing_address"] }}</td>
         <td>{{ c["referral_source"] }}</td>

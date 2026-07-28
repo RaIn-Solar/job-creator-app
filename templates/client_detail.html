@@ -25,10 +25,47 @@
   {% endif %}
 </div>
 {% endif %}
+{% if client["lead_status"] == "Lead" %}
+<div class="card" style="border-left:4px solid #f5a623;">
+  <div class="toolbar" style="margin-bottom:0.4rem;">
+    <h2 style="margin:0; font-size:1.05rem;">🌱 Lead <span class="badge warn">not yet converted</span></h2>
+    <form method="post" action="{{ url_for('mark_cold', client_id=client['id']) }}" style="margin:0;"
+          onsubmit="return confirm('Move this lead to cold leads? It leaves the active list.');">
+      <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem;">❄ Mark cold</button>
+    </form>
+  </div>
+  <p class="muted" style="margin-top:0;">Convert this lead by adding its first job
+  (＋ New job below). Follow-ups run 7 days / 2 weeks / 1 month after creation.</p>
+  {% if followups %}
+  <table>
+    <thead><tr><th>Follow-up</th><th>Due</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for f in followups %}
+      <tr>
+        <td>{{ f["milestone"] }}</td>
+        <td>{{ f["due_date"] }}{% if f["status"] == "Open" and f["due_date"] < today %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td>
+          {% if f["status"] == "Open" %}
+          <form method="post" action="{{ url_for('followup_done', followup_id=f['id']) }}" style="margin:0;">
+            <input type="hidden" name="next" value="{{ url_for('client_detail', client_id=client['id']) }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.55rem; font-size:0.78rem;">✓ Log follow-up</button>
+          </form>
+          {% else %}<span class="badge">{{ f["status"] }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted" style="margin-bottom:0;">No follow-ups have come due yet.</p>
+  {% endif %}
+</div>
+{% endif %}
 <div class="card">
   <dl class="profile">
     <dt>Phone</dt><dd>{{ client["phone"] or "—" }}</dd>
     <dt>Email</dt><dd>{{ client["email"] or "—" }}</dd>
+    <dt>Sales rep</dt><dd>{{ rep["name"] if rep else "— unassigned —" }}</dd>
     <dt>Mailing address</dt><dd>{{ client["mailing_address"] or "—" }}</dd>
     <dt>Billing address</dt>
     <dd>
@@ -58,7 +95,7 @@
       {% for j in jobs %}
       <tr>
         <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
-        <td><span class="badge {{ job_status_class.get(j["status"] or "Lead", "neutral") }}">{{ j["status"] or "Lead" }}</span></td>
+        <td><span class="badge {{ job_status_class.get(j["status"] or "Proposal", "neutral") }}">{{ j["status"] or "Proposal" }}</span></td>
         <td>{{ j["products"] }}</td>
         <td>{{ j["county"] }}</td>
         <td>{{ j["created_at"] }}</td>

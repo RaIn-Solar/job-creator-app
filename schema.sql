@@ -23,7 +23,51 @@ CREATE TABLE IF NOT EXISTS clients (
     email           TEXT DEFAULT '',
     referral_source TEXT DEFAULT '',
     notes           TEXT DEFAULT '',
+    -- Piece 16: lead lifecycle. lead_status is 'Lead' (new prospect, in the
+    -- follow-up cadence), 'Converted' (has a job), or 'Cold' (only used on the
+    -- cold_leads table). assigned_rep_id owns the follow-ups.
+    lead_status     TEXT DEFAULT 'Lead',
+    assigned_rep_id INTEGER,
+    converted_at    TEXT DEFAULT '',
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Piece 16: scheduled follow-ups for a new lead (7 days / 2 weeks / 1 month).
+-- Generated on demand; surfaced on the home page and the task board.
+CREATE TABLE IF NOT EXISTS lead_followups (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id  INTEGER NOT NULL REFERENCES clients(id),
+    rep_id     INTEGER,
+    milestone  TEXT NOT NULL,            -- '7-day' / '2-week' / '1-month'
+    due_date   TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'Open',  -- Open / Done / Converted / Cold
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    done_at    TEXT DEFAULT ''
+);
+
+-- Piece 16: leads marked "cold" are moved out of clients into here (they have
+-- no jobs). Kept for reference; flagged stale after 6 months for admin purge.
+CREATE TABLE IF NOT EXISTS cold_leads (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    name              TEXT NOT NULL,
+    phone             TEXT DEFAULT '',
+    email             TEXT DEFAULT '',
+    referral_source   TEXT DEFAULT '',
+    notes             TEXT DEFAULT '',
+    mailing_street    TEXT DEFAULT '',
+    mailing_city      TEXT DEFAULT '',
+    mailing_state     TEXT DEFAULT '',
+    mailing_zip       TEXT DEFAULT '',
+    billing_street    TEXT DEFAULT '',
+    billing_city      TEXT DEFAULT '',
+    billing_state     TEXT DEFAULT '',
+    billing_zip       TEXT DEFAULT '',
+    mailing_address   TEXT DEFAULT '',
+    billing_address   TEXT DEFAULT '',
+    assigned_rep_id   INTEGER,
+    cold_reason       TEXT DEFAULT '',
+    original_created_at TEXT DEFAULT '',
+    cold_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Piece 15: prior-version history for client profiles. Each edit snapshots
@@ -60,7 +104,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     battery_utility_connection   TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
     service_type     TEXT DEFAULT '',   -- General service / Warranty service
     property_type    TEXT DEFAULT 'Residential',  -- Residential / Commercial
-    status           TEXT NOT NULL DEFAULT 'Lead',  -- Piece 12.1 pipeline stage
+    status           TEXT NOT NULL DEFAULT 'Proposal',  -- Piece 16 pipeline stage
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

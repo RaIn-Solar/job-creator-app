@@ -8,7 +8,7 @@
           title="Job status / pipeline stage">
       <select name="status" onchange="this.form.submit()" style="padding:0.4rem;">
         {% for s in job_statuses %}
-        <option value="{{ s }}" {% if (job["status"] or "Lead") == s %}selected{% endif %}>{{ s }}</option>
+        <option value="{{ s }}" {% if (job["status"] or "Proposal") == s %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
       </select>
     </form>

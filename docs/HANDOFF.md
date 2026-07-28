@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 15.1** (footer shows it plainly as "Version 15.1" — the "did my pull work?" check)
+**Current build:** **Piece 16.0** (footer shows it plainly as "Version 16.0" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -30,10 +30,15 @@ and the signed-in user's name (links to My account) + Log out. Every page has a
 footer with the build version. Flash messages render at the top of `main`.
 
 ### Home / Clients — `/` (`index.html`)
-- Lists all client profiles (name → profile, phone, mailing address, referral).
-- **Search box** (clients + jobs) and a **＋ New client** button.
+- Lists all client profiles (name → profile, phone, mailing address, referral);
+  active **Leads** carry a "Lead" badge.
+- **Search box** (clients + jobs) and a **＋ New client** button; admins see a
+  **❄ Cold leads (N)** button.
 - **Live search preview (Piece 15):** as you type, a dropdown previews matching
   clients and jobs (via `/api/search`); Enter still runs the full search page.
+- **🔔 Follow-ups due (Piece 16):** leads on the 7-day / 2-week / 1-month cadence
+  whose follow-up is due/overdue, each with **Enter job details** (convert),
+  **✓ Logged**, and **❄ Cold** actions.
 
 ### Search — `/search` (`search.html`)
 - One box searches **clients** (name/address/phone/email) and **jobs**
@@ -50,7 +55,8 @@ footer with the build version. Flash messages render at the top of `main`.
   Intake / Photos / Other), upload/download/delete — kept separate from job docs.
 
 ### New / Edit client — `/clients/new`, `/clients/<id>/edit` (`client_form.html`)
-- All ECC intake fields. **Addresses are separate fields (Piece 15):** street /
+- All ECC intake fields, plus an **assigned sales rep** (Piece 16). **Addresses
+  are separate fields (Piece 15):** street /
   city / state (defaults NM) / ZIP for mailing and billing, with a "same as
   mailing address" helper that mirrors all four billing parts. The parts compose
   into the stored full-address strings used by search/roster/job pre-fill.
@@ -62,8 +68,20 @@ footer with the build version. Flash messages render at the top of `main`.
 - The hidden older versions of a profile: each edit's prior values (full snapshot)
   with the changed-field labels flagged, who edited, and when. Newest first.
 
+### Cold leads — `/cold-leads` (`cold_leads.html`, **admin**, Piece 16)
+- Leads marked cold, moved out of the active client list into a separate table.
+  Rows older than **182 days (~6 months)** are flagged **purge?**; nothing
+  auto-deletes. Actions: **↩ Restore** (back to active leads) / **✕ Delete**.
+
+### Lead lifecycle (Piece 16, cross-cutting)
+- Clients carry a `lead_status`: **Lead** (new prospect, in the follow-up cadence)
+  → **Converted** (first job created) or moved to **Cold** (separate `cold_leads`
+  table). An **assigned sales rep** owns the follow-ups. Follow-ups are generated
+  on demand (home + task board load) at 7/14/30 days after creation; creating a
+  job converts the lead and closes its open follow-ups.
+
 ### Job profile — `/jobs/<id>` (`job_detail.html`, tabbed)
-- Header buttons: **status picker** (Lead→Quoted→Sold→Permitting→Scheduled→Installed→Closed/Lost),
+- Header buttons: **status picker** (Piece 16: Proposal→Job Prep→Installation→Inspections→Closing→Complete, or Lost),
   **✎ Edit job**, **⚡ Loads & Sizing** (own page, Piece 15.1), **Process chart**,
   **← Client profile**.
 - **Tabs (5):** General details · **LPC** · Materials · Documents · Tasks.
@@ -228,11 +246,12 @@ link and **Change password** (submits for admin approval).
   `loads_seed.py` (379 appliances + 62 components); `bpmn_export.py`;
   `templates/` (Jinja; `base.html` holds styling + tab CSS + nav);
   `docs/reference/00–04*.md` (verified July-2026 NM permit/AHJ/utility source set).
-- **Tables (23):** clients, client_versions, jobs, job_versions, job_materials,
-  job_files, job_tasks, resource_rules, meta, employees, employee_credentials,
-  employee_files, client_files, appliance_catalog, component_catalog,
-  job_load_rooms, job_load_items, job_bom, job_sizing, password_requests,
-  field_submissions, field_submission_items, audit_log.
+- **Tables (25):** clients, client_versions, lead_followups, cold_leads, jobs,
+  job_versions, job_materials, job_files, job_tasks, resource_rules, meta,
+  employees, employee_credentials, employee_files, client_files,
+  appliance_catalog, component_catalog, job_load_rooms, job_load_items, job_bom,
+  job_sizing, password_requests, field_submissions, field_submission_items,
+  audit_log.
 
 # 4) Working conventions
 - Bump `VERSION` in `app.py` per change; verify with a running server (curl + Playwright
@@ -248,6 +267,14 @@ link and **Change password** (submits for admin approval).
   future add.
 - **Add/delete-only records** (rules, catalog, credentials, load items, BOM, rooms) have
   no in-place edit — re-add loses nothing there, but edit can be added on request.
-- **No client/job delete** (intentional — would cascade).
-- Suggested next: **hours summary / timesheet** from approved submissions; rule edit;
-  the service worker.
+- **No client/job delete** (intentional — would cascade). Cold leads (job-less)
+  *can* be deleted from the admin cold-leads page.
+- **BPMN process is still hard-coded** in `bpmn_export.py`. Piece 16 redefined the
+  *status phases* (Leads/Proposal/Job Prep/Installation/Inspections/Closing) and the
+  lead lifecycle, but **editing the BPMN step contents and reassigning role lanes
+  by department is deferred** — the agreed next workflow task. Roles/permissions
+  overhaul is also still pending.
+- **Follow-ups generate on page load** (home + task board), not via a background
+  scheduler — fine for an always-someone's-logged-in tool; revisit if that changes.
+- Suggested next: **BPMN step/role restructure**; **hours summary / timesheet** from
+  approved submissions; rule edit; the service worker.

@@ -52,7 +52,8 @@ DATABASE = DATA_DIR / "job_creator.db"
 # composed from them so search, the roster, and job pre-fill keep working.
 MAILING_PARTS = ["mailing_street", "mailing_city", "mailing_state", "mailing_zip"]
 BILLING_PARTS = ["billing_street", "billing_city", "billing_state", "billing_zip"]
-CLIENT_SIMPLE_FIELDS = ["name", "phone", "email", "referral_source", "notes"]
+CLIENT_SIMPLE_FIELDS = ["name", "phone", "email", "referral_source", "notes",
+                        "assigned_rep_id"]
 # What the form posts (everything the user types).
 CLIENT_FORM_FIELDS = CLIENT_SIMPLE_FIELDS + MAILING_PARTS + BILLING_PARTS
 # Every stored column, including the two composed full-address strings.
@@ -62,6 +63,7 @@ CLIENT_FIELDS = CLIENT_FORM_FIELDS + ["mailing_address", "billing_address"]
 CLIENT_FIELD_LABELS = {
     "name": "Client name", "phone": "Phone number", "email": "Email address",
     "referral_source": "Referral source", "notes": "Notes",
+    "assigned_rep_id": "Assigned sales rep",
     "mailing_street": "Mailing street", "mailing_city": "Mailing city",
     "mailing_state": "Mailing state", "mailing_zip": "Mailing ZIP",
     "billing_street": "Billing street", "billing_city": "Billing city",
@@ -100,6 +102,66 @@ def read_client_form():
         values["billing_street"], values["billing_city"],
         values["billing_state"], values["billing_zip"])
     return values
+
+
+# ------------------------------------------------------------ lead lifecycle
+def ensure_lead_followups(db):
+    """Create any follow-up rows that have come due for active leads (7 days /
+    2 weeks / 1 month after the client was created). Idempotent."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    leads = db.execute(
+        "SELECT id, assigned_rep_id, created_at FROM clients"
+        " WHERE lead_status = 'Lead'").fetchall()
+    made = False
+    for lead in leads:
+        base = (lead["created_at"] or "")[:10]
+        if not base:
+            continue
+        try:
+            base_date = datetime.strptime(base, "%Y-%m-%d")
+        except ValueError:
+            continue
+        existing = {r["milestone"] for r in db.execute(
+            "SELECT milestone FROM lead_followups WHERE client_id = ?",
+            (lead["id"],))}
+        for days, milestone in LEAD_FOLLOWUP_SCHEDULE:
+            due = (base_date + timedelta(days=days)).strftime("%Y-%m-%d")
+            if due <= today and milestone not in existing:
+                db.execute(
+                    "INSERT INTO lead_followups (client_id, rep_id, milestone,"
+                    " due_date, status) VALUES (?, ?, ?, ?, 'Open')",
+                    (lead["id"], lead["assigned_rep_id"], milestone, due))
+                made = True
+    if made:
+        db.commit()
+
+
+def due_followups(db):
+    """Open, due-or-overdue follow-ups with client + rep names (for the home
+    page and task board)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    return db.execute(
+        "SELECT f.*, c.name AS client_name, c.phone AS client_phone,"
+        " e.name AS rep_name FROM lead_followups f"
+        " JOIN clients c ON c.id = f.client_id"
+        " LEFT JOIN employees e ON e.id = f.rep_id"
+        " WHERE f.status = 'Open' AND f.due_date <= ?"
+        " AND c.lead_status = 'Lead'"
+        " ORDER BY f.due_date, c.name", (today,)).fetchall()
+
+
+COLD_LEAD_FIELDS = [
+    "name", "phone", "email", "referral_source", "notes",
+    "mailing_street", "mailing_city", "mailing_state", "mailing_zip",
+    "billing_street", "billing_city", "billing_state", "billing_zip",
+    "mailing_address", "billing_address", "assigned_rep_id",
+]
+
+
+def crew_list():
+    """Employees for the assigned-rep picker on the client form."""
+    return get_db().execute(
+        "SELECT id, name FROM employees ORDER BY name").fetchall()
 
 # Job profile columns (products is stored as a comma-separated list).
 JOB_FIELDS = [
@@ -606,7 +668,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 15.1"
+VERSION = "Piece 16.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -617,14 +679,26 @@ MATERIAL_STATUSES = ["Needed", "Ordered", "Received", "Installed"]
 # Piece 12: categories for client-level documents (distinct from a job's
 # requirement categories — these describe the client relationship).
 CLIENT_FILE_CATEGORIES = ["Contracts", "Correspondence", "Intake", "Photos", "Other"]
-# Piece 12.1: job pipeline stage (surfaced as a status picker + badges).
-JOB_STATUSES = ["Lead", "Quoted", "Sold", "Permitting", "Scheduled",
-                "Installed", "Closed", "Lost"]
+# Piece 16: job pipeline stages, redefined to match ECC's process phases.
+# (Leads/Cold are a client-level state — see lead_status — because a lead has
+# no job yet; a job exists from Proposal onward.)
+JOB_STATUSES = ["Proposal", "Job Prep", "Installation", "Inspections",
+                "Closing", "Complete", "Lost"]
 JOB_STATUS_CLASS = {
-    "Lead": "neutral", "Quoted": "neutral", "Sold": "warn",
-    "Permitting": "warn", "Scheduled": "warn", "Installed": "",
-    "Closed": "", "Lost": "danger",
+    "Proposal": "neutral", "Job Prep": "warn", "Installation": "warn",
+    "Inspections": "warn", "Closing": "warn", "Complete": "", "Lost": "danger",
 }
+DEFAULT_JOB_STATUS = "Proposal"
+# Migrate Piece 12.1 statuses to the Piece 16 phases so existing jobs survive.
+OLD_TO_NEW_STATUS = {
+    "Lead": "Proposal", "Quoted": "Proposal", "Sold": "Job Prep",
+    "Permitting": "Job Prep", "Scheduled": "Installation",
+    "Installed": "Inspections", "Closed": "Complete",
+}
+# Piece 16: lead follow-up cadence (days after the client is created) and the
+# age at which a cold lead is flagged for an admin to purge.
+LEAD_FOLLOWUP_SCHEDULE = [(7, "7-day"), (14, "2-week"), (30, "1-month")]
+COLD_LEAD_STALE_DAYS = 182  # ~6 months
 # Piece 10: per-job task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
 # Piece 10.2: when generating tasks from the process, map each BPMN lane
@@ -939,9 +1013,20 @@ def init_db():
     if "street_address" in client_cols and "mailing_address" not in client_cols:
         db.execute("ALTER TABLE clients RENAME COLUMN street_address TO mailing_address")
     ensure_columns(db, "clients", CLIENT_FIELDS)
+    # Piece 16: lead-lifecycle columns that aren't part of the intake form.
+    ensure_columns(db, "clients", ["lead_status", "assigned_rep_id", "converted_at"])
+    db.execute("UPDATE clients SET lead_status = 'Lead'"
+               " WHERE COALESCE(lead_status, '') = ''")
     ensure_columns(db, "jobs", JOB_FIELDS + ["status"])
-    # Existing jobs predate the status column; give blanks the default stage.
-    db.execute("UPDATE jobs SET status = 'Lead' WHERE COALESCE(status, '') = ''")
+    # Piece 16: migrate Piece 12.1 statuses to the new phases, and default blanks.
+    for old, new in OLD_TO_NEW_STATUS.items():
+        db.execute("UPDATE jobs SET status = ? WHERE status = ?", (new, old))
+    db.execute(f"UPDATE jobs SET status = '{DEFAULT_JOB_STATUS}'"
+               f" WHERE COALESCE(status, '') = ''")
+    # A client with any job is 'Converted' (a lead has no job yet).
+    db.execute("UPDATE clients SET lead_status = 'Converted'"
+               " WHERE lead_status = 'Lead'"
+               " AND id IN (SELECT DISTINCT client_id FROM jobs)")
     # Piece 14: change-tracking for task sync; seed blanks from created_at.
     ensure_columns(db, "job_tasks", ["updated_at"])
     db.execute("UPDATE job_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
@@ -970,8 +1055,8 @@ def init_db():
             " (name, phone, email, referral_source,"
             "  mailing_street, mailing_city, mailing_state, mailing_zip,"
             "  billing_street, billing_city, billing_state, billing_zip,"
-            "  mailing_address, billing_address)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "  mailing_address, billing_address, lead_status)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Converted')",
             [(name, phone, email, referral, *mail, *bill,
               compose_address(*mail), compose_address(*bill))
              for name, phone, email, referral, mail, bill in samples],
@@ -1278,10 +1363,17 @@ def compute_voc(voc_rated, temp_coef_pct, record_low_temp_f, max_input_v):
 
 @app.route("/")
 def home():
-    clients = get_db().execute(
-        "SELECT * FROM clients ORDER BY name"
+    db = get_db()
+    ensure_lead_followups(db)
+    clients = db.execute(
+        "SELECT c.*, e.name AS rep_name FROM clients c"
+        " LEFT JOIN employees e ON e.id = c.assigned_rep_id ORDER BY c.name"
     ).fetchall()
+    followups = due_followups(db)
+    cold_count = db.execute("SELECT COUNT(*) FROM cold_leads").fetchone()[0]
     return render_template("index.html", clients=clients,
+                           followups=followups, cold_count=cold_count,
+                           today=datetime.now().strftime("%Y-%m-%d"),
                            job_status_class_json=json.dumps(JOB_STATUS_CLASS))
 
 
@@ -1317,7 +1409,8 @@ def new_client():
                    if not values[field]]
         if missing:
             flash(f"Required: {', '.join(missing)}.", "error")
-            return render_template("client_form.html", values=values), 400
+            return render_template("client_form.html", values=values,
+                                   crew=crew_list()), 400
         db = get_db()
         cur = db.execute(
             f"INSERT INTO clients ({', '.join(CLIENT_FIELDS)})"
@@ -1327,7 +1420,7 @@ def new_client():
         db.commit()
         flash(f"Client profile created: {values['name']}")
         return redirect(url_for("client_detail", client_id=cur.lastrowid))
-    return render_template("client_form.html", values={})
+    return render_template("client_form.html", values={}, crew=crew_list())
 
 
 @app.route("/clients/<int:client_id>/edit", methods=["GET", "POST"])
@@ -1344,7 +1437,7 @@ def edit_client(client_id):
         if missing:
             flash(f"Required: {', '.join(missing)}.", "error")
             return render_template("client_form.html", values=values,
-                                   client_id=client_id), 400
+                                   client_id=client_id, crew=crew_list()), 400
         # Record what changed before overwriting, so the old data is kept
         # (hidden on the profile; admins can open the history).
         changed = [CLIENT_FIELD_LABELS.get(f, f) for f in CLIENT_FORM_FIELDS
@@ -1377,7 +1470,8 @@ def edit_client(client_id):
         values["mailing_street"] = client["mailing_address"]
     if not any(values[p] for p in BILLING_PARTS) and client["billing_address"]:
         values["billing_street"] = client["billing_address"]
-    return render_template("client_form.html", values=values, client_id=client_id)
+    return render_template("client_form.html", values=values,
+                           client_id=client_id, crew=crew_list())
 
 
 @app.route("/clients/<int:client_id>")
@@ -1402,10 +1496,19 @@ def client_detail(client_id):
         "SELECT edited_by, saved_at FROM client_versions"
         " WHERE client_id = ? ORDER BY version DESC LIMIT 1", (client_id,)
     ).fetchone()
+    rep = None
+    if client["assigned_rep_id"]:
+        rep = db.execute("SELECT name FROM employees WHERE id = ?",
+                         (client["assigned_rep_id"],)).fetchone()
+    followups = db.execute(
+        "SELECT * FROM lead_followups WHERE client_id = ?"
+        " ORDER BY due_date", (client_id,)).fetchall()
     return render_template("client_detail.html", client=client, jobs=jobs,
                            files=files, file_categories=CLIENT_FILE_CATEGORIES,
                            job_status_class=JOB_STATUS_CLASS,
-                           edit_count=edit_count, last_edit=last_edit)
+                           edit_count=edit_count, last_edit=last_edit,
+                           rep=rep, followups=followups,
+                           today=datetime.now().strftime("%Y-%m-%d"))
 
 
 @app.route("/clients/<int:client_id>/history")
@@ -1459,8 +1562,98 @@ def api_search():
                 (like, like, like, like, like)).fetchall():
             result["jobs"].append({
                 "id": j["id"], "name": j["job_name"] or f"Job #{j['id']}",
-                "status": j["status"] or "Lead", "client_name": j["client_name"]})
+                "status": j["status"] or DEFAULT_JOB_STATUS,
+                "client_name": j["client_name"]})
     return jsonify(result)
+
+
+# ---------------------------------------------------------- lead follow-ups
+@app.route("/followups/<int:followup_id>/done", methods=["POST"])
+def followup_done(followup_id):
+    """Log that a follow-up was made; the next scheduled one still stands."""
+    db = get_db()
+    db.execute("UPDATE lead_followups SET status = 'Done',"
+               " done_at = datetime('now') WHERE id = ?", (followup_id,))
+    db.commit()
+    flash("Follow-up logged.")
+    return redirect(request.form.get("next") or url_for("home"))
+
+
+@app.route("/clients/<int:client_id>/mark-cold", methods=["POST"])
+def mark_cold(client_id):
+    """Move a lead out of the active list into the cold_leads table. Only
+    leads (no jobs) can go cold."""
+    db = get_db()
+    client = db.execute("SELECT * FROM clients WHERE id = ?",
+                        (client_id,)).fetchone()
+    if client is None:
+        abort(404)
+    if db.execute("SELECT COUNT(*) FROM jobs WHERE client_id = ?",
+                  (client_id,)).fetchone()[0] > 0:
+        flash("This client has jobs, so it isn't a lead — it can't be marked cold.",
+              "error")
+        return redirect(url_for("client_detail", client_id=client_id))
+    reason = request.form.get("reason", "").strip()
+    db.execute(
+        f"INSERT INTO cold_leads ({', '.join(COLD_LEAD_FIELDS)},"
+        " cold_reason, original_created_at)"
+        f" VALUES ({', '.join('?' * len(COLD_LEAD_FIELDS))}, ?, ?)",
+        [client[f] for f in COLD_LEAD_FIELDS] + [reason, client["created_at"]],
+    )
+    db.execute("DELETE FROM lead_followups WHERE client_id = ?", (client_id,))
+    db.execute("DELETE FROM client_versions WHERE client_id = ?", (client_id,))
+    db.execute("DELETE FROM client_files WHERE client_id = ?", (client_id,))
+    db.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+    db.commit()
+    flash(f"{client['name']} moved to cold leads.")
+    return redirect(url_for("home"))
+
+
+@app.route("/cold-leads")
+@admin_required
+def cold_leads_page():
+    db = get_db()
+    rows = db.execute(
+        "SELECT cl.*, e.name AS rep_name FROM cold_leads cl"
+        " LEFT JOIN employees e ON e.id = cl.assigned_rep_id"
+        " ORDER BY cl.cold_at DESC").fetchall()
+    stale_before = (datetime.now() - timedelta(days=COLD_LEAD_STALE_DAYS)
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+    return render_template("cold_leads.html", leads=rows,
+                           stale_before=stale_before,
+                           stale_days=COLD_LEAD_STALE_DAYS)
+
+
+@app.route("/cold-leads/<int:cold_id>/restore", methods=["POST"])
+@admin_required
+def restore_cold_lead(cold_id):
+    db = get_db()
+    cl = db.execute("SELECT * FROM cold_leads WHERE id = ?", (cold_id,)).fetchone()
+    if cl is None:
+        abort(404)
+    db.execute(
+        f"INSERT INTO clients ({', '.join(COLD_LEAD_FIELDS)}, lead_status)"
+        f" VALUES ({', '.join('?' * len(COLD_LEAD_FIELDS))}, 'Lead')",
+        [cl[f] for f in COLD_LEAD_FIELDS],
+    )
+    db.execute("DELETE FROM cold_leads WHERE id = ?", (cold_id,))
+    db.commit()
+    flash(f"{cl['name']} restored to active leads.")
+    return redirect(url_for("cold_leads_page"))
+
+
+@app.route("/cold-leads/<int:cold_id>/delete", methods=["POST"])
+@admin_required
+def purge_cold_lead(cold_id):
+    db = get_db()
+    cl = db.execute("SELECT name FROM cold_leads WHERE id = ?",
+                    (cold_id,)).fetchone()
+    if cl is None:
+        abort(404)
+    db.execute("DELETE FROM cold_leads WHERE id = ?", (cold_id,))
+    db.commit()
+    flash(f"Deleted cold lead: {cl['name']}.")
+    return redirect(url_for("cold_leads_page"))
 
 
 # ---- client-level documents (contracts, correspondence, intake, photos) ---
@@ -1545,6 +1738,12 @@ def new_job(client_id):
             f" VALUES (?, {', '.join('?' * len(JOB_FIELDS))})",
             [client_id] + [values[f] for f in JOB_FIELDS],
         )
+        # Piece 16: entering job details converts a lead — stop its follow-ups.
+        if client["lead_status"] == "Lead":
+            db.execute("UPDATE clients SET lead_status = 'Converted',"
+                       " converted_at = datetime('now') WHERE id = ?", (client_id,))
+            db.execute("UPDATE lead_followups SET status = 'Converted'"
+                       " WHERE client_id = ? AND status = 'Open'", (client_id,))
         db.commit()
         flash(f"Job created under {client['name']}: {values['job_name']}")
         return redirect(url_for("job_detail", job_id=cur.lastrowid))
@@ -2443,6 +2642,8 @@ def tasks_dashboard():
     'what am I supposed to be doing' across every job."""
     db = get_db()
     employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
+    ensure_lead_followups(db)
+    followups = due_followups(db)
     who = request.args.get("employee", "")   # "" (all) / "unassigned" / an id
     show = request.args.get("show", "open")  # open / all
     sql = ("SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name,"
@@ -2470,7 +2671,8 @@ def tasks_dashboard():
                   if t["due_date"] and t["due_date"] < today and t["status"] != "Done")
     return render_template(
         "tasks.html", tasks=tasks, employees=employees, who=who, show=show,
-        task_statuses=TASK_STATUSES, counts=counts, overdue=overdue, today=today)
+        task_statuses=TASK_STATUSES, counts=counts, overdue=overdue, today=today,
+        followups=followups)
 
 
 # ------------------------------------------- Piece 14: Work Bag (offline sync)
