@@ -565,7 +565,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 14.1"
+VERSION = "Piece 14.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -631,7 +631,10 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB per upload
 
 @app.context_processor
 def inject_version():
-    return {"version": VERSION}
+    # `version` keeps the internal build name ("Piece 14.1"); `version_number`
+    # is the plain, beta-tester-facing number ("14.1") shown in the footer.
+    version_number = VERSION.split(" ", 1)[-1] if VERSION.startswith("Piece ") else VERSION
+    return {"version": VERSION, "version_number": version_number}
 
 
 def get_db():

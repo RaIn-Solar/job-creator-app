@@ -14,8 +14,10 @@ just runs it** (Part B). Teammates do **not** need Python or any setup.
 You'll do this on your Windows PC — the same one where you already run
 `python app.py`, so you already have what's needed.
 
-1. In GitHub Desktop, **Pull origin** so you have the latest Solbiz
-   (the footer should say **Piece 9.1** or newer once it's running).
+1. In GitHub Desktop, **Pull origin** so you have the latest Solbiz. Run it
+   once (`python app.py`) and check the footer — it shows the current
+   **Version** (e.g. **Version 14.2**). That number is what you'll confirm in
+   the rebuilt app and what beta testers report back to you.
 2. Open the project folder on your computer, then open the **`desktop`**
    folder inside it.
 3. **Double-click `Build-Solbiz-Windows.bat`.**
