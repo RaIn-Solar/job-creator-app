@@ -207,20 +207,56 @@ CREDENTIAL_FIELDS = ["name", "rule_label", "number", "issued", "expires", "notes
 # A credential within this many days of its expiry date is flagged
 # "expiring soon" on the employee and job pages.
 EXPIRY_SOON_DAYS = 60
-# ECC's roles, offered as checkboxes on the employee form (the form also
-# allows free-typed extras). An employee may hold any number of these;
-# they're stored comma-separated, like the job form's products.
-EMPLOYEE_ROLES = [
-    "General Manager", "Sales and Marketing Manager", "Operations Manager",
-    "Administration Manager", "Finance Manager",
-    "Research and Development Manager", "Marketing Associate",
-    "Inside Sales Rep", "Outside Sales Rep", "Designer", "Inventory Manager",
-    "Permit Coordinator", "Scheduling Coordinator", "Lead Installer",
-    "Service Technician", "Facilities Manager", "HR Manager",
-    "Administrative Assistant", "Bookkeeper", "Product Portfolio Manager",
-    "Process Developer", "Software Developer", "Payroll Manager",
-    "Payroll Administrator", "Installer", "Warehouse Associate",
-    "Purchasing Agent",
+# ECC's roles, grouped by department (Piece 16.1) so the employee form's role
+# picker reads like the org chart. An employee may hold any number; roles are
+# stored comma-separated, like the job form's products. EMPLOYEE_ROLES is the
+# flat list derived from the groups, so the two never drift apart.
+ROLE_DEPARTMENTS = {
+    "Executive": ["General Manager"],
+    "Sales & Marketing": [
+        "Sales and Marketing Manager", "Marketing Associate",
+        "Inside Sales Rep", "Outside Sales Rep",
+    ],
+    "Operations": [
+        "Operations Manager", "Designer", "Inventory Manager",
+        "Purchasing Agent", "Warehouse Associate", "Permit Coordinator",
+        "Scheduling Coordinator", "Lead Installer", "Installer",
+        "Service Technician",
+    ],
+    "Administration": [
+        "Administration Manager", "Facilities Manager", "HR Manager",
+        "Payroll Manager", "Payroll Administrator", "Administrative Assistant",
+    ],
+    "Finance": ["Finance Manager", "Bookkeeper"],
+    "Research & Development": [
+        "Research and Development Manager", "Product Portfolio Manager",
+        "Process Developer", "Software Developer",
+    ],
+}
+EMPLOYEE_ROLES = [r for roles in ROLE_DEPARTMENTS.values() for r in roles]
+
+# Piece 16.1: ECC's org chart as a one-time employee seed (matched from the
+# provided diagram). Each person may hold many roles.
+ORG_CHART_TEAM = [
+    ("Cary", ["General Manager", "Sales and Marketing Manager",
+              "Administration Manager", "Finance Manager",
+              "Research and Development Manager", "Marketing Associate",
+              "Inside Sales Rep", "Outside Sales Rep", "Designer",
+              "Inventory Manager", "Purchasing Agent", "Scheduling Coordinator",
+              "Lead Installer", "Installer", "Service Technician", "HR Manager",
+              "Product Portfolio Manager", "Process Developer"]),
+    ("Will", ["Operations Manager", "Purchasing Agent", "Scheduling Coordinator",
+              "Lead Installer", "Installer", "Service Technician"]),
+    ("Rachel", ["Marketing Associate", "Process Developer"]),
+    ("Louie", ["Inside Sales Rep", "Outside Sales Rep", "Scheduling Coordinator",
+               "Installer"]),
+    ("Trish", ["Permit Coordinator", "Purchasing Agent", "Warehouse Associate",
+               "Facilities Manager", "Administrative Assistant"]),
+    ("Si", ["Purchasing Agent", "Lead Installer", "Installer",
+            "Service Technician"]),
+    ("Lisa", ["Payroll Manager", "Payroll Administrator"]),
+    ("Vanessa", ["Bookkeeper", "Payroll Administrator"]),
+    ("Brady", ["Process Developer", "Software Developer"]),
 ]
 
 UTILITY_CONNECTIONS = ["Off-grid", "Grid-tie", "Backup system"]
@@ -668,7 +704,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 16.0"
+VERSION = "Piece 16.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1003,6 +1039,23 @@ def ensure_columns(db, table, columns):
             db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT DEFAULT ''")
 
 
+def seed_org_team(db):
+    """Piece 16.1: create ECC's org-chart team (by name) with their roles.
+    Runs once per database (guarded by a meta flag) and skips anyone already
+    present, so it populates existing installs without duplicating and never
+    resurrects someone who was deleted on purpose."""
+    if db.execute("SELECT 1 FROM meta WHERE key = 'org_team_seeded'").fetchone():
+        return
+    for name, roles in ORG_CHART_TEAM:
+        if not db.execute("SELECT 1 FROM employees WHERE name = ?",
+                          (name,)).fetchone():
+            db.execute("INSERT INTO employees (name, roles) VALUES (?, ?)",
+                       (name, ", ".join(roles)))
+    db.execute("INSERT INTO meta (key, value) VALUES ('org_team_seeded', '1')"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    db.commit()
+
+
 def init_db():
     """Create tables if missing, upgrade older databases, and add three
     sample clients (one job each) the first time so the app isn't empty."""
@@ -1170,6 +1223,7 @@ def init_db():
             COMPONENT_SEED,
         )
         db.commit()
+    seed_org_team(db)
     db.close()
 
 
@@ -3196,6 +3250,7 @@ def render_employee_form(values, employee_id=None, username="", access_level="")
     roles_other = ", ".join(r for r in stored if r not in EMPLOYEE_ROLES)
     return render_template(
         "employee_form.html", values=values, roles=EMPLOYEE_ROLES,
+        role_departments=ROLE_DEPARTMENTS,
         selected=selected, roles_other=roles_other, employee_id=employee_id,
         username=username, access_level=access_level, access_levels=ACCESS_LEVELS,
     )

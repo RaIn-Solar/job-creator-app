@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 16.0** (footer shows it plainly as "Version 16.0" — the "did my pull work?" check)
+**Current build:** **Piece 16.1** (footer shows it plainly as "Version 16.1" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -133,8 +133,19 @@ footer with the build version. Flash messages render at the top of `main`.
   controls are **admin-only**.
 
 ### New / Edit employee — `/employees/new`, `/employees/<id>/edit` (`employee_form.html`)
-- Name, role checkboxes (27 ECC roles) + "other", schedule, and a **Login & access**
+- Name; **role checkboxes grouped by department** (Piece 16.1): 27 ECC roles in
+  six collapsible department groups (Executive / Sales & Marketing / Operations /
+  Administration / Finance / R&D) — a group opens automatically when it holds a
+  selected role. Plus an "other" free-text field, schedule, and a **Login & access**
   section (admin): username, password, access level (Standard/Admin).
+- `ROLE_DEPARTMENTS` in `app.py` is the source of truth; `EMPLOYEE_ROLES` (the flat
+  list used for validation) is derived from it so the two never drift.
+- **Org-chart team seeded (Piece 16.1):** ECC's real team (Cary, Will, Rachel,
+  Louie, Trish, Si, Lisa, Vanessa, Brady) with their multi-role assignments is
+  seeded once per DB via a `meta.org_team_seeded` flag (`seed_org_team`), skipping
+  anyone already present — so existing installs get them without duplicates. The two
+  "(sample)" employees remain for the credential/expiry demo; delete them for a clean
+  roster.
 
 ### Accounts — `/accounts` (`accounts.html`, **admin**)
 - Who can sign in + access level + password-set status; employees without a login;

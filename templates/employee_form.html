@@ -19,17 +19,29 @@
     <div class="field wide">
       <fieldset class="section">
         <legend>Roles</legend>
-        <div class="check-grid">
-          {% for r in roles %}
-          <label class="check">
-            <input type="checkbox" name="roles" value="{{ r }}" {% if r in selected %}checked{% endif %}> {{ r }}
-          </label>
-          {% endfor %}
-        </div>
-        <div class="field" style="margin-top:0.7rem;">
+        <p class="muted" style="margin:0 0 0.6rem; font-size:0.85rem;">Grouped by
+        department — click a department to expand its titles. Pick as many as the
+        person holds.</p>
+        {% for dept, dept_roles in role_departments.items() %}
+        {% set chosen = dept_roles | select("in", selected) | list %}
+        <details class="req-group" {% if chosen %}open{% endif %}>
+          <summary>
+            <span>{{ dept }}</span>
+            {% if chosen %}<span class="count-badge">{{ chosen|length }}</span>{% endif %}
+          </summary>
+          <div class="check-grid" style="margin:0.5rem 0 0.2rem;">
+            {% for r in dept_roles %}
+            <label class="check">
+              <input type="checkbox" name="roles" value="{{ r }}" {% if r in selected %}checked{% endif %}> {{ r }}
+            </label>
+            {% endfor %}
+          </div>
+        </details>
+        {% endfor %}
+        <div class="field" style="margin-top:0.8rem;">
           <label for="roles_other">Other role(s)</label>
           <input id="roles_other" name="roles_other" value="{{ roles_other }}"
-                 placeholder="comma-separated, e.g. Warehouse, Trainer">
+                 placeholder="comma-separated, e.g. Trainer, Safety Officer">
         </div>
       </fieldset>
     </div>
