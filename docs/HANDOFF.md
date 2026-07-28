@@ -1,158 +1,225 @@
-# Solbiz — Project Handoff
+# 🧰 Solbiz — Project Handoff (current)
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
-**For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, northern/statewide New Mexico
-**Current build:** Piece 7.3 (shown in every page footer)
-**Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python.
+**For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
+**Current build:** **Piece 14.1** (shown in every page footer — the "did my pull work?" check)
+**Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
+**Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
+commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
 
-Solbiz is ECC's internal tool. Enter a job's facts once, and it resolves
-every license, permit, and compliance item the job requires — each linked
-to the authoritative NM state / utility / county source with phone numbers —
-then tracks materials, documents, and the start-to-finish process.
-
----
+> Rachel is non-technical but competent. Explain the "why," give exact
+> click-by-click steps, and **confirm the footer version after each update.**
 
 ## How to run
-
-```
-python -m pip install -r requirements.txt
-python app.py          # http://127.0.0.1:5000
-```
-
-First run creates `job_creator.db` (SQLite) with two sample clients and a
-sample job. Uploaded files live in `uploads/job_<id>/` (gitignored).
-**Backups must include BOTH `job_creator.db` AND `uploads/`.**
-
-Rachel runs this on Windows via GitHub Desktop (clone → Pull origin →
-`python app.py`). She is non-technical but competent; explain the "why,"
-give exact click-by-click steps, and confirm the footer version after each
-update. The footer version label is the canonical "did my pull work" check.
+- **Dev:** `python -m pip install -r requirements.txt` then `python app.py` → http://127.0.0.1:5000
+- **Desktop app (for the team):** `desktop/Build-Solbiz-Windows.bat` (built on Windows)
+  produces a double-click `Solbiz.exe`; see `desktop/README-DESKTOP.md`. A known
+  "exe flashes then closes" issue has its own guide: `desktop/DESKTOP_TROUBLESHOOTING_HANDOFF.md`.
+- First run creates `job_creator.db` with 3 sample clients (one job each), 2 sample
+  employees, sample tasks, and the full NM rule set + appliance/component catalogs.
+- **Backups must include BOTH `job_creator.db` AND `uploads/`** (files live on disk).
 
 ---
 
-## Architecture (the important mental model)
+# 1) Complete feature list, by page
 
-### The rules engine is the heart of the app
-Every "if the job has field X = value Y, it needs requirement Z" decision is
-a **row in the `resource_rules` table**, not code. 145 rules currently.
-- `match_rules(job, rules)` (~20 lines in app.py) does the matching: a rule
-  fires when the job's field equals the rule's value (case-insensitive), or
-  for `match_type='contains'` when the value is in a comma-separated list
-  (used for `products`). Rules may carry a **second AND condition**
-  (`field_name2`/`field_value2`/`match_type2`) — e.g. Battery Banks AND
-  property_type=Commercial.
-- `group_rules()` groups matched rules by category (License, Permit,
-  Compliance, Link/"Online Portals", Phone, Doc), de-duplicating on job
-  pages (PV and Battery both need EE-98 → shown once).
-- Rules are editable in-app at `/rules` (add/delete, no code) and browsable
-  read-only at `/directory` (filter by job type + variants).
+Global chrome (`base.html`): green header with the **☀️ Solbiz** home link and a
+top-right nav. Nav shows **📖 Directory · 🔌 Catalog · ⚙️ Rules · 👥 Employees ·
+✅ Tasks · 🎒 Work Bag** for everyone, plus **🕗 Approvals (N) · 🧾 Log** for admins,
+and the signed-in user's name (links to My account) + Log out. Every page has a
+footer with the build version. Flash messages render at the top of `main`.
 
-### Seed batches (critical — how rule data ships without breaking installs)
-Rule data is seeded in **versioned batches** applied exactly once per
-database, tracked by `meta.seed_version`. See `SEED_RULES` (batch 1) and
-`SEED_BATCHES = {2:..., 10: NEW_RULES_V10}` plus `SEED_BATCH_SQL` (one-off
-UPDATE/DELETE corrections per batch) in app.py.
-**To ship new/changed rules: add a new batch number, never edit an already-
-shipped batch.** This guarantees existing databases converge without
-duplicating rules or resurrecting ones a user deleted on purpose. Tested
-every time by simulating an older `seed_version` and asserting the count.
+### Home / Clients — `/` (`index.html`)
+- Lists all client profiles (name → profile, phone, mailing address, referral).
+- **Search box** (clients + jobs) and a **＋ New client** button.
 
-### Data model (schema.sql)
-- `clients` — mailing/billing address, phone, email, referral source, notes
-- `jobs` — client_id FK + all job fields (site_location, county,
-  utility_provider, products [comma list], the three product-specific
-  `*_utility_connection` columns, pv_mounting_type, pv_manufactured_house,
-  service_type, property_type, cost_method, tax_credit, expand_option…)
-- `resource_rules` — the rules engine (field_name/value/match_type,
-  category, label, url, link_text, phone, notes, + AND-condition columns)
-- `job_materials` — item/quantity/unit/supplier/status/notes per job
-  (status: Needed/Ordered/Received/Installed)
-- `job_files` — uploaded docs; `rule_label` optionally ties a file to a
-  requirement (drives filing-coverage badges). Files on disk, not in DB.
-- `job_versions` — JSON snapshot of a job's prior state on every edit
-- `meta` — key/value (seed_version)
+### Search — `/search` (`search.html`)
+- One box searches **clients** (name/address/phone/email) and **jobs**
+  (name/site/county/products/client). Results link through; jobs show a status badge.
 
-### Self-upgrading database
-`init_db()` runs on startup: creates tables, `ensure_columns()` adds any
-missing columns (schema evolves without manual migration), applies unseen
-seed batches. **Any new column MUST be added to the relevant `*_FIELDS`
-list AND handled in ensure_columns.** Existing user databases upgrade in
-place — never require deleting job_creator.db.
+### Client profile — `/clients/<id>` (`client_detail.html`, tabbed)
+- **✎ Edit client information** button (Piece 13.3).
+- **Overview tab:** contact/address/referral/notes/"client since"; **Jobs** table
+  (each with a **status badge**) + **＋ New job**.
+- **Documents tab (Piece 12):** client-level files (Contracts / Correspondence /
+  Intake / Photos / Other), upload/download/delete — kept separate from job docs.
 
-### Key files
-- `app.py` (~1320 lines) — all routes + rules engine + seed batches 1-9
-- `nm_directory.py` — batch 10 (statewide NM utility/AHJ data + corrections)
-  and the UTILITIES_ALL / COUNTIES_ALL pick-lists
-- `bpmn_export.py` — per-job BPMN generation from the master pipeline
-- `templates/` — base.html (styling, tab CSS), job_detail.html (tabbed),
-  job_form.html, bpmn_view.html (step list), rules.html, directory.html, …
-- `docs/reference/00-04*.md` — the **canonical July 2026 verified NM
-  permit/AHJ/utility reference set**; every rule traces back here. The
-  Manual Review Log (04) flags unverified data — those flags are carried
-  into rule `notes` as "verify" warnings shown at point of use.
-- `docs/The_Uber_Diagram.bpmn` — ECC's master process (the BPMN template)
+### New / Edit client — `/clients/new`, `/clients/<id>/edit` (`client_form.html`)
+- All ECC intake fields; "same as mailing address" helper for billing.
 
----
+### Job profile — `/jobs/<id>` (`job_detail.html`, tabbed)
+- Header: **status picker** (Lead→Quoted→Sold→Permitting→Scheduled→Installed→Closed/Lost),
+  **✎ Edit job**, **Process chart**, **← Client profile**.
+- **General details tab:** all job fields + **version history** (JSON snapshot per edit).
+- **Licenses, Permits & Compliance tab:** requirements resolved live from the rules
+  engine, grouped (Technician licenses / Permits / Compliance / Online Portals /
+  Phone / Documents), each linked to its NM source + phone. **📎 filing-coverage
+  badges** (N/M on file). License items show **👷 who on staff holds it** (green/amber/
+  red by credential expiry) or **⚠ no one on staff holds this**. **⬇ Export report**.
+- **Materials tab:** per-job material list — **fully inline-editable** rows
+  (item/qty/unit/supplier/notes + Save), status dropdown, add, delete.
+- **Documents tab:** upload/download/delete job files, optionally filed under a
+  requirement (drives the coverage badges).
+- **Loads & Sizing tab (Piece 9):** Sales/Designer mode toggle; room-nested load
+  survey (from the appliance catalog or custom); live daily-kWh/peak summary;
+  **System Sizing** (off-grid/grid-tie presets → array kW/panel count, battery kWh/
+  units, NEC 690.7 cold-temp Voc string sizing); **Components / bill of materials**.
+- **Tasks tab (Piece 10):** per-job tasks — inline-editable title/notes (Save),
+  inline assignee/status/due (auto-save), overdue flag, add, delete. **⚙ Generate
+  from process** (with optional install date) auto-creates the job's process-step
+  checklist, auto-assigned by role and due-dated around the install.
 
-## Feature status (Pieces 1-7 done)
+### New / Edit job — `/clients/<id>/jobs/new`, `/jobs/<id>/edit` (`job_form.html`)
+- All product/variant fields; service-ticket pre-fill from an existing job.
 
-1. Flask+SQLite skeleton; client list
-2. Client profiles (mailing/billing addr, phone, email, referral)
-3. Job profiles under clients (all ECC fields; product-specific options)
-4. **Rules engine** — requirements resolve from fields; in-app rule
-   manager + read-only directory; service tickets w/ pre-fill; text report
-5. Job editing with JSON version history
-6. **Per-job BPMN** — the master pipeline instantiated per job; permitting
-   phase expands into resolved permits in dependency order; off-grid drops
-   interconnection; JMEC gets Letter of Compliance; Authorities(CID) lane
-7. **Materials list + document upload/storage**; filing coverage badges
-   (N/M on file) reconcile documents against requirements
+### Process chart — `/jobs/<id>/bpmn/view` (`bpmn_view.html`) + `/jobs/<id>/bpmn` download
+- Per-job process as an ordered step list; downloadable BPMN 2.0 (bpmn.io/Camunda).
 
-UI is now **tabbed** on the job page: General details (+ version history) ·
-Licenses/Permits/Compliance · Materials · Documents. Tab state persists via
-URL hash; form posts return to their tab. The Process page is a **step list**
-(not a canvas — the diagram is export-only via bpmn.io/Camunda).
+### Job report — `/jobs/<id>/report` — plain-text checklist download.
+### Job version — `/jobs/<id>/versions/<v>` (`job_version.html`) — a prior snapshot + its resolved requirements.
 
-Branding: the app is **Solbiz** (ECC's internal software name; it literally
-appears as a lane in their master BPMN). Demo data + rules are New Mexico
-(NOT Texas — earlier builds used TX, all re-flavored to NM).
+### Rule directory — `/directory` (`directory.html`) — read-only, filterable rule browser (everyone).
+### Rules manager — `/rules` (`rules.html`) — add/delete rules (**admin**); read-only for others.
+### Catalog — `/catalog` (`catalog.html`) — appliance (379) + component (62) reference tables, add/delete (**admin**).
 
----
+### Employees — `/employees` (`employees.html`)
+- Roster with roles, credential tally + expiry warnings, schedule. **admin:**
+  **🔑 Accounts** and **＋ New employee** buttons.
 
-## Open backlog / explicitly deferred (with Rachel's stated intent)
+### Employee profile — `/employees/<id>` (`employee_detail.html`, tabbed)
+- **Details** (roles, schedule); **Tasks** (assigned across all jobs); **Licenses &
+  Certifications** (structured rows w/ expiry badges, "satisfies requirement" link,
+  "copy on file"); **Documents** (credential copies). Edit/Delete + all add/delete
+  controls are **admin-only**.
 
-- **Client-level document storage** — REQUESTED, not built. Rachel wants
-  client files kept SEPARATE from jobs (one client → many jobs over time).
-  Plan agreed: a `client_files` table sibling to `job_files`, own storage
-  folder, Documents section on the client profile, with client-level
-  categories (Contracts, Correspondence, Intake, Photos) — NOT the job
-  requirement categories. Client profile page could gain tabs too.
-- **Service-ticket process** — the BPMN install pipeline doesn't fit service
-  tickets; they currently render provisionally with a caveat annotation.
-  Needs its own simpler dispatch→service→invoice flow. Service requirements
-  are correctly designed to resolve AFTER service fields are filled.
-- **Cost-method payment variants** — 50/40/10 is the default; Rachel will
-  define finance/cash/lease variants later. BPMN annotates the schedule
-  with the cost method already.
-- **Rule flights not yet provided** — Well Pump and Mini Split variant
-  matrices (PV/Battery/Generator matrices are done). SMDTC 20%/battery tier
-  is UNCONFIRMED (flagged do-not-quote per Manual Review Log B1).
-- **.kmz site-file linking** — site_location field is built to anchor a KMZ
-  link for GPS software later; KMZ/KML uploads already allowed.
-- **Piece 8 polish** — search, job statuses (a `status` field exists on
-  jobs but isn't surfaced), logins / role-based access (e.g. office can
-  browse Directory but only admins edit Rules).
-- **BPMN auto-layout** is functional but not pretty (straight connectors).
+### New / Edit employee — `/employees/new`, `/employees/<id>/edit` (`employee_form.html`)
+- Name, role checkboxes (27 ECC roles) + "other", schedule, and a **Login & access**
+  section (admin): username, password, access level (Standard/Admin).
+
+### Accounts — `/accounts` (`accounts.html`, **admin**)
+- Who can sign in + access level + password-set status; employees without a login;
+  and **⏳ Pending password changes** (approve/reject self-service requests).
+
+### Task board — `/tasks` (`tasks.html`)
+- Every task across all jobs; filter by person/unassigned and open/all; status tally +
+  overdue count; inline status change; link to **🎒 My Work Bag**.
+
+### Work Bag — `/work-bag` (`work_bag.html`) — the offline field page (Piece 14)
+- The signed-in worker's assigned tasks, editable **offline** (saved in the browser);
+  online/offline indicator; **Submit completed work** (work date + hours + note) →
+  creates a **pending submission** for manager approval; tasks show "awaiting
+  approval"; recent-submissions history. (No service worker yet — see limitations.)
+
+### Field work approvals — `/submissions` (`submissions.html`, **admin**)
+- Review Work Bag submissions: worker, work date, reported hours, note, the task
+  changes; **confirm hours** then **Approve** (applies task changes + logs hours as
+  authoritative) or **Reject** (applies nothing). Pending/All toggle.
+
+### Audit log — `/audit` (`audit.html`, **admin**) — every state-changing request
+(who/what/when/details/result), filterable by action. Passwords are redacted.
+
+### My account — `/account` (`account.html`) — the signed-in user's page: **🎒 Work Bag**
+link and **Change password** (submits for admin approval).
+
+### Login — `/login` (`login.html`) — appears once at least one account exists.
 
 ---
 
-## Working conventions in this project
-- Every change bumps the `VERSION` string in app.py and is verified with a
-  running server (curl + Playwright screenshots via bundled Chromium at
-  `/opt/pw-browsers`) before committing.
-- Rachel's designated branch is `main`; commits are pushed as they land so
-  she can pull. Commit + push after each feature.
-- The seed-batch upgrade path is tested on EVERY rule change by simulating
-  an older seed_version.
-- Kill stray servers with `fuser -k 5000/tcp` (NOT pkill matching "app.py"
-  — that has matched and killed the working shell before).
+# 2) Callouts already in the UI / code
+
+**Access & accounts**
+- Open-mode banner (until the first account exists): *"🔓 No logins set up. Anyone can
+  access everything…"* with a link to Accounts.
+- Last-admin safeguard: changing accounts can't leave the system with accounts but no
+  admin — *"Keep at least one admin account — or remove every login to go back to open
+  access."*
+- Password self-service is admin-approved; the account page notes *"Forgot your
+  password and can't sign in? An admin can reset it directly from your employee profile."*
+
+**Work Bag / offline / approvals**
+- Work Bag: *"Keep this page open while you're offline"* (reflects the no-service-worker
+  limitation) and *"held for your manager to approve before it counts."*
+- Approvals: *"Nothing here counts in the system until you approve it."*
+
+**Rules engine / NM data (point-of-use warnings carried into rule `notes`)**
+- Verification flags from the July 2026 Manual Review Log surface as "verify" notes
+  (e.g., unverified utility domains/contacts, *"verify per project,"* *"verify current
+  terms"*).
+- Tax-credit / incentive caution in rule notes: SMDTC tier *"not confirmed — do not
+  quote until verified with EMNRD"*; federal ITC note *"25D EXPIRED for expenditures
+  after 12/31/2025 … consult a tax professional."*
+- Situational rules carry qualifiers (*"if reinforcement needed," "confirm with AHJ,"
+  "situational," "per tech on site"*).
+
+**Loads & sizing**
+- Sizing method note: NEC 690.7 cold-temp Voc + peak-sun-hour method, *"northern New
+  Mexico design values — confirm against the specific site."*
+- Component prices are planning estimates, not quotes (a few specs are engineering
+  estimates — spot-check before a stamped design). Sales/Designer mode is labeled a
+  *"view toggle, not access control."*
+
+**Data / migration**
+- Employee profile shows any pre-Piece-8.1 free-text credentials under *"Earlier
+  free-text entry (from before structured tracking)"* with a nudge to re-enter as rows.
+- Service tickets render the install pipeline provisionally with a caveat annotation
+  in the BPMN.
+
+**Desktop packaging** (`desktop/README-DESKTOP.md`)
+- Expected Windows SmartScreen warning ("More info → Run anyway"); antivirus may flag
+  an unsigned exe; the whole `Solbiz` folder (with `_internal`) must travel together;
+  backups must include `job_creator.db` + `uploads/`.
+
+---
+
+# 3) Architecture essentials
+
+- **Rules engine is data, not code.** Each row in `resource_rules` says "when job
+  field X = value Y, the job needs Z (category License/Permit/Compliance/Link/Phone/
+  Doc)." Rules may carry a second AND condition. `match_rules`/`group_rules` in
+  `app.py` resolve them; editable in-app at `/rules`, browsable at `/directory`.
+- **Seed batches** ship rule data in versioned batches applied once per DB (tracked by
+  `meta.seed_version`). `SEED_RULES` (batch 1), `SEED_BATCHES` (2–10, with 10 =
+  `NEW_RULES_V10` from `nm_directory.py`), and `SEED_BATCH_SQL` (one-off corrections).
+  **Never edit a shipped batch — add a new number.** 145 rules at seed_version 10.
+- **Self-upgrading DB:** `init_db()` runs `schema.sql` (all `CREATE TABLE IF NOT
+  EXISTS`), `ensure_columns()` adds missing columns, and applies unseen batches — so
+  existing databases upgrade in place. **Never require deleting `job_creator.db`.**
+- **Auth (Piece 13):** logins live on the `employees` table (username/password_hash/
+  access_level). Login is OFF until the first account exists (open mode). A
+  `before_request` wall enforces login when active (401 JSON for `/api/*`);
+  `@admin_required` guards shared-data + account + approval + audit routes. Admin vs
+  Standard; passwords via werkzeug hashing.
+- **Audit (Piece 11):** an `after_request` hook logs every POST/PUT/PATCH/DELETE
+  centrally (actor once logged in; passwords redacted).
+- **Work Bag / offline (Piece 14):** `job_tasks.updated_at` (ms) tracks changes;
+  `/api/my-tasks` pulls, `/api/work-bag/submit` records a **pending** `field_submissions`
+  (+ `field_submission_items`) copy without touching authoritative data; admin approval
+  applies items to `job_tasks` and logs `approved_hours`. Client offline state is in
+  `localStorage`.
+- **Key files:** `app.py` (~2900 lines: config, routes, rules engine, auth, audit,
+  sync); `nm_directory.py` (NM utility/AHJ data = batch 10 + pick-lists);
+  `loads_seed.py` (379 appliances + 62 components); `bpmn_export.py`;
+  `templates/` (Jinja; `base.html` holds styling + tab CSS + nav);
+  `docs/reference/00–04*.md` (verified July-2026 NM permit/AHJ/utility source set).
+- **Tables (22):** clients, jobs, job_versions, job_materials, job_files, job_tasks,
+  resource_rules, meta, employees, employee_credentials, employee_files, client_files,
+  appliance_catalog, component_catalog, job_load_rooms, job_load_items, job_bom,
+  job_sizing, password_requests, field_submissions, field_submission_items, audit_log.
+
+# 4) Working conventions
+- Bump `VERSION` in `app.py` per change; verify with a running server (curl + Playwright
+  via bundled Chromium at `/opt/pw-browsers`) before committing.
+- Test the seed-batch upgrade path on any rule change (simulate an older seed_version).
+- Commit + push after each feature. Kill stray servers with `fuser -k 5000/tcp`.
+
+# 5) Known limitations / deferred / next steps
+- **No service worker yet** — Work Bag survives a dropped connection while open, but
+  cold-starting the app fully offline needs a service worker (deliberately deferred as a
+  support-risk item to field-test carefully). This is the natural next offline step.
+- **"Manager" = Admin** for approvals; a specific manager→worker relationship is a
+  future add.
+- **Add/delete-only records** (rules, catalog, credentials, load items, BOM, rooms) have
+  no in-place edit — re-add loses nothing there, but edit can be added on request.
+- **No client/job delete** (intentional — would cascade).
+- Suggested next: **hours summary / timesheet** from approved submissions; rule edit;
+  the service worker.
