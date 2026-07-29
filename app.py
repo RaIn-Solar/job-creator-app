@@ -718,7 +718,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 18.1"
+VERSION = "Piece 19.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -777,6 +777,44 @@ def next_stage(status):
         return STAGE_ORDER[i + 1] if i + 1 < len(STAGE_ORDER) else None
     except ValueError:
         return None
+
+
+# Piece 19: role-based My Dashboard. A person belongs to a department if they
+# hold one of its roles; the dashboard stacks a section per department they're
+# in (with a mode switch to focus on one). `stages` are the pipeline statuses
+# whose active jobs that department needs to work.
+DASHBOARD_DEPARTMENTS = {
+    "Sales": {"icon": "💬", "stages": ["Proposal"],
+              "roles": {"Sales and Marketing Manager", "Outside Sales Rep",
+                        "Inside Sales Rep", "Marketing Associate"}},
+    "Design": {"icon": "📐", "stages": ["Proposal"], "roles": {"Designer"}},
+    "Permits": {"icon": "📋", "stages": ["Job Prep", "Inspections"],
+                "roles": {"Permit Coordinator"}},
+    "Finance": {"icon": "💵", "stages": ["Job Prep", "Installation", "Closing"],
+                "roles": {"Finance Manager", "Bookkeeper", "Payroll Manager",
+                          "Payroll Administrator"}},
+    "Purchasing": {"icon": "📦", "stages": ["Job Prep"],
+                   "roles": {"Inventory Manager", "Purchasing Agent",
+                             "Warehouse Associate"}},
+    "Installation": {"icon": "🔧", "stages": ["Installation", "Inspections"],
+                     "roles": {"Lead Installer", "Installer",
+                               "Service Technician", "Scheduling Coordinator"}},
+    "Operations": {"icon": "🛠️", "stages": ["Job Prep", "Installation", "Inspections"],
+                   "roles": {"Operations Manager"}},
+    "Administration": {"icon": "🗂️", "stages": [],
+                       "roles": {"Administration Manager", "Administrative Assistant",
+                                 "Facilities Manager", "HR Manager"}},
+    "Executive": {"icon": "⭐", "stages": STAGE_ORDER[:-1],
+                  "roles": {"General Manager"}},
+}
+
+
+def user_departments(user):
+    """Departments the user belongs to (holds a role for), in config order."""
+    if user is None:
+        return []
+    held = {r.strip() for r in (user["roles"] or "").split(",") if r.strip()}
+    return [d for d, cfg in DASHBOARD_DEPARTMENTS.items() if held & cfg["roles"]]
 # Migrate Piece 12.1 statuses to the Piece 16 phases so existing jobs survive.
 OLD_TO_NEW_STATUS = {
     "Lead": "Proposal", "Quoted": "Proposal", "Sold": "Job Prep",
@@ -1381,10 +1419,11 @@ def login():
                 user["password_hash"], password):
             session["user_id"] = user["id"]
             flash(f"Signed in as {user['name']}.")
+            session.pop("dash_mode", None)  # start on their saved default
             nxt = request.form.get("next") or ""
             if nxt.startswith("/") and not nxt.startswith("//"):
                 return redirect(nxt)
-            return redirect(url_for("home"))
+            return redirect(url_for("dashboard"))
         flash("Wrong username or password.", "error")
     return render_template("login.html", next=request.args.get("next", ""))
 
@@ -1473,6 +1512,10 @@ def seed_org_team(db):
                           (name,)).fetchone():
             db.execute("INSERT INTO employees (name, roles) VALUES (?, ?)",
                        (name, ", ".join(roles)))
+    # Cary holds every role (he's the GM); default his dashboard to Design so
+    # day-to-day he works in that role rather than the whole-company overview.
+    db.execute("UPDATE employees SET dashboard_mode = 'Design'"
+               " WHERE name = 'Cary' AND COALESCE(dashboard_mode, '') = ''")
     db.execute("INSERT INTO meta (key, value) VALUES ('org_team_seeded', '1')"
                " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
@@ -1506,7 +1549,8 @@ def init_db():
     ensure_columns(db, "job_tasks", ["updated_at", "pipeline_status"])
     db.execute("UPDATE job_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
                " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
-    ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS)
+    ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS
+                   + ["dashboard_mode"])
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
@@ -1853,6 +1897,76 @@ def home():
                            followups=followups, cold_count=cold_count,
                            today=datetime.now().strftime("%Y-%m-%d"),
                            job_status_class_json=json.dumps(JOB_STATUS_CLASS))
+
+
+@app.route("/dashboard")
+def dashboard():
+    """Piece 19: role-based My Dashboard — the sign-in landing. Stacks a
+    section per department the person belongs to; a mode switch focuses on one.
+    """
+    user = current_user()
+    if user is None:
+        return redirect(url_for("home"))
+    db = get_db()
+    ensure_lead_followups(db)
+    depts = user_departments(user)
+    # Mode: ?mode= sets it for the session; else the saved default; else All.
+    if request.args.get("mode"):
+        session["dash_mode"] = request.args.get("mode")
+    saved = user["dashboard_mode"] if "dashboard_mode" in user.keys() else ""
+    mode = session.get("dash_mode") or saved or "All"
+    if mode != "All" and mode not in depts:
+        mode = "All"
+    shown = depts if mode == "All" else [mode]
+
+    my_tasks = db.execute(
+        "SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name"
+        " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+        " JOIN clients c ON c.id = j.client_id"
+        " WHERE t.employee_id = ? AND t.status != 'Done'"
+        " ORDER BY (t.due_date = ''), t.due_date, j.id", (user["id"],)).fetchall()
+
+    sections = []
+    for d in shown:
+        cfg = DASHBOARD_DEPARTMENTS[d]
+        jobs = []
+        if cfg["stages"]:
+            placeholders = ", ".join("?" * len(cfg["stages"]))
+            jobs = db.execute(
+                f"SELECT j.id, j.job_name, j.status, j.install_date,"
+                f" c.name AS client_name FROM jobs j"
+                f" JOIN clients c ON c.id = j.client_id"
+                f" WHERE j.status IN ({placeholders})"
+                f" ORDER BY j.status, j.id", cfg["stages"]).fetchall()
+        sections.append({"name": d, "icon": cfg["icon"], "jobs": jobs,
+                         "stages": cfg["stages"]})
+
+    followups = due_followups(db) if "Sales" in shown else []
+    pending_subs = (db.execute("SELECT COUNT(*) FROM field_submissions"
+                               " WHERE status = 'Pending'").fetchone()[0]
+                    if "Executive" in shown else 0)
+    return render_template(
+        "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
+        sections=sections, my_tasks=my_tasks, followups=followups,
+        pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
+        dept_icons={d: c["icon"] for d, c in DASHBOARD_DEPARTMENTS.items()},
+        job_status_class=JOB_STATUS_CLASS)
+
+
+@app.route("/dashboard/default", methods=["POST"])
+def set_dashboard_default():
+    """Save the current mode as this user's default dashboard (their working
+    role) — supports Cary defaulting to Designer, and aids training."""
+    user = current_user()
+    if user is None:
+        return redirect(url_for("home"))
+    mode = request.form.get("mode", "All")
+    get_db().execute("UPDATE employees SET dashboard_mode = ? WHERE id = ?",
+                     (mode, user["id"]))
+    get_db().commit()
+    session["dash_mode"] = mode
+    flash(f"Default dashboard set to {mode}.")
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/search")

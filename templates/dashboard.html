@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}My Dashboard{% endblock %}
+{% block content %}
+{% set sc = {"To do":"neutral","In progress":"warn","Blocked":"danger","Done":""} %}
+<div class="toolbar">
+  <h1>👋 {{ user["name"].split(" ")[0] }}'s dashboard</h1>
+  <a href="{{ url_for('home') }}" class="btn btn-secondary">All clients</a>
+</div>
+
+{% if depts|length > 1 %}
+<div class="card" style="padding:0.6rem 0.9rem; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+  <span class="muted" style="font-size:0.85rem; margin-right:0.3rem;">View:</span>
+  <a href="{{ url_for('dashboard', mode='All') }}" class="btn {{ '' if mode == 'All' else 'btn-secondary' }}" style="padding:0.25rem 0.7rem; font-size:0.85rem;">All</a>
+  {% for d in depts %}
+  <a href="{{ url_for('dashboard', mode=d) }}" class="btn {{ '' if mode == d else 'btn-secondary' }}" style="padding:0.25rem 0.7rem; font-size:0.85rem;">{{ dept_icons[d] }} {{ d }}</a>
+  {% endfor %}
+  {% if mode != saved_default %}
+  <form method="post" action="{{ url_for('set_dashboard_default') }}" style="margin:0 0 0 auto;">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.8rem;" title="Land here every time you sign in">★ Make this my default</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">✅ My tasks ({{ my_tasks|length }})</h2>
+  {% if my_tasks %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Task</th><th>Job</th><th>Due</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for t in my_tasks %}
+      {% set overdue = t["due_date"] and t["due_date"] < today %}
+      <tr>
+        <td>{{ t["title"] }}{% if t["pipeline_status"] %} <span class="badge neutral" style="font-size:0.7rem;">{{ t["pipeline_status"] }}</span>{% endif %}</td>
+        <td><a href="{{ url_for('job_detail', job_id=t['job_id']) }}#tasks">{{ t["job_name"] or "Job #" ~ t["job_id"] }}</a><br><span class="muted" style="font-size:0.8rem;">{{ t["client_name"] }}</span></td>
+        <td>{% if t["due_date"] %}{{ t["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td><span class="badge {{ sc[t['status']] }}">{{ t["status"] }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Update these in the field on your <a href="{{ url_for('work_bag') }}">🎒 Work Bag</a>.</p>
+  {% else %}
+  <p class="empty">No open tasks assigned to you. 🎉</p>
+  {% endif %}
+</div>
+
+{% if followups %}
+<div class="card" style="border-left:4px solid #f5a623;">
+  <h2 style="margin-top:0; font-size:1.1rem;">🔔 Sales · Follow-ups due ({{ followups|length }})</h2>
+  <table>
+    <thead><tr><th>Lead</th><th>Follow-up</th><th>Due</th><th></th></tr></thead>
+    <tbody>
+      {% for f in followups %}
+      <tr>
+        <td><a href="{{ url_for('client_detail', client_id=f['client_id']) }}">{{ f["client_name"] }}</a></td>
+        <td><span class="badge neutral">{{ f["milestone"] }}</span></td>
+        <td>{{ f["due_date"] }}{% if f["due_date"] < today %} <span class="badge danger">overdue</span>{% endif %}</td>
+        <td><a href="{{ url_for('new_job', client_id=f['client_id']) }}" class="btn" style="padding:0.15rem 0.55rem; font-size:0.78rem;">Enter job details</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% for s in sections %}
+{% if s.stages %}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">{{ s.icon }} {{ s.name }} · jobs in your stages ({{ s.jobs|length }})</h2>
+  <p class="muted" style="margin-top:0; font-size:0.83rem;">Jobs currently in {{ s.stages|join(" / ") }}.</p>
+  {% if s.jobs %}
+  <table>
+    <thead><tr><th>Job</th><th>Client</th><th>Stage</th><th>Install date</th></tr></thead>
+    <tbody>
+      {% for j in s.jobs %}
+      <tr>
+        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+        <td class="muted">{{ j["client_name"] }}</td>
+        <td><span class="badge {{ job_status_class.get(j['status'], 'neutral') }}">{{ j["status"] }}</span></td>
+        <td class="muted">{{ j["install_date"] or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No jobs need {{ s.name }} right now.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endfor %}
+
+{% if pending_subs %}
+<div class="card" style="border-left:4px solid var(--brand);">
+  <h2 style="margin-top:0; font-size:1.1rem;">⭐ Manager</h2>
+  <p style="margin:0;"><a href="{{ url_for('submissions_page') }}" class="btn">🕗 {{ pending_subs }} field-work approval(s) waiting</a></p>
+</div>
+{% endif %}
+{% endblock %}

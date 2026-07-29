@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 18.1** (footer shows it plainly as "Version 18.1" — the "did my pull work?" check)
+**Current build:** **Piece 19.0** (footer shows it plainly as "Version 19.0" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -25,9 +25,23 @@ commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
 
 Global chrome (`base.html`): green header with the **☀️ Solbiz** home link and a
 top-right nav. Nav shows **📖 Directory · 🔌 Catalog · ⚙️ Rules · 👥 Employees ·
-✅ Tasks · 🎒 Work Bag** for everyone, plus **🕗 Approvals (N) · 🧾 Log** for admins,
+🏠 My Dashboard · ✅ Tasks · 🎒 Work Bag** for signed-in users, plus **🕗 Approvals (N) · 🧾 Log** for admins,
 and the signed-in user's name (links to My account) + Log out. Every page has a
 footer with the build version. Flash messages render at the top of `main`.
+
+### My Dashboard — `/dashboard` (`dashboard.html`, Piece 19) — the sign-in landing
+- Role-based home. Login redirects here. A person **belongs to a department** if they
+  hold one of its roles (`DASHBOARD_DEPARTMENTS` / `user_departments`); the dashboard
+  **stacks a section per department** they're in, plus a top **✅ My tasks** list
+  (their open assigned tasks, stage-tagged) and — for Sales — **follow-ups due**, and
+  — for Executive/GM — a **field-work approvals** callout.
+- **Mode switch** (only if multi-department): **All** or focus on one department;
+  the choice persists in the session, and **★ Make this my default** saves it to
+  `employees.dashboard_mode` (the person's "working role"). Cary (holds every role)
+  is seeded to default to **Design**; the GM keeps the full overview when in All.
+- Each department section lists the **jobs currently in the stages that department
+  works** (Permits → Job Prep/Inspections, Finance → Job Prep/Installation/Closing, …).
+- Only active with logins on (needs a signed-in user). "All clients" link → Home.
 
 ### Home / Clients — `/` (`index.html`)
 - Lists all client profiles (name → profile, phone, mailing address, referral);
