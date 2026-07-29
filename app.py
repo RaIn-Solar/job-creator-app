@@ -718,7 +718,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 17.2"
+VERSION = "Piece 18.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -739,6 +739,33 @@ JOB_STATUS_CLASS = {
     "Inspections": "warn", "Closing": "warn", "Complete": "", "Lost": "danger",
 }
 DEFAULT_JOB_STATUS = "Proposal"
+# Piece 18: which department governs each pipeline status, the functions that
+# staff it (each resolved to its head via best_assignee_for_lane on the BPMN
+# lane), and the exit criteria to advance. Kept standardized but flexible —
+# the rules engine still drives which job-specific steps actually apply.
+STATUS_OWNERSHIP = {
+    "Proposal": {"dept": "Sales", "exit": "Sales signs the contract.",
+                 "team": [("Sales", "Sales Rep"), ("Design", "System Designer")]},
+    "Job Prep": {"dept": "Operations — parallel functions",
+                 "exit": "All permits filed and an install date set "
+                         "(setting the install date advances the job).",
+                 "team": [("Permits", "Permit Coordinator"),
+                          ("Finance", "Finance Department"),
+                          ("Purchasing", "Warehouse Associate"),
+                          ("Install prep", "Foreman")]},
+    "Installation": {"dept": "Service & Technician", "exit": "Install complete.",
+                     "team": [("Install", "Foreman")]},
+    "Inspections": {"dept": "Operations — same team as Job Prep",
+                    "exit": "Inspection passed and signed off.",
+                    "team": [("Permits", "Permit Coordinator"),
+                             ("Fixes", "Foreman")]},
+    "Closing": {"dept": "All departments — one final task each",
+                "exit": "Final invoice, walkthrough, and paperwork done.",
+                "team": [("Finance", "Finance Department"),
+                         ("Sales", "Sales Rep"), ("Sign-off", "General Manager")]},
+    "Complete": {"dept": "—", "exit": "Job closed.", "team": []},
+    "Lost": {"dept": "—", "exit": "", "team": []},
+}
 # Migrate Piece 12.1 statuses to the Piece 16 phases so existing jobs survive.
 OLD_TO_NEW_STATUS = {
     "Lead": "Proposal", "Quoted": "Proposal", "Sold": "Job Prep",
@@ -1435,7 +1462,7 @@ def init_db():
     ensure_columns(db, "clients", ["lead_status", "assigned_rep_id", "converted_at"])
     db.execute("UPDATE clients SET lead_status = 'Lead'"
                " WHERE COALESCE(lead_status, '') = ''")
-    ensure_columns(db, "jobs", JOB_FIELDS + ["status"])
+    ensure_columns(db, "jobs", JOB_FIELDS + ["status", "install_date"])
     # Piece 16: migrate Piece 12.1 statuses to the new phases, and default blanks.
     for old, new in OLD_TO_NEW_STATUS.items():
         db.execute("UPDATE jobs SET status = ? WHERE status = ?", (new, old))
@@ -2340,6 +2367,7 @@ def job_detail(job_id):
         " WHERE t.job_id = ? ORDER BY t.sort_order, t.id", (job_id,)
     ).fetchall()
     employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
+    stage = stage_info(db, job, groups, filed_labels)
 
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
@@ -2348,7 +2376,7 @@ def job_detail(job_id):
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
         tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
         job_statuses=JOB_STATUSES, job_status_class=JOB_STATUS_CLASS,
-        today=datetime.now().strftime("%Y-%m-%d"),
+        stage=stage, today=datetime.now().strftime("%Y-%m-%d"),
     )
 
 
@@ -2769,12 +2797,57 @@ def delete_component_catalog(component_id):
 
 @app.route("/jobs/<int:job_id>/status", methods=["POST"])
 def set_job_status(job_id):
-    fetch_job(job_id)
+    job = fetch_job(job_id)
     status = request.form.get("status", "")
     if status in JOB_STATUSES:
         db = get_db()
         db.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
         db.commit()
+        # Flexible guardrail: moving into Installation early just warns.
+        if status == "Installation":
+            rules = db.execute("SELECT * FROM resource_rules").fetchall()
+            groups = group_rules(match_rules(job, rules))
+            filed = {f["rule_label"] for f in db.execute(
+                "SELECT rule_label FROM job_files WHERE job_id = ?", (job_id,))
+                if f["rule_label"]}
+            info = stage_info(db, job, groups, filed)
+            pending = []
+            if not info["permits_ok"]:
+                pending.append(f"{info['permits_total'] - info['permits_filed']} permit(s) not yet filed")
+            if not job["install_date"]:
+                pending.append("no install date set")
+            if pending:
+                flash("Moved to Installation — note: " + "; ".join(pending) + ".",
+                      "error")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/install-date", methods=["POST"])
+def set_install_date(job_id):
+    """Set the job's install date; in Job Prep, advancing it to Installation
+    once all permits are filed (Piece 18 — the install-date setter triggers
+    the hand-off)."""
+    job = fetch_job(job_id)
+    db = get_db()
+    date = request.form.get("install_date", "").strip()
+    db.execute("UPDATE jobs SET install_date = ? WHERE id = ?", (date, job_id))
+    advanced = False
+    if date and (job["status"] or DEFAULT_JOB_STATUS) == "Job Prep":
+        rules = db.execute("SELECT * FROM resource_rules").fetchall()
+        groups = group_rules(match_rules(job, rules))
+        filed = {f["rule_label"] for f in db.execute(
+            "SELECT rule_label FROM job_files WHERE job_id = ?", (job_id,))
+            if f["rule_label"]}
+        if stage_info(db, job, groups, filed)["permits_ok"]:
+            db.execute("UPDATE jobs SET status = 'Installation' WHERE id = ?", (job_id,))
+            advanced = True
+    db.commit()
+    if advanced:
+        flash("Install date set and all permits filed — advanced to Installation.")
+    elif date:
+        flash("Install date saved. Job Prep stays open until all permits are filed.")
+    else:
+        flash("Install date cleared.")
     return redirect(url_for("job_detail", job_id=job_id))
 
 
@@ -2908,6 +2981,34 @@ def best_assignee_for_lane(lane, employees):
 def _auto_assignee(lane, employees):
     """Assignee for a generated step — the most sensible role-holder."""
     return best_assignee_for_lane(lane, employees)
+
+
+def _permit_coverage(groups, filed_labels):
+    """(filed, total) for the job's Permit-category requirements."""
+    total = filed = 0
+    for heading, items in groups:
+        if heading.lower().startswith("permit"):
+            total += len(items)
+            filed += sum(1 for r in items if r["label"] in filed_labels)
+    return filed, total
+
+
+def stage_info(db, job, groups, filed_labels):
+    """Piece 18: who governs the job's current stage (department + the head of
+    each staffing function), the exit criteria, and Job-Prep prerequisites."""
+    status = job["status"] or DEFAULT_JOB_STATUS
+    spec = STATUS_OWNERSHIP.get(status, {"dept": "—", "exit": "", "team": []})
+    emps = db.execute("SELECT id, name, roles FROM employees").fetchall()
+    name_by_id = {e["id"]: e["name"] for e in emps}
+    team = [(label, name_by_id.get(best_assignee_for_lane(lane, emps), "— unassigned —"))
+            for label, lane in spec["team"]]
+    filed, total = _permit_coverage(groups, filed_labels)
+    return {
+        "status": status, "dept": spec["dept"], "exit": spec["exit"], "team": team,
+        "permits_filed": filed, "permits_total": total,
+        "permits_ok": filed >= total,
+        "install_date": job["install_date"] if "install_date" in job.keys() else "",
+    }
 
 
 def _lane_from_task(notes, title):

@@ -19,6 +19,40 @@
   </div>
 </div>
 
+{% if stage.dept != "—" %}
+<div class="card" style="border-left:4px solid var(--brand); padding:0.9rem 1.1rem;">
+  <div class="toolbar" style="margin-bottom:0.35rem;">
+    <h2 style="margin:0; font-size:1.05rem;">Pipeline stage · {{ stage.status }}</h2>
+    <span class="muted" style="font-size:0.85rem;">Owned by <strong>{{ stage.dept }}</strong></span>
+  </div>
+  {% if stage.team %}
+  <p style="margin:0.2rem 0 0.3rem;">
+    {% for fn, name in stage.team %}<span class="badge">{{ fn }}: {{ name }}</span>{% endfor %}
+    <span class="muted" style="font-size:0.8rem;">— department heads; delegate within the team</span>
+  </p>
+  {% endif %}
+  <p class="muted" style="margin:0.1rem 0 0; font-size:0.85rem;"><strong>To advance:</strong> {{ stage.exit }}</p>
+  {% if stage.status == "Job Prep" %}
+  <div style="margin-top:0.55rem; display:flex; gap:1.2rem; align-items:center; flex-wrap:wrap;">
+    <span title="Permit-category requirements with a filed document">
+      {{ "✅" if stage.permits_ok else "⬜" }} Permits filed
+      <strong>{{ stage.permits_filed }}/{{ stage.permits_total }}</strong></span>
+    <form method="post" action="{{ url_for('set_install_date', job_id=job['id']) }}"
+          style="margin:0; display:flex; gap:0.4rem; align-items:center;">
+      <span>{{ "✅" if job["install_date"] else "⬜" }} Install date</span>
+      <input type="date" name="install_date" value="{{ job['install_date'] or '' }}" style="padding:0.2rem;">
+      <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Save</button>
+    </form>
+    {% if stage.permits_ok and not job["install_date"] %}
+    <span class="muted" style="font-size:0.82rem;">Set the install date to advance to Installation.</span>
+    {% endif %}
+  </div>
+  {% elif job["install_date"] %}
+  <p class="muted" style="margin:0.35rem 0 0; font-size:0.85rem;">📅 Install date: <strong>{{ job["install_date"] }}</strong></p>
+  {% endif %}
+</div>
+{% endif %}
+
 {% set req_total = groups | map(attribute=1) | map('length') | sum %}
 <div class="tab-bar">
   <button class="tab-btn" data-tab="general">General details</button>

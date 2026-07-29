@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     service_type     TEXT DEFAULT '',   -- General service / Warranty service
     property_type    TEXT DEFAULT 'Residential',  -- Residential / Commercial
     status           TEXT NOT NULL DEFAULT 'Proposal',  -- Piece 16 pipeline stage
+    install_date     TEXT DEFAULT '',   -- Piece 18: set in Job Prep; gates Installation
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
