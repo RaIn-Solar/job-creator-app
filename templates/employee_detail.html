@@ -6,7 +6,7 @@
   <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Back to employees</a>
 </div>
 <div class="toolbar">
-  <h1>{{ employee["name"] }}</h1>
+  <h1>{{ employee["name"] }}{% if employee["nickname"] %} <span class="muted" style="font-size:1rem;">“{{ employee["nickname"] }}”</span>{% endif %}</h1>
   <div style="display:flex; gap:0.5rem;">
     {% if can('employees.manage') %}
     <a href="{{ url_for('edit_employee', employee_id=employee['id']) }}" class="btn">Edit</a>

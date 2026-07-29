@@ -192,7 +192,10 @@ JOB_FIELD_LABELS = {
 # who they are, what they do, and when they work. Their licenses and
 # certifications are structured rows in employee_credentials (Piece 8.1),
 # managed on the profile page.
-EMPLOYEE_FIELDS = ["name", "roles", "schedule"]
+# Piece 19.3: names are entered as first/last (+ optional nickname); `name`
+# is the composed "First Last" display value kept for everything that reads it.
+EMPLOYEE_FIELDS = ["name", "first_name", "last_name", "nickname",
+                   "roles", "schedule"]
 # Piece 13: an employee becomes a login by gaining a username + password +
 # access level. Kept off the plain-text EMPLOYEE_FIELDS above and handled
 # separately so a normal profile edit never touches account data by accident.
@@ -214,7 +217,8 @@ PERMISSIONS = {
 }
 PASSWORD_MIN_LEN = 6
 EMPLOYEE_FIELD_LABELS = {
-    "name": "Name", "roles": "Roles", "schedule": "Schedule",
+    "name": "Name", "first_name": "First name", "last_name": "Last name",
+    "nickname": "Nickname", "roles": "Roles", "schedule": "Schedule",
 }
 # Columns a user fills in when adding a license/certification.
 CREDENTIAL_FIELDS = ["name", "rule_label", "number", "issued", "expires", "notes"]
@@ -718,7 +722,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 19.2"
+VERSION = "Piece 19.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3907,9 +3911,16 @@ def delete_rule(rule_id):
 # ---------------------------------------------------------------- employees
 def read_employee_form():
     """Validate and normalize a submitted employee form (create or edit).
-    Roles come in as checkboxes plus an optional free-typed 'other' field;
-    both are folded into one comma-separated list."""
-    values = {f: request.form.get(f, "").strip() for f in EMPLOYEE_FIELDS}
+    Names come in as first/last (+ optional nickname) and compose into `name`;
+    roles come in as checkboxes plus an optional free-typed 'other' field."""
+    first = request.form.get("first_name", "").strip()
+    last = request.form.get("last_name", "").strip()
+    values = {
+        "first_name": first, "last_name": last,
+        "nickname": request.form.get("nickname", "").strip(),
+        "name": (first + " " + last).strip(),
+        "schedule": request.form.get("schedule", "").strip(),
+    }
     selected = request.form.getlist("roles")
     roles = [r for r in EMPLOYEE_ROLES if r in selected]
     for extra in request.form.get("roles_other", "").split(","):
@@ -3918,14 +3929,21 @@ def read_employee_form():
             roles.append(extra)
     values["roles"] = ", ".join(roles)
     errors = []
-    if not values["name"]:
-        errors.append("Employee name is required.")
+    if not first:
+        errors.append("First name is required.")
     return values, errors
 
 
-def render_employee_form(values, employee_id=None, username="", access_level=""):
+def render_employee_form(values, employee_id=None, username="", access_level="",
+                         duplicate_warning=None):
     """Render the shared new/edit form, splitting stored roles back into
-    the known checkbox roles and any free-typed extras."""
+    the known checkbox roles and any free-typed extras. Legacy fallback: an
+    existing employee with no first/last gets its `name` split into the fields."""
+    values = dict(values)
+    if not values.get("first_name") and values.get("name"):
+        parts = values["name"].split(" ", 1)
+        values["first_name"] = parts[0]
+        values["last_name"] = parts[1] if len(parts) > 1 else ""
     stored = [r.strip() for r in (values.get("roles") or "").split(",") if r.strip()]
     selected = [r for r in stored if r in EMPLOYEE_ROLES]
     roles_other = ", ".join(r for r in stored if r not in EMPLOYEE_ROLES)
@@ -3934,6 +3952,7 @@ def render_employee_form(values, employee_id=None, username="", access_level="")
         role_departments=ROLE_DEPARTMENTS,
         selected=selected, roles_other=roles_other, employee_id=employee_id,
         username=username, access_level=access_level, access_levels=ACCESS_LEVELS,
+        duplicate_warning=duplicate_warning,
     )
 
 
@@ -4078,10 +4097,21 @@ def _apply_employee_auth(db, employee_id):
 def new_employee():
     if request.method == "POST":
         values, errors = read_employee_form()
+        username = request.form.get("username", "").strip()
+        access_level = request.form.get("access_level", "").strip()
         if errors:
             flash(" ".join(errors), "error")
-            return render_employee_form(values), 400
+            return render_employee_form(values, username=username,
+                                        access_level=access_level), 400
         db = get_db()
+        # Guard against accidental duplicates: same composed name already on the
+        # roster. Allow it only when the user confirms it's a different person.
+        dup = db.execute("SELECT name FROM employees WHERE LOWER(name) = LOWER(?)",
+                         (values["name"],)).fetchone()
+        if dup and not request.form.get("confirm_duplicate"):
+            return render_employee_form(values, username=username,
+                                        access_level=access_level,
+                                        duplicate_warning=values["name"]), 400
         cur = db.execute(
             f"INSERT INTO employees ({', '.join(EMPLOYEE_FIELDS)})"
             f" VALUES ({', '.join('?' * len(EMPLOYEE_FIELDS))})",

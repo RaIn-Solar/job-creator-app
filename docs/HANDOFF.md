@@ -168,7 +168,12 @@ footer with the build version. Flash messages render at the top of `main`.
   controls are **admin-only**.
 
 ### New / Edit employee — `/employees/new`, `/employees/<id>/edit` (`employee_form.html`)
-- Name; **role checkboxes grouped by department** (Piece 16.1): 27 ECC roles in
+- **First name (required) / Last name / Nickname (Piece 19.3):** these compose the
+  stored `name` ("First Last"); the nickname shows in quotes on the roster/profile.
+  Creating an employee whose composed name already exists is **blocked** with a
+  "different person? — add anyway" confirm checkbox, to stop accidental duplicates.
+  Legacy single-name records split their `name` into the first/last fields on edit.
+- **Role checkboxes grouped by department** (Piece 16.1): 27 ECC roles in
   six collapsible department groups (Executive / Sales & Marketing / Operations /
   Administration / Finance / R&D) — a group opens automatically when it holds a
   selected role. Plus an "other" free-text field, schedule, and a **Login & access**

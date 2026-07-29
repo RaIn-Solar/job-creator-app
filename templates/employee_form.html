@@ -9,12 +9,37 @@
   {% endif %}
 </div>
 <h1>{{ "Edit employee" if employee_id else "New employee" }}</h1>
+{% if duplicate_warning %}
+<div class="flash error">
+  ⚠️ There's already an employee named <strong>{{ duplicate_warning }}</strong>.
+  If you meant to update them, <a href="{{ url_for('employees_page') }}">go back to the roster</a>
+  and open their profile. If this is a <strong>different person</strong>, tick the
+  box below to add them anyway — a last name or nickname helps tell them apart.
+</div>
+{% endif %}
 <form method="post" class="card">
   <div class="form-grid">
-    <div class="field wide">
-      <label for="name">Name *</label>
-      <input id="name" name="name" required value="{{ values.get('name', '') }}">
+    <div class="field">
+      <label for="first_name">First name *</label>
+      <input id="first_name" name="first_name" required value="{{ values.get('first_name', '') }}">
     </div>
+    <div class="field">
+      <label for="last_name">Last name</label>
+      <input id="last_name" name="last_name" value="{{ values.get('last_name', '') }}">
+    </div>
+    <div class="field">
+      <label for="nickname">Nickname <span class="muted">(optional)</span></label>
+      <input id="nickname" name="nickname" value="{{ values.get('nickname', '') }}"
+             placeholder="what the team calls them">
+    </div>
+    {% if duplicate_warning %}
+    <div class="field wide">
+      <label class="check" style="color:var(--text);">
+        <input type="checkbox" name="confirm_duplicate" value="1"> Yes, this is a
+        different person — add them anyway.
+      </label>
+    </div>
+    {% endif %}
 
     <div class="field wide">
       <fieldset class="section">

@@ -187,7 +187,10 @@ CREATE TABLE IF NOT EXISTS meta (
 -- they hold, and their working schedule.
 CREATE TABLE IF NOT EXISTS employees (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    name                    TEXT NOT NULL,
+    name                    TEXT NOT NULL,     -- composed display name "First Last"
+    first_name              TEXT DEFAULT '',   -- Piece 19.3
+    last_name               TEXT DEFAULT '',
+    nickname                TEXT DEFAULT '',
     roles                   TEXT DEFAULT '',   -- comma-separated selections
     licenses_certifications TEXT DEFAULT '',   -- legacy free-text (Piece 8.0)
     schedule                TEXT DEFAULT '',
