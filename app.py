@@ -718,7 +718,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 19.1"
+VERSION = "Piece 19.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3972,9 +3972,15 @@ def accounts_page():
         "SELECT pr.*, e.name AS emp_name, e.username FROM password_requests pr"
         " JOIN employees e ON e.id = pr.employee_id"
         " WHERE pr.status = 'Pending' ORDER BY pr.requested_at").fetchall()
+    # Piece 19.2: flag usernames that collide case-insensitively — now that
+    # login ignores case, two such accounts would be ambiguous.
+    by_lower = {}
+    for e in with_login:
+        by_lower.setdefault((e["username"] or "").lower(), []).append(e)
+    dup_usernames = [group for group in by_lower.values() if len(group) > 1]
     return render_template("accounts.html", with_login=with_login,
                            without_login=without_login, admin_count=admin_count,
-                           pending=pending)
+                           pending=pending, dup_usernames=dup_usernames)
 
 
 @app.route("/accounts/password-requests/<int:req_id>/approve", methods=["POST"])

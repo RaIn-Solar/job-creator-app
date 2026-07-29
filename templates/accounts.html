@@ -17,6 +17,19 @@ everyday work.</p>
 </div>
 {% endif %}
 
+{% if dup_usernames %}
+<div class="flash error">
+  ⚠️ <strong>Duplicate usernames (case-insensitive).</strong> Since login now
+  ignores capitalization, these accounts share a username and a sign-in would be
+  ambiguous — give each a distinct username on their employee profile:
+  <ul style="margin:0.4rem 0 0; padding-left:1.2rem;">
+    {% for group in dup_usernames %}
+    <li>{% for e in group %}<a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a> (“{{ e["username"] }}”){% if not loop.last %} · {% endif %}{% endfor %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {% if pending %}
 <div class="card" style="border-color:#f5d9a2;">
   <h2 style="margin-top:0; font-size:1.05rem;">⏳ Pending password changes ({{ pending|length }})</h2>
