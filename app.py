@@ -718,7 +718,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 19.0"
+VERSION = "Piece 19.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1412,8 +1412,10 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        # Usernames are matched case-insensitively (passwords stay exact).
         user = get_db().execute(
-            "SELECT * FROM employees WHERE username = ? AND COALESCE(username,'') != ''",
+            "SELECT * FROM employees WHERE LOWER(username) = LOWER(?)"
+            " AND COALESCE(username,'') != ''",
             (username,)).fetchone()
         if user and user["password_hash"] and check_password_hash(
                 user["password_hash"], password):
@@ -4023,8 +4025,9 @@ def _apply_employee_auth(db, employee_id):
     setting_login = level in ACCESS_LEVELS and bool(username)
 
     if setting_login:
+        # Case-insensitive uniqueness so "Trish" and "trish" can't both exist.
         clash = db.execute(
-            "SELECT id FROM employees WHERE username = ? AND id != ?",
+            "SELECT id FROM employees WHERE LOWER(username) = LOWER(?) AND id != ?",
             (username, employee_id)).fetchone()
         if clash:
             flash(f"Username “{username}” is already taken — login unchanged.", "error")
