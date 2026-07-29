@@ -722,7 +722,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 19.3"
+VERSION = "Piece 19.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -4198,16 +4198,57 @@ def edit_employee(employee_id):
         access_level=employee["access_level"] or "")
 
 
-@app.route("/employees/<int:employee_id>/delete", methods=["POST"])
-@delete_required
+@app.route("/employees/<int:employee_id>/delete", methods=["GET", "POST"])
+@admin_required
 def delete_employee(employee_id):
-    # Piece 17.1: blocked (with an error) if they still own tasks, are a
-    # client's sales rep, or have field submissions — otherwise trashed (their
-    # credentials/documents travel with them and reconnect on restore).
-    ok, msg = trash_item("employee", employee_id)
-    flash(msg, "" if ok else "error")
-    return redirect(url_for("employee_detail", employee_id=employee_id)
-                    if not ok else url_for("employees_page"))
+    """Piece 19.4: admin offboarding. GET shows a confirmation page that asks
+    for a reason (captured in the audit log); POST detaches their live work
+    (unassigns tasks, clears sales-rep/follow-up assignments), removes their
+    login / access grants / licenses / documents, then sends them to the Trash
+    (a GM can restore or permanently delete). Blocked if they have field-work
+    submissions on record, so approved-hours history isn't lost."""
+    db = get_db()
+    emp = db.execute("SELECT * FROM employees WHERE id = ?",
+                     (employee_id,)).fetchone()
+    if emp is None:
+        abort(404)
+    task_count = _count(db, "SELECT COUNT(*) FROM job_tasks WHERE employee_id = ?", (employee_id,))
+    rep_count = _count(db, "SELECT COUNT(*) FROM clients WHERE assigned_rep_id = ?", (employee_id,))
+    sub_count = _count(db, "SELECT COUNT(*) FROM field_submissions WHERE employee_id = ?", (employee_id,))
+    if request.method == "POST":
+        reason = request.form.get("reason", "").strip()
+        if not reason:
+            flash("A reason is required to remove an employee.", "error")
+            return render_template("employee_remove.html", employee=emp,
+                                   task_count=task_count, rep_count=rep_count,
+                                   sub_count=sub_count), 400
+        if sub_count:
+            flash("This employee has field-work submissions on record (approved "
+                  "hours) — handle those first. Removal cancelled.", "error")
+            return redirect(url_for("employee_detail", employee_id=employee_id))
+        db.execute("UPDATE job_tasks SET employee_id = NULL,"
+                   " updated_at = strftime('%Y-%m-%d %H:%M:%f','now')"
+                   " WHERE employee_id = ?", (employee_id,))
+        db.execute("UPDATE clients SET assigned_rep_id = NULL WHERE assigned_rep_id = ?", (employee_id,))
+        db.execute("UPDATE lead_followups SET rep_id = NULL WHERE rep_id = ?", (employee_id,))
+        db.execute("DELETE FROM permission_grants WHERE employee_id = ?", (employee_id,))
+        db.execute("DELETE FROM password_requests WHERE employee_id = ?", (employee_id,))
+        for f in db.execute("SELECT stored_name FROM employee_files"
+                            " WHERE employee_id = ?", (employee_id,)).fetchall():
+            (employee_upload_dir(employee_id) / f["stored_name"]).unlink(missing_ok=True)
+        db.execute("DELETE FROM employee_files WHERE employee_id = ?", (employee_id,))
+        db.execute("DELETE FROM employee_credentials WHERE employee_id = ?", (employee_id,))
+        db.execute("UPDATE employees SET username = '', password_hash = '',"
+                   " access_level = '' WHERE id = ?", (employee_id,))
+        db.commit()
+        ok, msg = trash_item("employee", employee_id)  # tasks/rep detached above
+        flash(f"{emp['name']} removed — reason recorded in the audit log. {msg}"
+              if ok else msg, "" if ok else "error")
+        return redirect(url_for("employees_page") if ok
+                        else url_for("employee_detail", employee_id=employee_id))
+    return render_template("employee_remove.html", employee=emp,
+                           task_count=task_count, rep_count=rep_count,
+                           sub_count=sub_count)
 
 
 # ---- employee licenses & certifications (structured, with expiry) --------

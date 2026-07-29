@@ -173,6 +173,13 @@ footer with the build version. Flash messages render at the top of `main`.
   Creating an employee whose composed name already exists is **blocked** with a
   "different person? — add anyway" confirm checkbox, to stop accidental duplicates.
   Legacy single-name records split their `name` into the first/last fields on edit.
+- **Remove employee (offboarding, Piece 19.4, admin):** the profile's **Remove
+  employee** button opens a confirm page (`employee_remove.html`) that requires a
+  **reason** (captured in the audit log). On confirm it **unassigns their tasks**,
+  clears their sales-rep / follow-up assignments, removes their login / access grants
+  / licenses / documents, then sends them to the **Trash** (GM can restore or purge).
+  **Blocked** if they have field-work submissions on record (protects approved hours).
+  Gated by `employees.manage` (so Admins can offboard — permanent purge stays GM-only).
 - **Role checkboxes grouped by department** (Piece 16.1): 27 ECC roles in
   six collapsible department groups (Executive / Sales & Marketing / Operations /
   Administration / Finance / R&D) — a group opens automatically when it holds a
