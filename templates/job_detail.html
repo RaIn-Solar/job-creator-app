@@ -32,8 +32,13 @@
   </p>
   {% endif %}
   <p class="muted" style="margin:0.1rem 0 0; font-size:0.85rem;"><strong>To advance:</strong> {{ stage.exit }}</p>
-  {% if stage.status == "Job Prep" %}
   <div style="margin-top:0.55rem; display:flex; gap:1.2rem; align-items:center; flex-wrap:wrap;">
+    {% if stage.tasks_total %}
+    <span title="Tasks tagged to this stage">
+      {{ "✅" if stage.tasks_done >= stage.tasks_total else "⬜" }} Stage tasks
+      <strong>{{ stage.tasks_done }}/{{ stage.tasks_total }}</strong> done</span>
+    {% endif %}
+    {% if stage.status == "Job Prep" %}
     <span title="Permit-category requirements with a filed document">
       {{ "✅" if stage.permits_ok else "⬜" }} Permits filed
       <strong>{{ stage.permits_filed }}/{{ stage.permits_total }}</strong></span>
@@ -43,13 +48,21 @@
       <input type="date" name="install_date" value="{{ job['install_date'] or '' }}" style="padding:0.2rem;">
       <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Save</button>
     </form>
-    {% if stage.permits_ok and not job["install_date"] %}
-    <span class="muted" style="font-size:0.82rem;">Set the install date to advance to Installation.</span>
+    {% elif job["install_date"] %}
+    <span class="muted" style="font-size:0.82rem;">📅 Install date {{ job["install_date"] }}</span>
+    {% endif %}
+    {% if stage.next %}
+    <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="margin:0 0 0 auto;"
+          {% if not stage.ready %}onsubmit="return confirm('This stage isn’t complete ({{ stage.pending|join(', ') }}). Advance to {{ stage.next }} anyway?');"{% endif %}>
+      <input type="hidden" name="status" value="{{ stage.next }}">
+      <button type="submit" class="btn {{ '' if stage.ready else 'btn-secondary' }}"
+              style="padding:0.35rem 0.8rem;"
+              title="{% if stage.ready %}Ready to advance{% else %}Pending: {{ stage.pending|join('; ') }}{% endif %}">
+        {{ "✓ Advance to " ~ stage.next if stage.ready else "Advance to " ~ stage.next ~ " →" }}
+      </button>
+    </form>
     {% endif %}
   </div>
-  {% elif job["install_date"] %}
-  <p class="muted" style="margin:0.35rem 0 0; font-size:0.85rem;">📅 Install date: <strong>{{ job["install_date"] }}</strong></p>
-  {% endif %}
 </div>
 {% endif %}
 

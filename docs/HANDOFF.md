@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 18.0** (footer shows it plainly as "Version 18.0" — the "did my pull work?" check)
+**Current build:** **Piece 18.1** (footer shows it plainly as "Version 18.1" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -84,13 +84,20 @@ footer with the build version. Flash messages render at the top of `main`.
 - Header buttons: **status picker** (Piece 16: Proposal→Job Prep→Installation→Inspections→Closing→Complete, or Lost),
   **✎ Edit job**, **⚡ Loads & Sizing** (own page, Piece 15.1), **Process chart**,
   **← Client profile**.
-- **Pipeline stage panel (Piece 18):** shows the current stage's **owning department**
-  and the **head of each staffing function** (resolved live via `best_assignee_for_lane`
-  from `STATUS_OWNERSHIP`), plus the **exit criteria**. In **Job Prep** it shows a live
-  checklist — **permits filed (N/M)** + an **install-date** control; setting the install
-  date once all permits are filed **auto-advances the job to Installation** (the
-  install-date setter triggers the hand-off). The manual status picker still works
-  (flexible) — jumping to Installation early just warns about what's pending.
+- **Pipeline stage panel (Piece 18 / 18.1):** shows the current stage's **owning
+  department** and the **head of each staffing function** (resolved live via
+  `best_assignee_for_lane` from `STATUS_OWNERSHIP`), the **exit criteria**, a
+  **stage-tasks progress** count (this stage's own tasks done / total), and an
+  **✓ Advance to <next>** button (green when ready; a warned override otherwise).
+  In **Job Prep** it also shows **permits filed (N/M)** + an **install-date** control;
+  setting the install date once all permits are filed **auto-advances to Installation**.
+  Every transition is soft-gated (`stage_info` → `ready`/`pending`, `next_stage`): the
+  manual picker and the button both work, but advancing early flashes what's pending.
+- **Standardized step→stage tagging (Piece 18.1):** each BPMN step carries a
+  `pipeline_status` (`bpmn_export.STEP_STATUS`), so generated tasks are tagged by
+  stage (`job_tasks.pipeline_status`) and each stage gates on *its own* tasks being
+  Done. A one-time migration (`tag_tasks_by_stage`, `meta.tasks_stage_tagged`)
+  back-fills existing tasks from title keywords (`TITLE_STATUS_KEYWORDS`).
 - **Tabs (5):** General details · **LPC** · Materials · Documents · Tasks.
   ("LPC" is the abbreviated Licenses/Permits/Compliance tab, Piece 15.1; hover
   shows the full name.)

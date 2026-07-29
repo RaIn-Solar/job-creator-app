@@ -358,6 +358,7 @@ CREATE TABLE IF NOT EXISTS job_tasks (
     notes        TEXT DEFAULT '',
     sort_order   INTEGER NOT NULL DEFAULT 0,
     completed_at TEXT DEFAULT '',
+    pipeline_status TEXT DEFAULT '',                    -- Piece 18.1: which stage this step belongs to
     updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),  -- Piece 14: sync
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );

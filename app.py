@@ -718,7 +718,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 18.0"
+VERSION = "Piece 18.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -766,6 +766,17 @@ STATUS_OWNERSHIP = {
     "Complete": {"dept": "—", "exit": "Job closed.", "team": []},
     "Lost": {"dept": "—", "exit": "", "team": []},
 }
+# The linear advance path (Lost is an off-path terminal state).
+STAGE_ORDER = ["Proposal", "Job Prep", "Installation", "Inspections",
+               "Closing", "Complete"]
+
+
+def next_stage(status):
+    try:
+        i = STAGE_ORDER.index(status)
+        return STAGE_ORDER[i + 1] if i + 1 < len(STAGE_ORDER) else None
+    except ValueError:
+        return None
 # Migrate Piece 12.1 statuses to the Piece 16 phases so existing jobs survive.
 OLD_TO_NEW_STATUS = {
     "Lead": "Proposal", "Quoted": "Proposal", "Sold": "Job Prep",
@@ -823,6 +834,25 @@ TITLE_LANE_KEYWORDS = [
     ("questionnaire", "Sales Rep"),
     ("proposal", "Sales Rep"),
     ("paperwork", "General Manager"),
+]
+
+# Piece 18.1: infer a pipeline stage for an existing (un-tagged) task from its
+# title, so current jobs show stage progress. Order matters — specific first.
+TITLE_STATUS_KEYWORDS = [
+    ("sales walkthrough", "Closing"), ("client review", "Closing"),
+    ("final 10%", "Closing"), ("final invoice", "Closing"),
+    ("final paperwork", "Closing"),
+    ("meter set", "Inspections"), ("inspection", "Inspections"),
+    ("sticker", "Inspections"), ("letter of compliance", "Inspections"),
+    ("install walkthrough", "Installation"), ("site installation", "Installation"),
+    ("doc tube", "Installation"), ("monitoring", "Installation"),
+    ("40%", "Installation"),
+    ("site visit", "Proposal"), ("questionnaire", "Proposal"),
+    ("draft", "Proposal"), ("finalize", "Proposal"), ("design", "Proposal"),
+    ("contract", "Job Prep"), ("deposit", "Job Prep"), ("50%", "Job Prep"),
+    ("permit", "Job Prep"), ("interconnection", "Job Prep"),
+    ("order", "Job Prep"), ("credit", "Job Prep"),
+    ("installation date", "Job Prep"), ("plan review", "Job Prep"),
 ]
 
 # Piece 9: Electric Loads Calculator / System Sizing config (ported from
@@ -1473,7 +1503,7 @@ def init_db():
                " WHERE lead_status = 'Lead'"
                " AND id IN (SELECT DISTINCT client_id FROM jobs)")
     # Piece 14: change-tracking for task sync; seed blanks from created_at.
-    ensure_columns(db, "job_tasks", ["updated_at"])
+    ensure_columns(db, "job_tasks", ["updated_at", "pipeline_status"])
     db.execute("UPDATE job_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
                " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
     ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS)
@@ -1617,6 +1647,7 @@ def init_db():
         db.commit()
     seed_org_team(db)
     assign_tasks_by_role(db)
+    tag_tasks_by_stage(db)
     db.close()
 
 
@@ -2801,24 +2832,23 @@ def set_job_status(job_id):
     status = request.form.get("status", "")
     if status in JOB_STATUSES:
         db = get_db()
-        db.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
-        db.commit()
-        # Flexible guardrail: moving into Installation early just warns.
-        if status == "Installation":
+        # Flexible guardrail: if advancing to the next stage before the current
+        # one is complete, allow it but note what was still pending.
+        cur = job["status"] or DEFAULT_JOB_STATUS
+        warn = ""
+        if status == next_stage(cur):
             rules = db.execute("SELECT * FROM resource_rules").fetchall()
             groups = group_rules(match_rules(job, rules))
             filed = {f["rule_label"] for f in db.execute(
                 "SELECT rule_label FROM job_files WHERE job_id = ?", (job_id,))
                 if f["rule_label"]}
             info = stage_info(db, job, groups, filed)
-            pending = []
-            if not info["permits_ok"]:
-                pending.append(f"{info['permits_total'] - info['permits_filed']} permit(s) not yet filed")
-            if not job["install_date"]:
-                pending.append("no install date set")
-            if pending:
-                flash("Moved to Installation — note: " + "; ".join(pending) + ".",
-                      "error")
+            if not info["ready"]:
+                warn = " · ".join(info["pending"])
+        db.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
+        db.commit()
+        if warn:
+            flash(f"Advanced to {status} with {cur} still pending: {warn}.", "error")
     return redirect(url_for("job_detail", job_id=job_id))
 
 
@@ -3003,11 +3033,29 @@ def stage_info(db, job, groups, filed_labels):
     team = [(label, name_by_id.get(best_assignee_for_lane(lane, emps), "— unassigned —"))
             for label, lane in spec["team"]]
     filed, total = _permit_coverage(groups, filed_labels)
+    permits_ok = filed >= total
+    install_date = job["install_date"] if "install_date" in job.keys() else ""
+    # Progress: this stage's own tasks (tagged with pipeline_status = status).
+    tdone, ttotal = db.execute(
+        "SELECT COALESCE(SUM(status = 'Done'), 0), COUNT(*) FROM job_tasks"
+        " WHERE job_id = ? AND pipeline_status = ?", (job["id"], status)).fetchone()
+    # Ready to advance? All this stage's tasks done; Job Prep also needs permits
+    # filed + an install date.
+    ready = (ttotal == 0 or tdone >= ttotal)
+    pending = []
+    if ttotal and tdone < ttotal:
+        pending.append(f"{ttotal - tdone} task(s) still open")
+    if status == "Job Prep":
+        if not permits_ok:
+            pending.append(f"{total - filed} permit(s) not filed")
+        if not install_date:
+            pending.append("no install date set")
+        ready = ready and permits_ok and bool(install_date)
     return {
         "status": status, "dept": spec["dept"], "exit": spec["exit"], "team": team,
-        "permits_filed": filed, "permits_total": total,
-        "permits_ok": filed >= total,
-        "install_date": job["install_date"] if "install_date" in job.keys() else "",
+        "permits_filed": filed, "permits_total": total, "permits_ok": permits_ok,
+        "install_date": install_date, "tasks_done": tdone, "tasks_total": ttotal,
+        "ready": ready, "pending": pending, "next": next_stage(status),
     }
 
 
@@ -3048,6 +3096,31 @@ def assign_tasks_by_role(db):
                     " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
                     (aid, t["id"]))
     db.execute("INSERT INTO meta (key, value) VALUES ('tasks_role_assigned', '1')"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    db.commit()
+
+
+def _status_from_title(title):
+    t = (title or "").lower()
+    for keyword, status in TITLE_STATUS_KEYWORDS:
+        if keyword in t:
+            return status
+    return ""
+
+
+def tag_tasks_by_stage(db):
+    """One-time (Piece 18.1): give existing tasks a pipeline_status so current
+    jobs show stage progress. Newly generated tasks are tagged at creation."""
+    if db.execute("SELECT 1 FROM meta WHERE key = 'tasks_stage_tagged'").fetchone():
+        return
+    db.row_factory = sqlite3.Row
+    for t in db.execute("SELECT id, title FROM job_tasks"
+                        " WHERE COALESCE(pipeline_status, '') = ''").fetchall():
+        status = _status_from_title(t["title"])
+        if status:
+            db.execute("UPDATE job_tasks SET pipeline_status = ? WHERE id = ?",
+                       (status, t["id"]))
+    db.execute("INSERT INTO meta (key, value) VALUES ('tasks_stage_tagged', '1')"
                " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
 
@@ -3104,9 +3177,10 @@ def generate_tasks(job_id):
         db.execute(
             "INSERT INTO job_tasks"
             " (job_id, employee_id, title, status, due_date, notes, sort_order,"
-            "  updated_at)"
-            " VALUES (?, ?, ?, 'To do', ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-            (job_id, assignee, title, due, note, base + added))
+            "  pipeline_status, updated_at)"
+            " VALUES (?, ?, ?, 'To do', ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            (job_id, assignee, title, due, note, base + added,
+             step.get("status", "")))
         existing.add(title.lower())
         added += 1
         if assignee:

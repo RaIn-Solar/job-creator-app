@@ -40,6 +40,28 @@ CONNECTION_FIELDS = (
     "battery_utility_connection",
 )
 
+# Piece 18.1: each process step's pipeline status, so generated tasks are
+# tagged by stage (standardized department step-lists) and stage transitions
+# can be gated on their own steps being done.
+STEP_STATUS = {
+    "start": "Proposal", "collect": "Proposal", "quest": "Proposal",
+    "sitevisit": "Proposal", "draft": "Proposal", "finalize": "Proposal",
+    "contract": "Job Prep", "dep50": "Job Prep", "solbiz": "Job Prep",
+    "order": "Job Prep", "setdate": "Job Prep",
+    "install": "Installation", "walkthrough": "Installation",
+    "doctube": "Installation", "dep40": "Installation", "monitoring": "Installation",
+    "meterset": "Inspections", "cid": "Inspections", "fix": "Inspections",
+    "jmecloc": "Inspections", "sticker": "Inspections",
+    "inv10": "Closing", "saleswalk": "Closing", "review": "Closing", "end": "Closing",
+}
+
+
+def _step_status(nid):
+    """Pipeline stage for a node id (the dynamic permit steps are Job Prep)."""
+    if nid.startswith("permit"):
+        return "Job Prep"
+    return STEP_STATUS.get(nid, "")
+
 
 def _rule_item(rule):
     return {"label": rule["label"], "category": rule["category"],
@@ -97,7 +119,8 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
     def add(nid, ntype, name, lane, colx, items=None):
         nodes.append(dict(id=nid, type=ntype, name=name, lane=lane, col=colx))
         details[nid] = {"name": name, "lane": lane, "items": items or [],
-                        "kind": ntype, "order": len(nodes)}
+                        "kind": ntype, "order": len(nodes),
+                        "status": _step_status(nid)}
         return nid
 
     def link(a, b, label=""):
