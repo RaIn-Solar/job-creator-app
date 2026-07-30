@@ -151,9 +151,15 @@
         {% for r in items %}
         <li style="margin-bottom:0.3rem;">
           {% if r["label"] in filed_labels %}<span title="document on file">📎</span> {% endif %}{{ r["label"] }}
+          {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}" title="Flagged in the NM reference set — {{ 'could not be verified online; confirm by phone' if r['alert_kind'] == 'unverified' else 'confirm before relying on it' }}">{{ r["alert_text"] }}</span>{% endif %}
           {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
           {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
           {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+          {% if r["instances"] and r["instances"]|length > 1 %}
+          <ul class="instances" title="Required by these selections on this job">
+            {% for inst in r["instances"] %}<li>{{ inst }}</li>{% endfor %}
+          </ul>
+          {% endif %}
           {% if r["category"] == "License" and license_staffing %}
             {% set holders = license_staffing.get(r["label"], []) %}
             <br>
@@ -172,6 +178,10 @@
   {% else %}
   <p class="empty">No requirements matched this job's selections.</p>
   {% endif %}
+  <p class="verify-legend" style="margin-bottom:0.2rem;">
+    <span class="flag flag-verify">⚠ Verify</span> confirm before relying on it ·
+    <span class="flag flag-unverified">⚠ Unverified</span> confirm by phone ·
+    a requirement shared by more than one selection is listed once with its selections beneath.</p>
   <p class="muted" style="margin-bottom:0;">Resolved automatically from this
   job's fields · <a href="{{ url_for('rules_page', from_job=job['id']) }}">manage the rules</a></p>
 </div>

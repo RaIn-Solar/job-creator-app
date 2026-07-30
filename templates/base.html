@@ -222,6 +222,31 @@
     .jobprog-next .jobprog-lostlbl { color: #b02a2a; font-weight: 700; }
     .jobprog--compact .jobprog-seg { height: 9px; padding: 0; }
     .jobprog--compact .jobprog-next { margin-top: 0.25rem; font-size: 0.8rem; }
+    /* Rules display: verification callout chips + compact instance bullets. */
+    .flag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.05rem 0.4rem;
+      border-radius: 999px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .flag-verify { background: #fdf0d5; color: #8a5a00; border: 1px solid #eccf8f; }
+    .flag-unverified { background: #fbe0e0; color: #9a2222; border: 1px solid #eeb5b5; }
+    .flag-corrected { background: #e3f0e8; color: #1a6e3c; border: 1px solid #bcdcc7; }
+    ul.instances {
+      margin: 0.2rem 0 0.1rem;
+      padding-left: 1.1rem;
+      list-style: none;
+    }
+    ul.instances li {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0;
+    }
+    ul.instances li::before { content: "•"; color: var(--brand); margin-right: 0.4rem; }
+    .verify-legend { font-size: 0.8rem; color: var(--muted); margin: 0.3rem 0 0; }
   </style>
 </head>
 <body>

@@ -57,7 +57,7 @@ UTILITY_RULES_V10 = [
          label="Continental Divide EC — contacts",
          url="https://www.cdec.coop", link_text="Continental Divide EC",
          phone="505-285-6656 Grants / 505-863-3641 Gallup",
-         notes="verify domain; Cibola/McKinley + adjacent"),
+         notes="Cibola/McKinley + adjacent"),  # V11: co-op contacts verified (doc 03)
     dict(field_name=_U, field_value="Otero County EC", category="Link",
          label="Otero County EC — contacts",
          url="https://www.ote-coop.com", link_text="Otero County EC",
@@ -142,7 +142,7 @@ UTILITY_RULES_V10 = [
     dict(field_name=_U, field_value="Gallup Joint Utilities", category="Link",
          label="Gallup Joint Utilities — contacts",
          url="https://utilities.gallupnm.gov", link_text="Gallup Joint Utilities",
-         phone="505-863-1241 (city hall — verify)",
+         phone="505-863-1241 (city hall)",  # V11: city-hall line no longer flagged (doc 02/03)
          notes="municipal electric; net metering offered — verify current terms"),
     dict(field_name=_U, field_value="City of Aztec", category="Link",
          label="City of Aztec Electric — contacts",
@@ -168,22 +168,24 @@ _PLAIN_CID_COUNTIES = {
     "Catron County": "no local LEA; remote — allow 5-10 business days for inspections; federal land excluded from CID",
     "Chaves County": "City of Roswell 575-624-6700 in-city; rural via CID (Roswell area)",
     "Cibola County": "City of Grants 505-287-7927; Acoma & Laguna Pueblo lands excluded — tribal building officials",
-    "Curry County": "City of Clovis Building & Safety 575-769-7882 in-city",
-    "De Baca County": "no county building dept; Fort Sumner village 575-355-2611",
-    "Eddy County": "Carlsbad 575-887-1191; Artesia 575-746-9578 in-city",
-    "Grant County": "Silver City 575-534-6348 (townofsilvercity.org); county P&Z 575-574-0030",
+    # Several in-city phones below were carried from doc 04's "could not verify"
+    # list in V10; V11 replaces them with doc 02's verified-body numbers.
+    "Curry County": "City of Clovis Building & Safety 575-769-7829 in-city",
+    "De Baca County": "no county building dept; Fort Sumner village 575-355-2401",
+    "Eddy County": "Carlsbad 575-887-1191; Artesia 575-746-2122 in-city",
+    "Grant County": "Silver City 575-534-6348 (townofsilvercity.org); county Planning 575-574-0018",
     "Hidalgo County": "Lordsburg 575-542-3421",
     "Lea County": "Hobbs 575-397-9200 (hobbsnm.gov); Lovington 575-396-2884 in-city",
     "Luna County": "City of Deming 575-546-8848 in-city",
-    "McKinley County": "Gallup 505-863-1241; county planning 505-863-6866; Navajo Nation & Zuni Pueblo excluded — Navajo Building Codes 928-871-6376 (verify)",
-    "Otero County": "Alamogordo 575-439-4100; Cloudcroft 575-682-2733; Holloman AFB + Mescalero Apache lands excluded",
+    "McKinley County": "Gallup 505-863-1241; county planning 505-863-6866; Navajo Nation & Zuni Pueblo excluded — Navajo Building Codes 928-871-6380",
+    "Otero County": "Alamogordo 575-439-4100; Cloudcroft 575-682-2411; Holloman AFB + Mescalero Apache lands excluded",
     "Quay County": "Tucumcari 575-461-3451 — confirm permit function",
     "Roosevelt County": "City of Portales 575-356-6662 in-city",
     "Sierra County": "City of T or C 575-894-6673 ext. 353 in-city",
     "Socorro County": "City of Socorro 575-835-0240 in-city",
-    "Torrance County": "Moriarty 505-832-4406; Estancia 505-384-2288; CID Santa Fe office",
-    "Union County": "Clayton 575-374-9502 — confirm municipal function",
-    "Valencia County": "Belen 505-966-2700; Los Lunas 505-839-3870; Isleta Pueblo excluded 505-869-3111; CID Albuquerque office",
+    "Torrance County": "Moriarty 505-886-3020; Estancia 505-384-2708; CID Santa Fe office",
+    "Union County": "Clayton 575-374-8896 ext 4 — confirm municipal function",
+    "Valencia County": "Belen 505-966-2745; Los Lunas 505-839-3840; Isleta Pueblo excluded 505-869-3111; CID Albuquerque office",
 }
 
 COUNTY_RULES_V10 = [
@@ -207,13 +209,13 @@ COUNTY_RULES_V10 = [
          notes="county P&Z issues zoning compliance FIRST, then CID building permit; Rio Rancho requires PNM Notice of Complete + Technical Screening Review copies BEFORE permit application; pueblo & Navajo chapter lands excluded"),
     dict(field_name="county", field_value="Lincoln County", category="Permit",
          label="Lincoln County Building Dept permit (unincorporated)",
-         phone="575-648-2321",
-         notes="300 Central Ave, Carrizozo; Ruidoso 575-258-4726; Ruidoso Downs 575-378-4422 in-city"),
+         phone="575-258-1232",  # V11: doc 02 verified body
+         notes="300 Central Ave, Carrizozo; Ruidoso 575-258-4343; Ruidoso Downs 575-378-4422 in-city"),
     dict(field_name="county", field_value="San Juan County", category="Link",
          label="San Juan County AHJ — Farmington is an LEA",
          url="https://www.fmtn.org", link_text="City of Farmington",
-         phone="Farmington 505-599-1365 / county 505-334-9413",
-         notes="Aztec 505-334-7658; Bloomfield 505-632-6313; Navajo Nation land excluded; FEUS net-metering status must be confirmed before quoting"),
+         phone="Farmington 505-327-7701 / county 505-334-4550",  # V11: doc 02 verified body
+         notes="Aztec 505-334-7605; Bloomfield 505-632-6300; Navajo Nation land excluded; FEUS net-metering status must be confirmed before quoting"),
     dict(field_name="county", field_value="Los Alamos County", category="Permit",
          label="Los Alamos Community Development permit",
          url="https://www.losalamosnm.gov/Business/Apply-for-a-permit/Solar-Power-Installation",
@@ -344,4 +346,46 @@ CORRECTIONS_V10 = [
     "UPDATE resource_rules SET"
     " notes = 'single form covers solar/residential; 3-5 days; site visit arranged; NMDOT access permit if state road involved; Espanola 505-747-6100 in-city; NORA serves the Chama area'"
     " WHERE label = 'Rio Arriba County Development Permit'",
+]
+
+# ---------------------------------------------------------------------------
+# Batch 11 — reconcile against the VERIFIED BODY of docs 01-03 (the user
+# confirmed 01-03; 00 and 04 were unchanged). Two kinds of fix:
+#   (a) county in-city phones carried from doc 04's "could not verify" list in
+#       V10 are replaced with doc 02's verified-body numbers, and
+#   (b) items docs 01-03 now show verified lose their stale "verify" flag.
+# County updates are generated straight from the corrected _PLAIN_CID_COUNTIES
+# dict so the migration always matches the seed. Each update is keyed on
+# (label, field_value) for precision. No apostrophes in any SQL literal.
+# ---------------------------------------------------------------------------
+_V11_COUNTY_FIXES = [
+    "Curry County", "De Baca County", "Eddy County", "Grant County",
+    "McKinley County", "Otero County", "Torrance County", "Union County",
+    "Valencia County",
+]
+
+CORRECTIONS_V11 = [
+    "UPDATE resource_rules SET notes = '{}'"
+    " WHERE label = '{}' AND field_value = '{}'".format(
+        _PLAIN_CID_COUNTIES[c].replace("'", ""), _CID_LABEL, c)
+    for c in _V11_COUNTY_FIXES
+] + [
+    # Lincoln County — doc 02 verified: building dept 575-258-1232, Ruidoso 575-258-4343
+    "UPDATE resource_rules SET phone = '575-258-1232',"
+    " notes = '300 Central Ave, Carrizozo; Ruidoso 575-258-4343; Ruidoso Downs 575-378-4422 in-city'"
+    " WHERE label = 'Lincoln County Building Dept permit (unincorporated)'",
+    # San Juan County — doc 02 verified LEA/county/city numbers
+    "UPDATE resource_rules SET phone = 'Farmington 505-327-7701 / county 505-334-4550',"
+    " notes = 'Aztec 505-334-7605; Bloomfield 505-632-6300; Navajo Nation land excluded; FEUS net-metering status must be confirmed before quoting'"
+    " WHERE label = 'San Juan County AHJ — Farmington is an LEA'",
+    # Continental Divide EC — doc 03 verifies the co-op contacts; drop stale domain flag
+    "UPDATE resource_rules SET notes = 'Cibola/McKinley + adjacent'"
+    " WHERE label = 'Continental Divide EC — contacts'",
+    # Gallup Joint Utilities — doc 02/03 no longer flag the city-hall line
+    "UPDATE resource_rules SET phone = '505-863-1241 (city hall)'"
+    " WHERE label = 'Gallup Joint Utilities — contacts'",
+    # KCEC — doc 03 verifies the net-metering hub as current (July 2026)
+    "UPDATE resource_rules SET"
+    " notes = 'pre-screening application required FIRST, then full application (NM Interconnection Manual p.24); net-metering hub verified current July 2026; over 25 kW contact Richard Martinez (verify)'"
+    " WHERE label = 'KCEC — Net-Metering Hub & Applications'",
 ]

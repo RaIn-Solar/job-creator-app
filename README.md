@@ -62,7 +62,15 @@ can confirm a pull/update took effect.
 - **Job profiles** stored under each client, with full field capture.
 - **Rules engine** (`/rules`): job selections → the licenses, permits, and
   compliance items that apply. Editable catalog of resources (links, phone
-  numbers, docs).
+  numbers, docs). Shared requirements are **compacted** — a requirement needed
+  by more than one selection (e.g. EE-98 for PV + Battery) shows once with its
+  triggering selections listed beneath, instead of repeating.
+- **Verification callouts**: requirements sourced from the NM reference set that
+  couldn't be fully confirmed carry a visible **⚠ Verify / ⚠ Unverified** chip,
+  with a legend, so field staff know what to confirm before relying on it.
+- **NM reference data** (statewide licensing, all 33 counties' AHJ contacts,
+  every utility's interconnection contacts) is kept reconciled against the
+  verified July 2026 reference set.
 - **Job edit history / versioning** for recordkeeping.
 - **Per-job BPMN process charts**: an in-app viewer plus `.bpmn` export, with
   each step tagged by pipeline status.

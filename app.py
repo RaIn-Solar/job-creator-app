@@ -32,7 +32,7 @@ from werkzeug.utils import secure_filename
 
 from bpmn_export import build_job_bpmn
 from nm_directory import (
-    COUNTIES_ALL, CORRECTIONS_V10, NEW_RULES_V10, UTILITIES_ALL,
+    COUNTIES_ALL, CORRECTIONS_V10, CORRECTIONS_V11, NEW_RULES_V10, UTILITIES_ALL,
 )
 from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
 
@@ -660,7 +660,7 @@ LINK_TEXTS = {
 
 SEED_BATCHES = {2: SEED_RULES_V2, 3: SEED_RULES_V3, 4: SEED_RULES_V4,
                 5: SEED_RULES_V5, 6: SEED_RULES_V6, 7: SEED_RULES_V7,
-                8: SEED_RULES_V8, 9: [], 10: NEW_RULES_V10}
+                8: SEED_RULES_V8, 9: [], 10: NEW_RULES_V10, 11: []}
 
 # One-off SQL applied alongside a batch (same once-only guarantee).
 SEED_BATCH_SQL = {
@@ -708,6 +708,9 @@ SEED_BATCH_SQL = {
     # July 2026 verified reference set: corrections from the Manual
     # Review Log (dead NMPRC domain, EMNRD path, phones, SMDTC tier...).
     10: CORRECTIONS_V10,
+    # Reconcile against the verified body of docs 01-03: county phones from
+    # doc 02, and promote items the docs now show verified.
+    11: CORRECTIONS_V11,
 }
 
 # ECC's main products/services — the multi-select on the job form.
@@ -722,7 +725,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.2"
+VERSION = "Piece 20.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1773,17 +1776,50 @@ def match_rules(job, rules):
     return hits
 
 
+def _instance_label(rule):
+    """Human-readable "what triggered this" for the compact instance bullets:
+    the job selection(s) behind a requirement (e.g. "PV Systems")."""
+    fv = (rule["field_value"] or "").strip()
+    fv2 = (rule["field_value2"] or "").strip() if rule["field_name2"] else ""
+    return f"{fv} + {fv2}" if fv2 else fv
+
+
+def _rule_alert(rule):
+    """Surface the reference set's caution callouts (⚠ VERIFY / ⚠ UNVERIFIED)
+    that live inside a rule's notes so they render as a chip instead of hiding
+    in prose. Returns (kind, short_label) or (None, None)."""
+    text = ((rule["notes"] or "") + " " + (rule["label"] or "")).lower()
+    if "unverified" in text:
+        return ("unverified", "⚠ Unverified")
+    if "verify" in text or "confirm" in text:
+        return ("verify", "⚠ Verify")
+    return (None, None)
+
+
 def group_rules(matched, dedupe=True):
     """Group matched rules by category in a fixed order. On job pages,
-    de-duplicate shared requirements (e.g. PV and Battery both need
-    EE-98); the directory keeps every rule so each trigger is visible."""
-    groups, seen = {}, set()
+    de-duplicate shared requirements (e.g. PV and Battery both need EE-98) and
+    collapse them into one entry that carries the list of triggering selections
+    (`instances`), so a requirement shows once with its instances beneath it
+    instead of repeating. The directory (dedupe=False) keeps every rule so each
+    trigger is editable on its own row. Every entry also carries `alert_kind`/
+    `alert_text` for the verification callout chip."""
+    groups = {}          # category -> list of dict entries (dedupe order)
+    index = {}           # (category, label_lc) -> entry, for merging instances
     for rule in matched:
-        key = (rule["category"], rule["label"].strip().lower())
-        if dedupe and key in seen:
+        cat = rule["category"]
+        label_lc = rule["label"].strip().lower()
+        inst = _instance_label(rule)
+        existing = index.get((cat, label_lc)) if dedupe else None
+        if existing is not None:
+            if inst and inst not in existing["instances"]:
+                existing["instances"].append(inst)
             continue
-        seen.add(key)
-        groups.setdefault(rule["category"], []).append(rule)
+        entry = {k: rule[k] for k in rule.keys()}
+        entry["instances"] = [inst] if inst else []
+        entry["alert_kind"], entry["alert_text"] = _rule_alert(rule)
+        groups.setdefault(cat, []).append(entry)
+        index[(cat, label_lc)] = entry
     ordered = []
     for category in RULE_CATEGORIES:
         if category in groups:
@@ -3916,9 +3952,14 @@ def job_report(job_id):
         lines += ["", f"{heading.upper()} ({len(items)} ITEM{'S' if len(items) != 1 else ''})", "-" * 64]
         for rule in items:
             entry = f"[ ] {rule['label']}"
+            if rule.get("alert_text"):
+                entry += f"  {rule['alert_text']}"
             if rule["notes"]:
                 entry += f"  ({rule['notes']})"
             lines.append(entry)
+            if len(rule.get("instances", [])) > 1:
+                for inst in rule["instances"]:
+                    lines.append(f"        - {inst}")
             if rule["url"]:
                 source = rule["link_text"] or ""
                 lines.append(f"      {source + ': ' if source else 'link:  '}{rule['url']}")

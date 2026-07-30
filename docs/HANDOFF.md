@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.2** (footer shows it plainly as "Version 20.2" — the "did my pull work?" check)
+**Current build:** **Piece 20.3** (footer shows it plainly as "Version 20.3" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,25 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### Rules display: compaction + verification callouts — Piece 20.3
+- `group_rules(matched, dedupe=True)` now collapses a shared requirement into
+  one entry carrying `instances` (the triggering selections, e.g. PV + Battery)
+  and `alert_kind`/`alert_text` (from `_rule_alert()` scanning the note for
+  ⚠ verify/unverified/confirm). Entries are dicts now, not Rows — drop-in for
+  templates. Shown on the job LPC tab, the rule directory, and the text report.
+  Instances only render when >1; `_instance_label()` builds the bullet text.
+- Verification chips + a legend (`.flag`, `.verify-legend`, `ul.instances` CSS
+  in base.html). Directory page carries the legend at top.
+- **Data reconciliation (nm_directory `CORRECTIONS_V11`, seed batch 11):** the
+  V10 batch had carried ~a dozen county in-city phones from doc 04's "could not
+  verify" list; V11 replaces them with doc 02's verified-body numbers (Clovis,
+  Fort Sumner, Artesia, Grant/Planning, McKinley Navajo codes 928-871-6380,
+  Cloudcroft, Moriarty/Estancia, Clayton, Belen/Los Lunas, Lincoln, San Juan)
+  and promotes items docs 01-03 now show verified (Continental Divide domain,
+  Gallup city-hall line, KCEC hub). Keyed on (label, field_value); applies to
+  existing beta DBs via the batch-SQL migration. Uploaded .docx == the repo's
+  `docs/reference/*.md`, so no other values changed.
 
 ### Per-job progress widget — Piece 20.2
 - `build_job_progress(db, job)` → dict with the ordered pipeline `stages`
