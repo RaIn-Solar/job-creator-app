@@ -170,6 +170,58 @@
       padding: 0.1rem 0.5rem;
       font-size: 0.8rem;
     }
+    /* Piece 20.2: per-job pipeline progress widget — a segmented bar, one
+       segment per stage, filled up to the current stage, with the next step
+       called out beneath. */
+    .jobprog { margin: 0.2rem 0; }
+    .jobprog-track {
+      display: flex;
+      gap: 3px;
+      width: 100%;
+    }
+    .jobprog-seg {
+      flex: 1 1 0;
+      min-width: 0;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.68rem;
+      font-weight: 600;
+      line-height: 1;
+      padding: 0 0.2rem;
+      border-radius: 4px;
+      background: var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .jobprog-seg:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+    .jobprog-seg:last-child  { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+    .jobprog-seg.is-done { background: var(--brand); color: #fff; }
+    .jobprog-seg.is-current {
+      background: var(--brand-dark);
+      color: #fff;
+      box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px var(--brand-dark);
+      background-image: linear-gradient(45deg,
+        rgba(255,255,255,0.16) 25%, transparent 25%,
+        transparent 50%, rgba(255,255,255,0.16) 50%,
+        rgba(255,255,255,0.16) 75%, transparent 75%, transparent);
+      background-size: 16px 16px;
+      animation: jobprog-move 1.2s linear infinite;
+    }
+    @keyframes jobprog-move { from { background-position: 0 0; } to { background-position: 16px 0; } }
+    @media (prefers-reduced-motion: reduce) { .jobprog-seg.is-current { animation: none; } }
+    .jobprog-seg.is-skip { background: repeating-linear-gradient(45deg,
+        #f1d5d5, #f1d5d5 6px, #f6e4e4 6px, #f6e4e4 12px); color: #a04141; }
+    .jobprog-next { margin-top: 0.35rem; font-size: 0.85rem; color: var(--text); }
+    .jobprog-next .jobprog-arrow { color: var(--brand); font-weight: 700; }
+    .jobprog-next .jobprog-stage { font-weight: 700; }
+    .jobprog-next .jobprog-done { color: var(--brand); font-weight: 700; }
+    .jobprog-next .jobprog-lostlbl { color: #b02a2a; font-weight: 700; }
+    .jobprog--compact .jobprog-seg { height: 9px; padding: 0; }
+    .jobprog--compact .jobprog-next { margin-top: 0.25rem; font-size: 0.8rem; }
   </style>
 </head>
 <body>

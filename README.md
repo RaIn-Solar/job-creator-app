@@ -1,10 +1,17 @@
 # ☀️ Solbiz
 
-**Solbiz** — ECC Solar's internal tool: build client profiles, create job profiles under
-each client, and automatically pull up the right resources (links, phone
-numbers, docs) based on the job's fields.
+**Solbiz** — ECC Solar's internal operations tool. Build client profiles, create
+job profiles under each client, and automatically surface the right resources
+(licenses, permits, compliance items, links, phone numbers, docs) based on each
+job's fields — then run the whole job through a standardized, role-based pipeline.
 
 **Proprietary software — see [LICENSE](LICENSE). Do not distribute.**
+
+Built for ECC Solar (New Mexico, statewide). Flask + SQLite + Jinja templates,
+pure Python, raw SQL (no ORM, no JS framework). Runs from source or as a
+packaged desktop app. Offline-capable; the database upgrades itself on launch.
+
+---
 
 ## How to run it (every time)
 
@@ -23,18 +30,110 @@ numbers, docs) based on the job's fields.
 
 4. Open your browser to **http://localhost:5000**
 
-To stop the app, press `Ctrl+C` in the terminal.
+To stop the app, press `Ctrl+C` in the terminal. Your data lives in
+`job_creator.db` (created automatically on first run). Delete that file to start
+over with a fresh database. **Back up `job_creator.db` *and* the `uploads/`
+folder together** — the documents on disk are referenced from the database.
 
-Your data lives in `job_creator.db` (created automatically on first run).
-Delete that file to start over with a fresh database.
+The build number shows plainly in the page footer ("Version N") so beta testers
+can confirm a pull/update took effect.
 
-## Build progress
+---
 
-- [x] **Piece 1** — Flask + SQLite skeleton; home page lists clients
-- [x] **Piece 2** — “New client” form and client profile pages
-- [x] **Piece 3** — Job profiles stored under each client
-- [x] **Piece 4** — Rules engine: job selections → licenses, permits, compliance items (editable at /rules); service tickets with pre-fill; exportable job report
-- [x] **Piece 5** — Edit jobs with version history for recordkeeping
-- [x] **Piece 6** — Per-job BPMN process charts (in-app viewer + .bpmn export)
-- [x] **Piece 7** — Material lists per job; document upload/storage with per-requirement filing coverage
-- [ ] **Piece 8** — Polish (search, statuses, logins); service-ticket process refinement
+## Features & capabilities
+
+> This list is the running record of everything the software does and is kept
+> current with each update. When a capability is added or changed, it is logged
+> here.
+
+### Clients & leads
+- **Client profiles** with separated address fields (street / city / state / ZIP
+  for both mailing and billing) to cut down on typos.
+- **Live search preview** on the landing page — matches appear as you type.
+- **Lead pipeline**: client-level lead status (Lead / Converted / Cold), an
+  assigned sales rep, conversion tracking, and a **cold-leads** list.
+- **Lead follow-ups**: scheduled follow-up milestones with due dates, surfaced
+  on the dashboard and flagged when overdue.
+- **Edit history**: editing a client saves the prior version; changed data is
+  hidden with a note that it changed — only an admin can request the older info.
+- **Client document storage** with categories.
+
+### Jobs
+- **Job profiles** stored under each client, with full field capture.
+- **Rules engine** (`/rules`): job selections → the licenses, permits, and
+  compliance items that apply. Editable catalog of resources (links, phone
+  numbers, docs).
+- **Job edit history / versioning** for recordkeeping.
+- **Per-job BPMN process charts**: an in-app viewer plus `.bpmn` export, with
+  each step tagged by pipeline status.
+- **Loads & Sizing** (`/jobs/<id>/loads`): electrical loads and system sizing on
+  its own page.
+- **Materials lists** per job and **document upload/storage** with per-requirement
+  filing coverage (each job page shows which requirements have a document on file
+  and warns on gaps).
+- **Exportable job report**.
+
+### Pipeline, tasks & scheduling
+- **Standardized pipeline**: Proposal → Job Prep → Installation → Inspections →
+  Closing → Complete (plus Lost). Each stage is **owned by a department** with
+  defined exit criteria; Job Prep is gated by prerequisites (all permits filed +
+  an install date set — setting the install date auto-advances the job).
+- **Per-job progress widget** — a segmented progress bar (one per job) that shows
+  at a glance where the job sits in the pipeline, with the **next step called
+  out**. Appears on the dashboard, client pages, and each job's header.
+- **Task generation** from a job's process, with each step auto-assigned to the
+  role-holder responsible for it.
+- **Default task deadlines**: every generated task defaults to **7 days after the
+  previous step** (a weekly cadence); when a step is marked Done, the next open
+  step is re-defaulted to 7 days after that completion. Hand-editable per job.
+- **Calendar export (.ics)**: download your task due dates + install dates
+  (`/calendar/my.ics`) or a single job's dates (`/jobs/<id>/calendar.ics`) and
+  import into Google Calendar (or Outlook/Apple). Stable IDs so re-importing
+  updates events instead of duplicating.
+- **Work Bag** for field crews to update task status/notes; changes flow through
+  an **approval queue** before being applied to the authoritative tasks.
+
+### People, roles & permissions
+- **Employees** matched to the org chart, with first / last / optional nickname
+  (duplicate-name guard on creation).
+- **27 roles grouped by department**; the create-employee form groups role titles
+  by department in its picker.
+- **Licenses & certifications** per employee, with expiry tracking that ties into
+  job requirements (a job page can show whether staff hold the licenses it needs
+  and warn when a credential has lapsed).
+- **Role-based "My Dashboard"** — the sign-in landing, stacked by department, with
+  a **mode switch** for people who hold multiple roles.
+- **Permissions**: the General Manager (identified by the GM role) has unfettered
+  access and can grant individuals access to specific tools/functions **with an
+  expiration date**. Admin tier sits below GM; granular grants everywhere else.
+- **Deletion & trash**: deletes are GM-only (delegatable), prompt before
+  deleting, and are **blocked with an error if the data is in use** elsewhere.
+  Deleted items go to a **trash can** for review; permanent purge stays GM-only.
+- **Employee offboarding**: admins can remove an employee with a confirm prompt
+  that requires a reason for the audit log.
+- **Logins**: per-user accounts with hashed passwords. **Usernames are
+  case-insensitive** (passwords stay case-sensitive); the Accounts page scans for
+  case-duplicate usernames.
+
+### Records & audit
+- **Audit log** of all changes (create/update/delete), with password fields
+  redacted and never logged in plaintext.
+- **NM directory** of authorities/utilities baked in for quick reference.
+
+---
+
+## Build history (high level)
+
+- **Pieces 1–7** — Flask + SQLite skeleton; clients & jobs; rules engine;
+  resource catalog; job versioning; per-job BPMN; materials & document filing.
+- **Piece 8+** — search, statuses, logins, and service-ticket refinement.
+- **Pieces 9–15** — desktop packaging & versioned footer; live search preview;
+  split address fields; client edit history; Loads & Sizing as its own page.
+- **Pieces 16–19** — org-chart staffing; roles/permissions (GM grants with
+  expiry, Admin tier); trash + in-use checks; task→role assignment; standardized
+  department-owned pipeline; role-based dashboards with a mode switch;
+  case-insensitive usernames; first/last/nickname; employee offboarding.
+- **Piece 20** — calendar (.ics) export; default 7-day task deadlines with a
+  completion cascade; per-job pipeline progress widget.
+
+Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

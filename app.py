@@ -722,7 +722,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.1"
+VERSION = "Piece 20.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -773,6 +773,10 @@ STATUS_OWNERSHIP = {
 # The linear advance path (Lost is an off-path terminal state).
 STAGE_ORDER = ["Proposal", "Job Prep", "Installation", "Inspections",
                "Closing", "Complete"]
+# Short labels for the tight per-job progress widget (Piece 20.2).
+STAGE_SHORT = {"Proposal": "Proposal", "Job Prep": "Prep",
+               "Installation": "Install", "Inspections": "Inspect",
+               "Closing": "Closing", "Complete": "Done"}
 
 
 def next_stage(status):
@@ -1953,6 +1957,13 @@ def dashboard():
         sections.append({"name": d, "icon": cfg["icon"], "jobs": jobs,
                          "stages": cfg["stages"]})
 
+    # Progress widget data for every job shown across the dashboard sections.
+    progress_by_job = {}
+    for sec in sections:
+        for j in sec["jobs"]:
+            if j["id"] not in progress_by_job:
+                progress_by_job[j["id"]] = build_job_progress(db, j)
+
     followups = due_followups(db) if "Sales" in shown else []
     pending_subs = (db.execute("SELECT COUNT(*) FROM field_submissions"
                                " WHERE status = 'Pending'").fetchone()[0]
@@ -1962,6 +1973,7 @@ def dashboard():
         sections=sections, my_tasks=my_tasks, followups=followups,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
         dept_icons={d: c["icon"] for d, c in DASHBOARD_DEPARTMENTS.items()},
+        progress_by_job=progress_by_job,
         job_status_class=JOB_STATUS_CLASS)
 
 
@@ -2211,11 +2223,13 @@ def client_detail(client_id):
     followups = db.execute(
         "SELECT * FROM lead_followups WHERE client_id = ?"
         " ORDER BY due_date", (client_id,)).fetchall()
+    progress_by_job = {j["id"]: build_job_progress(db, j) for j in jobs}
     return render_template("client_detail.html", client=client, jobs=jobs,
                            files=files, file_categories=CLIENT_FILE_CATEGORIES,
                            job_status_class=JOB_STATUS_CLASS,
                            edit_count=edit_count, last_edit=last_edit,
                            rep=rep, followups=followups,
+                           progress_by_job=progress_by_job,
                            today=datetime.now().strftime("%Y-%m-%d"))
 
 
@@ -2629,6 +2643,7 @@ def job_detail(job_id):
     ).fetchall()
     employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
     stage = stage_info(db, job, groups, filed_labels)
+    progress = build_job_progress(db, job)
 
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
@@ -2637,7 +2652,7 @@ def job_detail(job_id):
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
         tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
         job_statuses=JOB_STATUSES, job_status_class=JOB_STATUS_CLASS,
-        stage=stage, today=datetime.now().strftime("%Y-%m-%d"),
+        stage=stage, progress=progress, today=datetime.now().strftime("%Y-%m-%d"),
     )
 
 
@@ -3286,6 +3301,79 @@ def stage_info(db, job, groups, filed_labels):
         "permits_filed": filed, "permits_total": total, "permits_ok": permits_ok,
         "install_date": install_date, "tasks_done": tdone, "tasks_total": ttotal,
         "ready": ready, "pending": pending, "next": next_stage(status),
+    }
+
+
+def build_job_progress(db, job):
+    """Piece 20.2: compact pipeline snapshot for the per-job progress widget.
+    Returns the ordered pipeline stages each tagged done / current / upcoming
+    (or skip when the job is Lost), an overall percent across the pipeline, and
+    the single next actionable step — so a glance at the bar tells anyone where
+    a job stands and what happens next. Safe for any job row; two small
+    queries."""
+    status = job["status"] or DEFAULT_JOB_STATUS
+    lost = (status == "Lost")
+    complete = (status == "Complete")
+    order = STAGE_ORDER  # Proposal .. Complete
+    idx = order.index(status) if status in order else 0
+
+    # Current-stage task progress drives the fractional fill of the bar.
+    cur_done = cur_total = 0
+    if not lost and not complete:
+        cur_done, cur_total = db.execute(
+            "SELECT COALESCE(SUM(status = 'Done'), 0), COUNT(*) FROM job_tasks"
+            " WHERE job_id = ? AND pipeline_status = ?",
+            (job["id"], status)).fetchone()
+
+    # The next actionable step: lowest-sort_order task that isn't Done.
+    nxt = None
+    if not lost and not complete:
+        nxt = db.execute(
+            "SELECT t.title, e.name AS who FROM job_tasks t"
+            " LEFT JOIN employees e ON e.id = t.employee_id"
+            " WHERE t.job_id = ? AND t.status != 'Done'"
+            " ORDER BY t.sort_order, t.id LIMIT 1", (job["id"],)).fetchone()
+
+    stages = []
+    for i, s in enumerate(order):
+        if lost:
+            state = "skip"
+        elif complete or i < idx:
+            state = "done"
+        elif i == idx:
+            state = "current"
+        else:
+            state = "upcoming"
+        stages.append({"name": s, "short": STAGE_SHORT.get(s, s), "state": state})
+
+    # Overall percent: the working stages are Proposal..Closing (5 transitions
+    # before Complete); Complete is 100%. Task completion within the current
+    # stage adds a fraction so the bar creeps forward as work gets done.
+    working = len(order) - 1
+    if lost:
+        pct = 0
+    elif complete:
+        pct = 100
+    else:
+        frac = (cur_done / cur_total) if cur_total else 0.0
+        pct = int(round(min(idx + frac, working) / working * 100))
+
+    if lost:
+        next_label, next_who = "Marked Lost", None
+    elif complete:
+        next_label, next_who = "Job complete", None
+    elif nxt:
+        next_label, next_who = nxt["title"], nxt["who"]
+    else:
+        ns = next_stage(status)
+        next_label = f"Move to {ns}" if ns else "Wrap up & close"
+        next_who = None
+
+    return {
+        "status": status, "stages": stages, "pct": pct,
+        "next_label": next_label, "next_who": next_who,
+        "lost": lost, "complete": complete,
+        "cur_done": cur_done, "cur_total": cur_total,
     }
 
 

@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.1** (footer shows it plainly as "Version 20.1" — the "did my pull work?" check)
+**Current build:** **Piece 20.2** (footer shows it plainly as "Version 20.2" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,19 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### Per-job progress widget — Piece 20.2
+- `build_job_progress(db, job)` → dict with the ordered pipeline `stages`
+  (each `done` / `current` / `upcoming` / `skip`), an overall `pct`, and the
+  single `next_label`/`next_who` (lowest-sort_order not-Done task, else "Move
+  to <next stage>"). Lost = all `skip`; Complete = all `done`, 100%.
+- Rendered by the `job_progress(p, compact=false)` macro in
+  `templates/_widgets.html` — a segmented bar (one segment per stage) with the
+  current stage striped/highlighted and a "▶ Next: …" caption. CSS lives in
+  `base.html` (`.jobprog*`). `compact=true` drops segment labels for table rows.
+- Wired into **job_detail** (full, in its own card under the header),
+  **client_detail** (compact, in the job list), and the **dashboard** (compact,
+  in each department's job rows). Routes pass `progress` / `progress_by_job`.
 
 ### Default task deadlines — Piece 20.1
 - Every task generated for a job now gets a **default deadline of 7 days after the
