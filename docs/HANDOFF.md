@@ -137,6 +137,18 @@ footer with the build version. Flash messages render at the top of `main`.
   or inferred from title keywords (`TITLE_LANE_KEYWORDS`) for hand-added ones. It
   leaves tasks already assigned to real staff alone. Provisional — to be standardized.
 
+### Calendar export (.ics) — Piece 20.0
+- **`/calendar/my.ics`** (dashboard → *📅 Add my dates to calendar*): the signed-in
+  person's task **due dates** + **install dates** for their jobs, as an all-day
+  `.ics` calendar. In open mode exports everything.
+- **`/jobs/<id>/calendar.ics`** (job header → *📅 Calendar*): that job's due dates +
+  install date.
+- Hand-rolled RFC-5545 builder (`build_ics`, no new deps); **stable UIDs**
+  (`solbiz-task-<id>` / `solbiz-install-<id>`) so re-importing updates instead of
+  duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
+  a **one-time import** for the desktop app; live two-way sync / availability waits
+  for the hosted version + Workspace OAuth (see next steps).
+
 ### Loads & Sizing — `/jobs/<id>/loads` (`job_loads.html`, Piece 9; own page since 15.1)
 - Reached from the **⚡ Loads & Sizing** button on the job header. Sales/Designer
   mode toggle; room-nested load survey (from the appliance catalog or custom);

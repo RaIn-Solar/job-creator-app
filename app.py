@@ -722,7 +722,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 19.4"
+VERSION = "Piece 20.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1973,6 +1973,110 @@ def set_dashboard_default():
     session["dash_mode"] = mode
     flash(f"Default dashboard set to {mode}.")
     return redirect(url_for("dashboard"))
+
+
+# ---------------------------- Piece 20: calendar (.ics) export ------------
+def _ics_escape(text):
+    return ((text or "").replace("\\", "\\\\").replace("\n", "\\n")
+            .replace(",", "\\,").replace(";", "\\;"))
+
+
+def _ics_fold(line):
+    """Fold long lines to <=74 chars per RFC 5545 (continuations start with a space)."""
+    out = []
+    while len(line) > 74:
+        out.append(line[:74])
+        line = " " + line[74:]
+    out.append(line)
+    return "\r\n".join(out)
+
+
+def build_ics(calname, events):
+    """Build a VCALENDAR of all-day events. Each event: {uid, date (YYYY-MM-DD),
+    summary, description}. Stable UIDs let a re-import update instead of dupe."""
+    stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0",
+             "PRODID:-//ECC Solar//Solbiz//EN", "CALSCALE:GREGORIAN",
+             "METHOD:PUBLISH", _ics_fold("X-WR-CALNAME:" + _ics_escape(calname))]
+    for e in events:
+        try:
+            start = datetime.strptime(e["date"], "%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+        end = (start + timedelta(days=1)).strftime("%Y%m%d")
+        lines += ["BEGIN:VEVENT", f"UID:{e['uid']}", f"DTSTAMP:{stamp}",
+                  f"DTSTART;VALUE=DATE:{start.strftime('%Y%m%d')}",
+                  f"DTEND;VALUE=DATE:{end}",
+                  _ics_fold("SUMMARY:" + _ics_escape(e["summary"]))]
+        if e.get("description"):
+            lines.append(_ics_fold("DESCRIPTION:" + _ics_escape(e["description"])))
+        lines += ["TRANSP:TRANSPARENT", "END:VEVENT"]
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines) + "\r\n"
+
+
+def _ics_response(calname, events, filename):
+    return Response(build_ics(calname, events), mimetype="text/calendar",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+def _task_events(rows):
+    events = []
+    for t in rows:
+        job = t["job_name"] or f"Job #{t['job_id']}"
+        desc = f"Client: {t['client_name']}\nStatus: {t['status']}"
+        if t["pipeline_status"]:
+            desc += f"\nStage: {t['pipeline_status']}"
+        events.append({"uid": f"solbiz-task-{t['id']}@eccsolar",
+                       "date": t["due_date"], "summary": f"{t['title']} — {job}",
+                       "description": desc})
+    return events
+
+
+@app.route("/calendar/my.ics")
+def my_calendar_ics():
+    """The signed-in person's task due dates + install dates for their jobs,
+    as an importable calendar. In open mode (no login) exports everything."""
+    db = get_db()
+    user = current_user()
+    tsql = ("SELECT t.*, j.job_name, c.name AS client_name FROM job_tasks t"
+            " JOIN jobs j ON j.id = t.job_id JOIN clients c ON c.id = j.client_id"
+            " WHERE COALESCE(t.due_date, '') != ''")
+    jsql = ("SELECT DISTINCT j.id, j.job_name, j.install_date,"
+            " c.name AS client_name FROM jobs j JOIN clients c ON c.id = j.client_id"
+            " WHERE COALESCE(j.install_date, '') != ''")
+    params = []
+    if user:
+        tsql += " AND t.employee_id = ?"
+        jsql += " AND j.id IN (SELECT job_id FROM job_tasks WHERE employee_id = ?)"
+        params = [user["id"]]
+    events = _task_events(db.execute(tsql, params).fetchall())
+    for j in db.execute(jsql, params).fetchall():
+        events.append({"uid": f"solbiz-install-{j['id']}@eccsolar",
+                       "date": j["install_date"],
+                       "summary": f"🔧 Install: {j['job_name'] or 'Job #' + str(j['id'])}",
+                       "description": f"Client: {j['client_name']}"})
+    name = f"Solbiz — {user['name']}" if user else "Solbiz — due dates"
+    return _ics_response(name, events, "solbiz-my-dates.ics")
+
+
+@app.route("/jobs/<int:job_id>/calendar.ics")
+def job_calendar_ics(job_id):
+    """One job's task due dates + its install date, as an importable calendar."""
+    job = fetch_job(job_id)
+    db = get_db()
+    rows = db.execute(
+        "SELECT t.*, ? AS job_name, ? AS client_name FROM job_tasks t"
+        " WHERE t.job_id = ? AND COALESCE(t.due_date, '') != ''",
+        (job["job_name"], job["client_name"], job_id)).fetchall()
+    events = _task_events(rows)
+    if job["install_date"]:
+        events.append({"uid": f"solbiz-install-{job_id}@eccsolar",
+                       "date": job["install_date"],
+                       "summary": f"🔧 Install: {job['job_name'] or 'Job #' + str(job_id)}",
+                       "description": f"Client: {job['client_name']}"})
+    label = job["job_name"] or f"Job #{job_id}"
+    return _ics_response(f"Solbiz — {label}", events, f"solbiz-job-{job_id}.ics")
 
 
 @app.route("/search")

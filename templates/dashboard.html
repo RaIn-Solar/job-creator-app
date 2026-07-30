@@ -24,7 +24,11 @@
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">✅ My tasks ({{ my_tasks|length }})</h2>
+  <div class="toolbar" style="margin-bottom:0.4rem;">
+    <h2 style="margin:0; font-size:1.1rem;">✅ My tasks ({{ my_tasks|length }})</h2>
+    <a href="{{ url_for('my_calendar_ics') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;"
+       title="Download your due dates + install dates, then import in Google Calendar (Settings → Import & export)">📅 Add my dates to calendar</a>
+  </div>
   {% if my_tasks %}
   <div style="overflow-x:auto;">
   <table>
