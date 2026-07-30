@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.5** (footer shows it plainly as "Version 20.5" — the "did my pull work?" check)
+**Current build:** **Piece 20.6** (footer shows it plainly as "Version 20.6" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,27 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### BPMN process refinement, stage by stage — Piece 20.6
+Reworked the per-job process in `bpmn_export.py` (reviewed against the maximal
+job: commercial, all 6 products, roof/manufactured, grid-tie, Santa Fe + JMEC).
+- **Proposal** now ends at the signed contract: `collect` renamed *Client Intake
+  & Questionnaire* (old `quest` node removed/merged); new `loads` step *Record
+  Electric Loads / Load Calculation* (Sales Rep) after the site visit; `contract`
+  + `dep50` moved into Proposal (STEP_STATUS updated). Matches the loads gate and
+  the "Sales signs the contract" exit criteria.
+- **Job Prep**: the `solbiz` serviceTask stays on the chart but is excluded from
+  generated tasks (generate_tasks now skips `serviceTask`). New conditional
+  `finance` step *Confirm financing / rebate paperwork* (Finance) on a parallel
+  branch when financed OR tax_credit=Yes OR grid-tied.
+- **Installation**: `walkthrough` → *Crew Install Walkthrough*; `monitoring`
+  (*Set up Monitoring*) only added when PV or Battery is on the job.
+- **Inspections**: **meter-set moved to after the CID inspection passes** (real
+  interconnection order) — the Yes branch is now meterset (grid-tie) → JMEC LoC
+  (JMEC) → sticker; `fix` → *Correct & Re-inspect*; sticker → *Photograph Final
+  Inspection Sticker*.
+- **Closing**: *Sales Walkthrough* → *Final Client Walkthrough (Sales)*; *Client
+  Review* → *Client Review & Sign-off*; end → *Close Out & Submit Final Paperwork*.
 
 ### Electric loads → proposal step, not creation — Piece 20.5
 - `electric_loads` removed from the **new-job** form (shown only when

@@ -44,10 +44,12 @@ CONNECTION_FIELDS = (
 # tagged by stage (standardized department step-lists) and stage transitions
 # can be gated on their own steps being done.
 STEP_STATUS = {
-    "start": "Proposal", "collect": "Proposal", "quest": "Proposal",
-    "sitevisit": "Proposal", "draft": "Proposal", "finalize": "Proposal",
-    "contract": "Job Prep", "dep50": "Job Prep", "solbiz": "Job Prep",
-    "order": "Job Prep", "setdate": "Job Prep",
+    # Proposal now ends at the signed contract + deposit (Piece 20.6).
+    "start": "Proposal", "collect": "Proposal", "sitevisit": "Proposal",
+    "loads": "Proposal", "draft": "Proposal", "finalize": "Proposal",
+    "contract": "Proposal", "dep50": "Proposal",
+    "solbiz": "Job Prep", "order": "Job Prep", "finance": "Job Prep",
+    "setdate": "Job Prep",
     "install": "Installation", "walkthrough": "Installation",
     "doctube": "Installation", "dep40": "Installation", "monitoring": "Installation",
     "meterset": "Inspections", "cid": "Inspections", "fix": "Inspections",
@@ -126,28 +128,44 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
     def link(a, b, label=""):
         flows.append((a, b, label))
 
+    # Product/finance-driven conditionals (Piece 20.6).
+    products = job["products"] or ""
+    has_monitoring = ("PV Systems" in products) or ("Battery Banks" in products)
+    cost = (job["cost_method"] or "").strip()
+    needs_finance_step = (
+        "finance" in cost.lower()                                   # financed
+        or (job["tax_credit"] or "").strip().lower() == "yes"        # rebate/ITC paperwork
+        or grid_tied)                                               # interconnection paperwork
+
+    # --- Proposal: intake → walkthrough → loads → design → contract → deposit
     c = 0
     add("start", "startEvent", "Client Interest in ECC Solar", "Sales Rep", c); c += 1
-    add("collect", "userTask", "Collect Client Information", "Sales Rep", c); c += 1
-    add("quest", "userTask", "Complete Questionnaire", "Sales Rep", c); c += 1
+    add("collect", "userTask", "Client Intake & Questionnaire", "Sales Rep", c); c += 1
     add("sitevisit", "userTask", "Site Visit: Pictures, walkthrough", "Sales Rep", c); c += 1
+    add("loads", "userTask", "Record Electric Loads / Load Calculation", "Sales Rep", c); c += 1
     add("draft", "task", "Draft and Review Design", "System Designer", c); c += 1
     add("finalize", "userTask", "Finalize and approve Design", "System Designer", c); c += 1
     add("contract", "task", "Client Signs Contract", "Sales Rep", c); c += 1
     add("dep50", "task", "50% Deposit Received", "Finance Department", c); c += 1
+    # Job Prep begins: the software generates the task list (chart-only — no
+    # to-do is created for it), then the parallel prep work fans out.
     add("solbiz", "serviceTask", "Solbiz generates tasks, lists & this chart",
         "Solbiz System", c); c += 1
     add("split", "parallelGateway", "", "Permit Coordinator", c); c += 1
 
-    for a, b in [("start", "collect"), ("collect", "quest"), ("quest", "sitevisit"),
-                 ("sitevisit", "draft"), ("draft", "finalize"),
+    for a, b in [("start", "collect"), ("collect", "sitevisit"),
+                 ("sitevisit", "loads"), ("loads", "draft"), ("draft", "finalize"),
                  ("finalize", "contract"), ("contract", "dep50"),
                  ("dep50", "solbiz"), ("solbiz", "split")]:
         link(a, b)
 
-    # Expanded, job-specific permitting chain (parallel with ordering)
+    # Parallel Job-Prep branches off the split: procurement, the finance/rebate
+    # milestone (when relevant), and the job-specific permitting chain.
     chain = _permit_chain(matched, grid_tied)
     add("order", "userTask", "Order all components and materials", "Warehouse Associate", c)
+    if needs_finance_step:
+        add("finance", "task", "Confirm financing / rebate paperwork",
+            "Finance Department", c)
     prev = "split"
     for i, (label, items) in enumerate(chain):
         nid = f"permit{i}"
@@ -159,54 +177,62 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
     link(prev, "join")
     link("split", "order")
     link("order", "join")
+    if needs_finance_step:
+        link("split", "finance")
+        link("finance", "join")
 
     add("setdate", "userTask", "Set Installation Date", "Foreman", c); c += 1
+    # --- Installation ---
     add("install", "userTask", "Site Installation", "Foreman", c); c += 1
-    add("walkthrough", "task", "Install Walkthrough", "Foreman", c); c += 1
+    add("walkthrough", "task", "Crew Install Walkthrough", "Foreman", c); c += 1
     add("doctube", "task", "Doc Tube and Pictures", "Foreman", c); c += 1
     add("dep40", "task", "40% Deposit", "Finance Department", c); c += 1
-    add("monitoring", "task", "Set up Monitoring", "Foreman", c); c += 1
     for a, b in [("join", "setdate"), ("setdate", "install"),
                  ("install", "walkthrough"), ("walkthrough", "doctube"),
-                 ("doctube", "dep40"), ("dep40", "monitoring")]:
+                 ("doctube", "dep40")]:
         link(a, b)
-    prev = "monitoring"
+    prev = "dep40"
+    if has_monitoring:   # only systems that actually report (PV / battery)
+        add("monitoring", "task", "Set up Monitoring", "Foreman", c); c += 1
+        link("dep40", "monitoring")
+        prev = "monitoring"
 
-    utility_items = [_rule_item(r) for r in matched
-                     if r["field_name"] == "utility_provider"]
-    if grid_tied:
-        meter_label = f"Meter set by {utility}" if utility else "Meter set by Utility"
-        add("meterset", "task", meter_label, "Utility Company", c, utility_items); c += 1
-        link(prev, "meterset")
-        prev = "meterset"
-
+    # --- Inspections: CID final inspection first; the utility sets the meter
+    # only after it passes (the real interconnection sequence).
     cid_items = [_rule_item(r) for r in matched
                  if "Inspection" in r["label"] and r["category"] == "Compliance"]
     cid_label = f"Final CID Inspection — {county}" if county else "Final CID Inspection"
-    add("cid", "task", cid_label, "Authorities (CID)", c, cid_items)
-    cid_col = c; c += 1
+    add("cid", "task", cid_label, "Authorities (CID)", c, cid_items); c += 1
     link(prev, "cid")
     add("passgw", "exclusiveGateway", "Inspection passed?", "Authorities (CID)", c)
-    add("fix", "task", "Fix Inspection Problems", "Foreman", c); c += 1
+    add("fix", "task", "Correct & Re-inspect", "Foreman", c); c += 1
     link("cid", "passgw")
     link("passgw", "fix", "No")
     link("fix", "cid")
 
-    prev = "passgw"
-    yes_label = "Yes"
+    # Yes branch: meter set (grid-tie) → JMEC Letter of Compliance (JMEC) → sticker
+    prev, yes_label = "passgw", "Yes"
+    if grid_tied:
+        utility_items = [_rule_item(r) for r in matched
+                         if r["field_name"] == "utility_provider"]
+        meter_label = f"Meter set by {utility}" if utility else "Meter set by Utility"
+        add("meterset", "task", meter_label, "Utility Company", c, utility_items); c += 1
+        link(prev, "meterset", yes_label if prev == "passgw" else "")
+        prev, yes_label = "meterset", ""
     if jmec_loc:
         loc_items = [_rule_item(r) for r in matched
                      if r["label"].startswith("JMEC Letter of Compliance")]
         add("jmecloc", "task", "Letter of Compliance to JMEC (electrician)",
             "Utility Company", c, loc_items); c += 1
-        link("passgw", "jmecloc", "Yes")
+        link(prev, "jmecloc", yes_label if prev == "passgw" else "")
         prev, yes_label = "jmecloc", ""
-    add("sticker", "task", "Collect Final Inspection Sticker Photo", "Foreman", c); c += 1
+    add("sticker", "task", "Photograph Final Inspection Sticker", "Foreman", c); c += 1
     link(prev, "sticker", yes_label if prev == "passgw" else "")
+    # --- Closing ---
     add("inv10", "task", "Final 10% Invoice", "Finance Department", c); c += 1
-    add("saleswalk", "task", "Sales Walkthrough", "Sales Rep", c); c += 1
-    add("review", "task", "Client Review", "Sales Rep", c); c += 1
-    add("end", "endEvent", "Submit Final Paperwork", "General Manager", c); c += 1
+    add("saleswalk", "task", "Final Client Walkthrough (Sales)", "Sales Rep", c); c += 1
+    add("review", "task", "Client Review & Sign-off", "Sales Rep", c); c += 1
+    add("end", "endEvent", "Close Out & Submit Final Paperwork", "General Manager", c); c += 1
     for a, b in [("sticker", "inv10"), ("inv10", "saleswalk"),
                  ("saleswalk", "review"), ("review", "end")]:
         link(a, b)

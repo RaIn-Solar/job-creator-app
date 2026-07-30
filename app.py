@@ -726,7 +726,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.5"
+VERSION = "Piece 20.6"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3518,10 +3518,13 @@ def generate_tasks(job_id):
     _xml, details = build_job_bpmn(job, match_rules(job, rules))
     employees = db.execute("SELECT id, name, roles FROM employees").fetchall()
 
-    # Actionable workflow steps in order (no start/end events or gateways).
+    # Actionable workflow steps in order (no start/end events, gateways, or
+    # automatic system steps like "Solbiz generates tasks" — those stay on the
+    # chart but never become a to-do).
     task_steps = [
         s for s in sorted(details.values(), key=lambda d: d["order"])
         if not (s["kind"].endswith("Event") or s["kind"].endswith("Gateway"))
+        and s["kind"] != "serviceTask"
         and (s["name"] or "").strip()
     ]
     # Optional schedule anchored on Site Installation.
