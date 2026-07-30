@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.7** (footer shows it plainly as "Version 20.7" — the "did my pull work?" check)
+**Current build:** **Piece 20.8** (footer shows it plainly as "Version 20.8" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,18 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### Sales dashboard tuning #2 — Piece 20.8
+- Mode switch: **"All" removed** — always one role at a time. Route default mode
+  is now `depts[0]` (no All view); `shown = [mode]`.
+- Proposal-only jobs section reads **"Active Proposals"**; columns reordered to
+  **Progress · Client (smaller) · Job · Install date**.
+- **Client Profiles** dashboard section replaced by a **Leads** table (the
+  landing-page follow-up/leads table): active `lead_status='Lead'` clients with
+  their next open follow-up + rep + actions (Enter job details / ✓ Logged /
+  ❄ Cold). Gated to the Sales viewport (`show_leads = "Sales" in shown`). The
+  old separate "follow-ups due" card is folded into this. `mark_cold` now honors
+  a `next` param so the action returns to the dashboard.
 
 ### Dashboard viewport pass #1 (Sales) — Piece 20.7
 Working through each role's viewport in job-flow order; Sales first.

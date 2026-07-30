@@ -726,7 +726,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.7"
+VERSION = "Piece 20.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1967,10 +1967,11 @@ def dashboard():
     if request.args.get("mode"):
         session["dash_mode"] = request.args.get("mode")
     saved = user["dashboard_mode"] if "dashboard_mode" in user.keys() else ""
-    mode = session.get("dash_mode") or saved or "All"
-    if mode != "All" and mode not in depts:
-        mode = "All"
-    shown = depts if mode == "All" else [mode]
+    # No "All" view (Piece 20.8) — always focused on one role at a time.
+    mode = session.get("dash_mode") or saved or (depts[0] if depts else "")
+    if mode not in depts:
+        mode = depts[0] if depts else ""
+    shown = [mode] if mode else []
 
     my_tasks = db.execute(
         "SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name"
@@ -2001,41 +2002,31 @@ def dashboard():
             if j["id"] not in progress_by_job:
                 progress_by_job[j["id"]] = build_job_progress(db, j)
 
-    # Client Profiles the viewer is actively working: clients with a job in one
-    # of their stages. Sales/Design (Proposal in their stages) also see fresh
-    # leads with no job yet. A client whose jobs have all moved past the viewer's
-    # stages drops off automatically — e.g. once a Sales rep's client advances
-    # past Proposal, they leave the Sales client list.
-    stages_set = sorted({s for d in shown for s in DASHBOARD_DEPARTMENTS[d]["stages"]})
-    client_profiles = []
-    if stages_set:
-        ph = ", ".join("?" * len(stages_set))
-        client_profiles = list(db.execute(
-            f"SELECT c.id, c.name, c.lead_status, c.assigned_rep_id,"
-            f" (SELECT COUNT(*) FROM jobs j2 WHERE j2.client_id = c.id"
-            f"   AND j2.status IN ({ph})) AS active_jobs"
-            f" FROM clients c"
-            f" WHERE EXISTS (SELECT 1 FROM jobs j WHERE j.client_id = c.id"
-            f"   AND j.status IN ({ph}))",
-            stages_set + stages_set).fetchall())
-        if "Proposal" in stages_set:  # Sales/Design work brand-new leads too
-            client_profiles += list(db.execute(
-                "SELECT c.id, c.name, c.lead_status, c.assigned_rep_id,"
-                " 0 AS active_jobs FROM clients c"
-                " WHERE NOT EXISTS (SELECT 1 FROM jobs j WHERE j.client_id = c.id)"
-            ).fetchall())
-        client_profiles.sort(key=lambda r: (r["name"] or "").lower())
-
-    followups = due_followups(db) if "Sales" in shown else []
+    # Leads worklist (Piece 20.8): active leads (not yet converted) with their
+    # next open follow-up, for the Sales viewport. Replaces the generic Client
+    # Profiles list here — converted clients now live under Active Proposals.
+    show_leads = "Sales" in shown
+    leads = []
+    if show_leads:
+        leads = db.execute(
+            "SELECT c.id AS client_id, c.name AS client_name, c.phone AS client_phone,"
+            " e.name AS rep_name, f.id AS followup_id, f.milestone AS milestone,"
+            " f.due_date AS due_date FROM clients c"
+            " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
+            " LEFT JOIN lead_followups f ON f.id = ("
+            "   SELECT id FROM lead_followups x WHERE x.client_id = c.id"
+            "   AND x.status = 'Open' ORDER BY x.due_date LIMIT 1)"
+            " WHERE c.lead_status = 'Lead'"
+            " ORDER BY (f.due_date IS NULL), f.due_date, c.name").fetchall()
     pending_subs = (db.execute("SELECT COUNT(*) FROM field_submissions"
                                " WHERE status = 'Pending'").fetchone()[0]
                     if "Executive" in shown else 0)
     return render_template(
         "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
-        sections=sections, my_tasks=my_tasks, followups=followups,
+        sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
         dept_icons={d: c["icon"] for d, c in DASHBOARD_DEPARTMENTS.items()},
-        progress_by_job=progress_by_job, client_profiles=client_profiles,
+        progress_by_job=progress_by_job,
         job_status_class=JOB_STATUS_CLASS)
 
 
@@ -2390,6 +2381,9 @@ def mark_cold(client_id):
     db.execute("DELETE FROM clients WHERE id = ?", (client_id,))
     db.commit()
     flash(f"{client['name']} moved to cold leads.")
+    nxt = request.form.get("next", "")
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
     return redirect(url_for("home"))
 
 

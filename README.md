@@ -117,12 +117,11 @@ can confirm a pull/update took effect.
 - **Licenses & certifications** per employee, with expiry tracking that ties into
   job requirements (a job page can show whether staff hold the licenses it needs
   and warn when a credential has lapsed).
-- **Role-based "My Dashboard"** — the sign-in landing, stacked by department, with
-  a **mode switch** for people who hold multiple roles. Every section is
-  **collapsible**; each viewport carries a **Client Profiles** list of the clients
-  that person is actively working — a client drops off the list once their job
-  moves past that role's stage (e.g. a Sales rep's client leaves the list once it
-  advances past Proposal). Client Profiles also has its own header-nav button.
+- **Role-based "My Dashboard"** — the sign-in landing, one role view at a time
+  (mode switch for people who hold multiple roles). Every section is
+  **collapsible**. The **Sales** viewport shows **Active Proposals** (jobs in
+  Proposal), a **Leads** worklist (prospects not yet converted, with follow-up
+  actions), and My tasks. **Client Profiles** is its own header-nav button.
 - **Permissions**: the General Manager (identified by the GM role) has unfettered
   access and can grant individuals access to specific tools/functions **with an
   expiration date**. Admin tier sits below GM; granular grants everywhere else.

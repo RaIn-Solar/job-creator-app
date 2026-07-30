@@ -10,31 +10,32 @@
 {% if depts|length > 1 %}
 <div class="card" style="padding:0.6rem 0.9rem; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
   <span class="muted" style="font-size:0.85rem; margin-right:0.3rem;">View:</span>
-  <a href="{{ url_for('dashboard', mode='All') }}" class="btn {{ '' if mode == 'All' else 'btn-secondary' }}" style="padding:0.25rem 0.7rem; font-size:0.85rem;">All</a>
   {% for d in depts %}
   <a href="{{ url_for('dashboard', mode=d) }}" class="btn {{ '' if mode == d else 'btn-secondary' }}" style="padding:0.25rem 0.7rem; font-size:0.85rem;">{{ dept_icons[d] }} {{ d }}</a>
   {% endfor %}
 </div>
 {% endif %}
 
-{# ---- Jobs in your stages (per department) ---- #}
+{# ---- Jobs in your stages (per department). A Proposal-only section reads as
+       "Active Proposals". Columns: Progress · Client · Job · Install date. ---- #}
 {% for s in sections %}
 {% if s.stages %}
+{% set proposals = s.stages == ["Proposal"] %}
 <details class="card sect" open>
-  <summary>{{ s.icon }} {{ s.name }} · jobs in your stages
-    <span class="sect-sub">— {{ s.stages|join(" / ") }}</span>
+  <summary>{{ s.icon }} {% if proposals %}Active Proposals{% else %}{{ s.name }} · jobs in your stages
+    <span class="sect-sub">— {{ s.stages|join(" / ") }}</span>{% endif %}
     <span class="sect-count">{{ s.jobs|length }}</span>
   </summary>
   {% if s.jobs %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Job</th><th>Client</th><th style="min-width:200px;">Progress</th><th>Install date</th></tr></thead>
+    <thead><tr><th style="min-width:200px;">Progress</th><th>Client</th><th>Job</th><th>Install date</th></tr></thead>
     <tbody>
       {% for j in s.jobs %}
       <tr>
-        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
-        <td class="muted">{{ j["client_name"] }}</td>
         <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
+        <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
+        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
         <td class="muted">{{ j["install_date"] or "—" }}</td>
       </tr>
       {% endfor %}
@@ -48,28 +49,6 @@
 {% endif %}
 {% endfor %}
 
-{# ---- Sales follow-ups ---- #}
-{% if followups %}
-<details class="card sect" open style="border-left:4px solid #f5a623;">
-  <summary>🔔 Sales · follow-ups due <span class="sect-count">{{ followups|length }}</span></summary>
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Lead</th><th>Follow-up</th><th>Due</th><th></th></tr></thead>
-    <tbody>
-      {% for f in followups %}
-      <tr>
-        <td><a href="{{ url_for('client_detail', client_id=f['client_id']) }}">{{ f["client_name"] }}</a></td>
-        <td><span class="badge neutral">{{ f["milestone"] }}</span></td>
-        <td>{{ f["due_date"] }}{% if f["due_date"] < today %} <span class="badge danger">overdue</span>{% endif %}</td>
-        <td><a href="{{ url_for('new_job', client_id=f['client_id']) }}" class="btn" style="padding:0.15rem 0.55rem; font-size:0.78rem;">Enter job details</a></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</details>
-{% endif %}
-
 {# ---- Manager: pending approvals ---- #}
 {% if pending_subs %}
 <div class="card" style="border-left:4px solid var(--brand);">
@@ -78,32 +57,46 @@
 </div>
 {% endif %}
 
-{# ---- Client Profiles (above My tasks) ---- #}
-<details class="card sect" open>
-  <summary>🗂 Client Profiles <span class="sect-count">{{ client_profiles|length }}</span></summary>
-  {% if client_profiles %}
+{# ---- Leads (above My tasks) — active prospects not yet converted ---- #}
+{% if show_leads %}
+<details class="card sect" open style="border-left:4px solid #f5a623;">
+  <summary>🔔 Leads <span class="sect-count">{{ leads|length }}</span></summary>
+  {% if leads %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Client</th><th>Status</th></tr></thead>
+    <thead><tr><th>Lead</th><th>Follow-up</th><th>Due</th><th>Sales rep</th><th></th></tr></thead>
     <tbody>
-      {% for cp in client_profiles %}
+      {% for l in leads %}
       <tr>
-        <td><a href="{{ url_for('client_detail', client_id=cp['id']) }}">{{ cp["name"] }}</a></td>
-        <td>
-          {% if cp["active_jobs"] %}<span class="badge warn">{{ cp["active_jobs"] }} active job{{ "s" if cp["active_jobs"] != 1 }}</span>
-          {% elif cp["lead_status"] %}<span class="badge neutral">{{ cp["lead_status"] }}</span>
-          {% else %}<span class="badge neutral">Lead</span>{% endif %}
+        <td><a href="{{ url_for('client_detail', client_id=l['client_id']) }}">{{ l["client_name"] }}</a>
+          {% if l["client_phone"] %}<br><span class="muted" style="font-size:0.8rem;">{{ l["client_phone"] }}</span>{% endif %}</td>
+        <td>{% if l["milestone"] %}<span class="badge neutral">{{ l["milestone"] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if l["due_date"] %}{{ l["due_date"] }}{% if l["due_date"] < today %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ l["rep_name"] or "— unassigned —" }}</td>
+        <td style="white-space:nowrap;">
+          <a href="{{ url_for('new_job', client_id=l['client_id']) }}" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Enter job details</a>
+          {% if l["followup_id"] %}
+          <form method="post" action="{{ url_for('followup_done', followup_id=l['followup_id']) }}" style="display:inline; margin:0;">
+            <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;" title="Log that you followed up">✓ Logged</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('mark_cold', client_id=l['client_id']) }}" style="display:inline; margin:0;"
+                onsubmit="return confirm('Move this lead to cold leads? It leaves the active list.');">
+            <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">❄ Cold</button>
+          </form>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
-  <p class="muted" style="margin:0.5rem 0 0; font-size:0.82rem;">Clients drop off this list once their job moves past your stage.</p>
   {% else %}
-  <p class="empty">No active client profiles for your stage right now.</p>
+  <p class="empty">No active leads right now. 🎉</p>
   {% endif %}
 </details>
+{% endif %}
 
 {# ---- My tasks (bottom) ---- #}
 <details class="card sect" open>
