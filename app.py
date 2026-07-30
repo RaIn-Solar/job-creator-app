@@ -722,7 +722,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.0"
+VERSION = "Piece 20.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -848,6 +848,12 @@ LANE_TO_ROLES = {
 # Days between consecutive generated tasks when a target install date is
 # given — a rough schedule anchored on the Site Installation step.
 TASK_DUE_SPACING_DAYS = 2
+# Piece 20.1: a task's *default* deadline is 7 days after the previous step
+# was completed (for the very first step there's nothing completed yet, so it
+# counts from the day the steps are generated). When a step is marked Done we
+# re-default the next open step to this many days out. Rough on purpose —
+# meant to be tightened by hand per job.
+TASK_DEFAULT_LEAD_DAYS = 7
 
 # Piece 17.2: for tasks that don't carry a process lane in their notes (the
 # demo/hand-added ones), infer the responsible lane from keywords in the
@@ -3387,6 +3393,12 @@ def generate_tasks(job_id):
     base = db.execute(
         "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_tasks WHERE job_id = ?",
         (job_id,)).fetchone()[0]
+    # Default chain anchor: with no completed step yet, the first generated
+    # step is due 7 days out, the next 7 days after that, and so on. As steps
+    # actually get marked Done, set_task_status re-defaults the next open step
+    # to 7 days after that completion.
+    chain_start = datetime.now().date()
+    default_seq = 0
     added = assigned = scheduled = 0
     for pos, step in enumerate(task_steps):
         title = step["name"].strip()
@@ -3398,6 +3410,10 @@ def generate_tasks(job_id):
         if base_date is not None and install_idx is not None:
             offset = (pos - install_idx) * TASK_DUE_SPACING_DAYS
             due = (base_date + timedelta(days=offset)).strftime("%Y-%m-%d")
+        else:
+            default_seq += 1
+            due = (chain_start + timedelta(
+                days=default_seq * TASK_DEFAULT_LEAD_DAYS)).strftime("%Y-%m-%d")
         db.execute(
             "INSERT INTO job_tasks"
             " (job_id, employee_id, title, status, due_date, notes, sort_order,"
@@ -3417,12 +3433,39 @@ def generate_tasks(job_id):
         if assigned:
             extra.append(f"{assigned} auto-assigned by role")
         if scheduled:
-            extra.append(f"due dates set around {raw_install}")
+            if base_date is not None and install_idx is not None:
+                extra.append(f"due dates set around {raw_install}")
+            else:
+                extra.append("default deadlines set 7 days apart")
         detail = f" ({'; '.join(extra)})" if extra else ""
         flash(f"Added {added} task{'s' if added != 1 else ''} from the job's process{detail}.")
     else:
         flash("No new tasks — the process steps are already on the list.")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tasks"))
+
+
+def _redefault_next_due(db, job_id, completed_date):
+    """A step just became Done — default the next still-open step's deadline
+    to TASK_DEFAULT_LEAD_DAYS (7) days after that completion. "Next" is the
+    lowest sort_order among the job's not-Done tasks, i.e. the step that just
+    became the one to work on. Must be called after the completed task's
+    status is written so it's excluded here. Rough default; hand-editable."""
+    if not completed_date:
+        return
+    try:
+        base = datetime.strptime(completed_date, "%Y-%m-%d").date()
+    except ValueError:
+        return
+    nxt = db.execute(
+        "SELECT id FROM job_tasks WHERE job_id = ? AND status != 'Done'"
+        " ORDER BY sort_order, id LIMIT 1", (job_id,)).fetchone()
+    if nxt is None:
+        return
+    due = (base + timedelta(days=TASK_DEFAULT_LEAD_DAYS)).strftime("%Y-%m-%d")
+    db.execute(
+        "UPDATE job_tasks SET due_date = ?,"
+        " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
+        (due, nxt["id"]))
 
 
 @app.route("/jobs/<int:job_id>/tasks/<int:task_id>/status", methods=["POST"])
@@ -3436,6 +3479,9 @@ def set_task_status(job_id, task_id):
             "UPDATE job_tasks SET status = ?, completed_at = ?,"
             " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ? AND job_id = ?",
             (status, completed, task_id, job_id))
+        # Completing a step re-anchors the next open step's default deadline.
+        if status == "Done":
+            _redefault_next_due(db, job_id, completed)
         db.commit()
     # A dashboard passes ?next= so the status change returns there; only
     # same-site relative paths are honored.
@@ -3676,6 +3722,9 @@ def approve_submission(sub_id):
             "UPDATE job_tasks SET status = ?, notes = ?, completed_at = ?,"
             " updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
             (status, it["new_notes"], completed, it["task_id"]))
+        # Field-approved completions re-anchor the next open step's deadline too.
+        if status == "Done" and row["status"] != "Done":
+            _redefault_next_due(db, row["job_id"], completed)
     who = current_user()
     db.execute(
         "UPDATE field_submissions SET status = 'Approved', approved_hours = ?,"

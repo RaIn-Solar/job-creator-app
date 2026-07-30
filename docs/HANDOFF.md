@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 19.0** (footer shows it plainly as "Version 19.0" — the "did my pull work?" check)
+**Current build:** **Piece 20.1** (footer shows it plainly as "Version 20.1" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,19 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### Default task deadlines — Piece 20.1
+- Every task generated for a job now gets a **default deadline of 7 days after the
+  previous step** (`TASK_DEFAULT_LEAD_DAYS = 7`). With nothing completed yet, the
+  first generated step is due 7 days out, the next 7 days after that, and so on —
+  a simple weekly cadence so no task is left without a date.
+- When a step is marked **Done**, the next still-open step (lowest `sort_order`
+  among not-Done tasks) is **re-defaulted to 7 days after that completion**
+  (`_redefault_next_due`). Wired into both completion paths: the job page
+  (`set_task_status`) and field-work approvals (`approve_submission`).
+- Rough on purpose — meant to be tightened by hand per job. Setting a target
+  **install date** at generation still uses the tighter install-anchored spacing
+  (`TASK_DUE_SPACING_DAYS`) instead of the 7-day default.
 
 ### Loads & Sizing — `/jobs/<id>/loads` (`job_loads.html`, Piece 9; own page since 15.1)
 - Reached from the **⚡ Loads & Sizing** button on the job header. Sales/Designer
