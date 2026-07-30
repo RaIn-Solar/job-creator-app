@@ -247,6 +247,40 @@
     }
     ul.instances li::before { content: "•"; color: var(--brand); margin-right: 0.4rem; }
     .verify-legend { font-size: 0.8rem; color: var(--muted); margin: 0.3rem 0 0; }
+    /* Collapsible section cards (Piece 20.7): a .card that is a <details>. The
+       summary is the section header with a ▸/▾ toggle. */
+    details.sect { }
+    details.sect > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin: 0;
+    }
+    details.sect > summary::-webkit-details-marker { display: none; }
+    details.sect > summary::before {
+      content: "▾";
+      color: var(--brand);
+      font-size: 0.8rem;
+      width: 0.9rem;
+      flex: none;
+    }
+    details.sect:not([open]) > summary::before { content: "▸"; }
+    details.sect > summary .sect-sub {
+      font-weight: 400;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    details.sect > summary .sect-count {
+      margin-left: auto;
+      font-weight: 400;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    details.sect[open] > summary { margin-bottom: 0.6rem; }
   </style>
 </head>
 <body>
@@ -254,6 +288,7 @@
     <a href="/">☀️ Solbiz</a>
     <span class="sub">ECC Solar internal tool</span>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
+    {% if current_user %}<a href="/" style="font-size:0.9rem; font-weight:500;">🗂 Client Profiles</a>{% endif %}
     {% if current_user or not login_active %}
     <a href="/directory" style="{% if not current_user %}margin-left:auto; {% endif %}font-size:0.9rem; font-weight:500;">📖 Directory</a>
     <a href="/catalog" style="font-size:0.9rem; font-weight:500;">🔌 Catalog</a>

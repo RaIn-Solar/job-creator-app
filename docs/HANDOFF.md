@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.6** (footer shows it plainly as "Version 20.6" — the "did my pull work?" check)
+**Current build:** **Piece 20.7** (footer shows it plainly as "Version 20.7" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,22 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### Dashboard viewport pass #1 (Sales) — Piece 20.7
+Working through each role's viewport in job-flow order; Sales first.
+- Header nav gains a **🗂 Client Profiles** button (→ home). "All clients" button
+  removed from the dashboard toolbar; **Make this my default** removed (route
+  `set_dashboard_default` left in place, just unlinked).
+- Dashboard sections are now **collapsible** (`<details class="card sect">` +
+  `.sect` summary CSS in base.html). Reordered: department jobs → follow-ups →
+  manager → **Client Profiles** → **My tasks (moved to the bottom)**.
+- New **Client Profiles** list on the dashboard (`client_profiles` from the
+  `dashboard` route): clients with a job in one of the viewer's stages, plus
+  fresh leads (no job) when Proposal is in-scope. A client drops off once all
+  their jobs move past the viewer's stages — so a Sales rep stops seeing a client
+  once their job passes Proposal. Filter is stage-driven, so it generalizes to
+  other roles as we tune their viewports.
+- Sign-in already lands on the role dashboard (`login` → `dashboard`).
 
 ### BPMN process refinement, stage by stage — Piece 20.6
 Reworked the per-job process in `bpmn_export.py` (reviewed against the maximal
