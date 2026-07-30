@@ -29,13 +29,14 @@
   {% if s.jobs %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th style="min-width:200px;">Progress</th><th>Client</th><th>Job</th><th>Install date</th></tr></thead>
+    <thead><tr><th style="min-width:200px;">Progress</th><th>Client</th><th>Job</th>{% if proposals %}<th title="Electric loads recorded from the walkthrough">Loads</th>{% endif %}<th>Install date</th></tr></thead>
     <tbody>
       {% for j in s.jobs %}
       <tr>
         <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
         <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
         <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+        {% if proposals %}<td title="{{ 'Loads recorded' if loads_by_job[j['id']] else 'Loads not recorded yet' }}">{{ "✅" if loads_by_job[j['id']] else "⬜" }}</td>{% endif %}
         <td class="muted">{{ j["install_date"] or "—" }}</td>
       </tr>
       {% endfor %}

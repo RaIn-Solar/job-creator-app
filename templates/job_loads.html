@@ -25,8 +25,8 @@
   everything. This is a view toggle, not access control — anyone can switch it.</p>
 </div>
 
-<div class="card">
-  <h3 style="margin-top:0;">Load survey</h3>
+<details class="card sect" open>
+  <summary>Load survey</summary>
   {% for room in rooms %}
   <fieldset class="section" style="margin-bottom:0.9rem;{% if not room['enabled'] %} opacity:0.55;{% endif %}">
     <legend>
@@ -116,20 +116,20 @@
     </div>
     <div class="field" style="align-self:end;"><button type="submit" class="btn">＋ Add room</button></div>
   </form>
-</div>
+</details>
 
-<div class="card">
-  <h3 style="margin-top:0;">Summary</h3>
+<details class="card sect" open>
+  <summary>Summary</summary>
   <dl class="profile">
     <dt>Daily energy use</dt><dd>{{ "%.1f"|format(daily_kwh) }} kWh/day</dd>
     <dt>Peak load</dt><dd>{{ "%.0f"|format(peak_w) }} W</dd>
     <dt>Panel wattage</dt><dd>{{ sizing["panel_watts"]|int }} W</dd>
   </dl>
-</div>
+</details>
 
 {% if sizing["ui_mode"] == "designer" %}
-<div class="card">
-  <h3 style="margin-top:0;">System sizing</h3>
+<details class="card sect" open>
+  <summary>System sizing</summary>
   <form method="post" action="{{ url_for('update_sizing', job_id=job['id']) }}">
     <input type="hidden" name="ui_mode" value="{{ sizing['ui_mode'] }}">
     <div class="form-grid">
@@ -185,7 +185,7 @@
   <p class="muted" style="margin-bottom:0;">Method: NEC 690.7 cold-temperature
   Voc correction; peak-sun-hour method for array sizing (northern New Mexico
   design values — confirm against the specific site).</p>
-</div>
+</details>
 
 <div class="card">
   <h3 style="margin-top:0;">Components / bill of materials</h3>

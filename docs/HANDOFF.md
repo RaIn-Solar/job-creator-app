@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.8** (footer shows it plainly as "Version 20.8" — the "did my pull work?" check)
+**Current build:** **Piece 20.9** (footer shows it plainly as "Version 20.9" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,27 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### Designer viewport + job-page overhaul — Piece 20.9
+- **Dashboard:** Active Proposals gains a **Loads** column (✅/⬜ from
+  `_loads_recorded`, via `loads_by_job`) so the Designer sees which proposals
+  have loads recorded; Designer still sees all pending proposals.
+- **Job detail restructure:** header is now job name → progress bar → a buttons
+  row (status, Edit job, Process chart, Calendar, Client profile). **Loads &
+  Sizing moved into the pipeline-stage panel**, next to the electric-loads
+  indicator (prominent in Proposal, secondary elsewhere). **LPC tab renamed
+  L/P/C.** General-details tab now surfaces the **saved load-survey summary**
+  (daily kWh / peak W from `compute_load_totals`, `load_has_survey`).
+- **Documents tab:** one **upload slot per needed file** — `STANDARD_JOB_DOCS`
+  (Signed Contract, Site Photos, Design/One-Line, Site Plan) + the job's
+  document-worthy requirements (Permit/Compliance/Doc only — licenses, portals,
+  phones excluded). Each slot shows filed/needed status + filed files; an
+  "Other documents" catch-all remains. Route passes `doc_sections`,
+  `files_by_label`, `other_files`. (Per-slot format restrictions: TODO later.)
+- **Loads & Sizing:** Load survey, Summary, System sizing are now collapsible
+  `<details class="card sect">`. The load survey (job_load_rooms/items) already
+  persists per job, so Sales' walkthrough numbers flow into the Designer's
+  sizing math automatically.
 
 ### Sales dashboard tuning #2 — Piece 20.8
 - Mode switch: **"All" removed** — always one role at a time. Route default mode

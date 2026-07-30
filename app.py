@@ -298,6 +298,13 @@ CONNECTION_FIELDS = {
     "battery_utility_connection",
 }
 
+# Standard documents every job collects, shown as their own upload slots on the
+# Documents tab (Piece 20.9) alongside the job's resolved requirements. Format
+# restrictions per slot to be added later.
+STANDARD_JOB_DOCS = [
+    "Signed Contract", "Site Photos", "Design / One-Line", "Site Plan (KMZ/KML)",
+]
+
 RULE_CATEGORIES = ["License", "Permit", "Compliance", "Link", "Phone", "Doc"]
 CATEGORY_HEADINGS = {
     "License": "Technician licenses",
@@ -726,7 +733,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.8"
+VERSION = "Piece 20.9"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1988,19 +1995,21 @@ def dashboard():
             placeholders = ", ".join("?" * len(cfg["stages"]))
             jobs = db.execute(
                 f"SELECT j.id, j.job_name, j.status, j.install_date,"
-                f" c.name AS client_name FROM jobs j"
+                f" j.electric_loads, c.name AS client_name FROM jobs j"
                 f" JOIN clients c ON c.id = j.client_id"
                 f" WHERE j.status IN ({placeholders})"
                 f" ORDER BY j.status, j.id", cfg["stages"]).fetchall()
         sections.append({"name": d, "icon": cfg["icon"], "jobs": jobs,
                          "stages": cfg["stages"]})
 
-    # Progress widget data for every job shown across the dashboard sections.
+    # Progress + loads-recorded status for every job shown across the sections.
     progress_by_job = {}
+    loads_by_job = {}
     for sec in sections:
         for j in sec["jobs"]:
             if j["id"] not in progress_by_job:
                 progress_by_job[j["id"]] = build_job_progress(db, j)
+                loads_by_job[j["id"]] = _loads_recorded(db, j)
 
     # Leads worklist (Piece 20.8): active leads (not yet converted) with their
     # next open follow-up, for the Sales viewport. Replaces the generic Client
@@ -2026,7 +2035,7 @@ def dashboard():
         sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
         dept_icons={d: c["icon"] for d, c in DASHBOARD_DEPARTMENTS.items()},
-        progress_by_job=progress_by_job,
+        progress_by_job=progress_by_job, loads_by_job=loads_by_job,
         job_status_class=JOB_STATUS_CLASS)
 
 
@@ -2703,6 +2712,33 @@ def job_detail(job_id):
     stage = stage_info(db, job, groups, filed_labels)
     progress = build_job_progress(db, job)
 
+    # Saved load-survey results (from the Loads & Sizing page) surfaced here so
+    # the numbers Sales captured on the walkthrough are visible in the job
+    # details and ready for the Designer — no need to re-open the loads page.
+    lrooms = db.execute("SELECT * FROM job_load_rooms WHERE job_id = ?", (job_id,)).fetchall()
+    litems = db.execute("SELECT * FROM job_load_items WHERE job_id = ?", (job_id,)).fetchall()
+    load_daily_kwh, load_peak_w = compute_load_totals(lrooms, litems)
+    load_has_survey = bool(litems)
+
+    # Documents tab: one upload slot per file the job needs — the standard docs
+    # plus the job's document-worthy requirements (permits / compliance / doc
+    # items; licenses, portals and phone numbers aren't files, so they're
+    # excluded). files_by_label maps a slot to the files filed under it;
+    # other_files are anything filed outside those slots.
+    doc_req_groups = [
+        (heading, sorted({r["label"] for r in items}))
+        for heading, items in groups
+        if items and items[0]["category"] in ("Permit", "Compliance", "Doc")
+    ]
+    doc_sections = [("General", STANDARD_JOB_DOCS)] + doc_req_groups
+    needed_labels = set(STANDARD_JOB_DOCS)
+    for _heading, labels in doc_req_groups:
+        needed_labels.update(labels)
+    files_by_label = {}
+    for f in files:
+        files_by_label.setdefault(f["rule_label"] or "", []).append(f)
+    other_files = [f for f in files if (f["rule_label"] or "") not in needed_labels]
+
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
         materials=materials, files=files, filed_labels=filed_labels,
@@ -2711,6 +2747,9 @@ def job_detail(job_id):
         tasks=tasks, employees=employees, task_statuses=TASK_STATUSES,
         job_statuses=JOB_STATUSES, job_status_class=JOB_STATUS_CLASS,
         stage=stage, progress=progress, today=datetime.now().strftime("%Y-%m-%d"),
+        load_daily_kwh=load_daily_kwh, load_peak_w=load_peak_w,
+        load_has_survey=load_has_survey, doc_sections=doc_sections,
+        files_by_label=files_by_label, other_files=other_files,
     )
 
 

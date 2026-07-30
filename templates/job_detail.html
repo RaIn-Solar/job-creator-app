@@ -2,28 +2,26 @@
 {% from "_widgets.html" import job_progress %}
 {% block title %}Job #{{ job["id"] }} — {{ job["client_name"] }}{% endblock %}
 {% block content %}
-<div class="toolbar">
-  <h1>{{ job["job_name"] or "Job #" ~ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
-  <div style="display:flex; gap:0.5rem; align-items:center;">
-    <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="margin:0;"
-          title="Job status / pipeline stage">
-      <select name="status" onchange="this.form.submit()" style="padding:0.4rem;">
-        {% for s in job_statuses %}
-        <option value="{{ s }}" {% if (job["status"] or "Proposal") == s %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-      </select>
-    </form>
-    <a href="{{ url_for('edit_job', job_id=job['id']) }}" class="btn">✎ Edit job</a>
-    <a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn">⚡ Loads &amp; Sizing</a>
-    <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
-    <a href="{{ url_for('job_calendar_ics', job_id=job['id']) }}" class="btn btn-secondary"
-       title="Download this job's due dates + install date to import into your calendar">📅 Calendar</a>
-    <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary">← Client profile</a>
-  </div>
-</div>
+<h1 style="margin-bottom:0.7rem;">{{ job["job_name"] or "Job #" ~ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
 
 <div class="card" style="padding:0.9rem 1.1rem;">
   {{ job_progress(progress) }}
+</div>
+
+<div class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.7rem 0.9rem;">
+  <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="margin:0;"
+        title="Job status / pipeline stage">
+    <select name="status" onchange="this.form.submit()" style="padding:0.4rem;">
+      {% for s in job_statuses %}
+      <option value="{{ s }}" {% if (job["status"] or "Proposal") == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <a href="{{ url_for('edit_job', job_id=job['id']) }}" class="btn">✎ Edit job</a>
+  <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
+  <a href="{{ url_for('job_calendar_ics', job_id=job['id']) }}" class="btn btn-secondary"
+     title="Download this job's due dates + install date to import into your calendar">📅 Calendar</a>
+  <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary">← Client profile</a>
 </div>
 
 {% if stage.dept != "—" %}
@@ -47,9 +45,12 @@
     {% endif %}
     {% if stage.status == "Proposal" %}
     <span title="Electric loads are collected during the walkthrough, not at job creation">
-      {{ "✅" if stage.loads_ok else "⬜" }} Electric loads recorded
-      {% if not stage.loads_ok %}<a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.55rem; font-size:0.78rem; margin-left:0.3rem;">Record loads</a>{% endif %}</span>
+      {{ "✅" if stage.loads_ok else "⬜" }} Electric loads recorded</span>
     {% endif %}
+    <a href="{{ url_for('job_loads', job_id=job['id']) }}"
+       class="btn{{ '' if stage.status == 'Proposal' else ' btn-secondary' }}"
+       style="padding:0.25rem 0.7rem; font-size:0.85rem;"
+       title="Electric loads &amp; system sizing worksheet">⚡ Loads &amp; Sizing</a>
     {% if stage.status == "Job Prep" %}
     <span title="Permit-category requirements with a filed document">
       {{ "✅" if stage.permits_ok else "⬜" }} Permits filed
@@ -81,7 +82,7 @@
 {% set req_total = groups | map(attribute=1) | map('length') | sum %}
 <div class="tab-bar">
   <button class="tab-btn" data-tab="general">General details</button>
-  <button class="tab-btn" data-tab="requirements" title="Licenses, Permits &amp; Compliance">LPC ({{ req_total }})</button>
+  <button class="tab-btn" data-tab="requirements" title="Licenses / Permits / Compliance">L/P/C ({{ req_total }})</button>
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
   <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
   <button class="tab-btn" data-tab="tasks">Tasks ({{ tasks|length }})</button>
@@ -97,7 +98,15 @@
   <dl class="profile">
     <dt>Site location</dt><dd>{{ job["site_location"] or "—" }}</dd>
     <dt>County</dt><dd>{{ job["county"] or "—" }}</dd>
-    <dt>Electric loads</dt><dd>{{ job["electric_loads"] or "—" }}</dd>
+    <dt>Electric loads</dt>
+    <dd>{{ job["electric_loads"] or "—" }}
+      {% if load_has_survey %}
+      <br><span class="muted" style="font-size:0.85rem;">📋 Load survey on file:
+        <strong>{{ "%.1f"|format(load_daily_kwh) }} kWh/day</strong>,
+        peak <strong>{{ load_peak_w|int }} W</strong> ·
+        <a href="{{ url_for('job_loads', job_id=job['id']) }}">open Loads &amp; Sizing</a></span>
+      {% endif %}
+    </dd>
     <dt>Utility provider</dt><dd>{{ job["utility_provider"] or "—" }}</dd>
     <dt>Warranty type</dt><dd>{{ job["warranty_type"] or "—" }}</dd>
     <dt>Cost method</dt><dd>{{ job["cost_method"] or "—" }}</dd>
@@ -250,52 +259,70 @@
 <div class="tab-panel" id="tab-documents">
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">📁 Documents</h2>
-  {% if files %}
-  <ul style="margin:0 0 0.8rem; padding-left:1.2rem;">
-    {% for f in files %}
-    <li style="margin-bottom:0.3rem;">
-      <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
-      {% if f["rule_label"] %}<span class="badge">{{ f["rule_label"] }}</span>{% endif %}
-      <span class="muted">{{ f["uploaded_at"][:10] }}</span>
-      {% if can('delete') %}
-      <form method="post" action="{{ url_for('delete_file', job_id=job['id'], file_id=f['id']) }}"
-            onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
-        <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
+  <p class="muted" style="margin-top:0; font-size:0.85rem;">Each file the job needs
+  has its own upload slot — from the signed contract to permits and site photos.
+  <span class="muted">(Per-slot format checks are coming later; for now any file up to 25 MB is accepted.)</span></p>
+
+  {% for heading, labels in doc_sections %}
+  {% set filed_here = labels | select("in", files_by_label) | list %}
+  <details class="sect" open>
+    <summary>{{ heading }} <span class="sect-count">{{ filed_here|length }}/{{ labels|length }} on file</span></summary>
+    {% for label in labels %}
+    {% set filed = files_by_label.get(label, []) %}
+    <div style="display:flex; gap:0.7rem; align-items:flex-start; padding:0.45rem 0; border-bottom:1px solid var(--border); flex-wrap:wrap;">
+      <div style="flex:1 1 240px; min-width:200px;">
+        <div style="font-weight:600;">{{ "📎" if filed else "⬜" }} {{ label }}</div>
+        {% for f in filed %}
+        <div class="muted" style="font-size:0.82rem; margin-top:0.15rem;">
+          <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+          · {{ f["uploaded_at"][:10] }}
+          {% if can('delete') %}
+          <form method="post" action="{{ url_for('delete_file', job_id=job['id'], file_id=f['id']) }}"
+                onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.2rem;">
+            <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;">✕</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data"
+            style="display:flex; gap:0.4rem; align-items:center; margin:0;">
+        <input type="hidden" name="rule_label" value="{{ label }}">
+        <input type="file" name="document" required style="font-size:0.8rem; max-width:15rem;">
+        <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.6rem; font-size:0.8rem;" title="Upload {{ label }}">⬆</button>
       </form>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="empty">No documents on file for this job yet.</p>
-  {% endif %}
-  <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data">
-    <div class="form-grid">
-      <div class="field">
-        <label>File * <span class="muted">(pdf, images, office docs, kmz/kml, zip — max 25 MB)</span></label>
-        <input type="file" name="document" required>
-      </div>
-      <div class="field">
-        <label>File under (optional)</label>
-        <select name="rule_label">
-          <optgroup label="General">
-            <option value="">— general job document —</option>
-            <option value="Photos / Images">Photos / Images</option>
-            <option value="PDF document">PDF document</option>
-            <option value="Site file (KMZ/KML)">Site file (KMZ/KML)</option>
-          </optgroup>
-          {% for heading, labels in requirement_groups %}
-          <optgroup label="{{ heading }}">
-            {% for label in labels %}
-            <option value="{{ label }}">{{ label }}</option>
-            {% endfor %}
-          </optgroup>
-          {% endfor %}
-        </select>
-      </div>
     </div>
-    <div class="actions"><button type="submit" class="btn">⬆ Upload document</button></div>
-  </form>
+    {% endfor %}
+  </details>
+  {% endfor %}
+
+  <details class="sect" open>
+    <summary>Other documents <span class="sect-count">{{ other_files|length }}</span></summary>
+    {% if other_files %}
+    <ul style="margin:0.3rem 0 0.6rem; padding-left:1.2rem;">
+      {% for f in other_files %}
+      <li style="margin-bottom:0.3rem;">
+        <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a>
+        {% if f["rule_label"] %}<span class="badge">{{ f["rule_label"] }}</span>{% endif %}
+        <span class="muted">{{ f["uploaded_at"][:10] }}</span>
+        {% if can('delete') %}
+        <form method="post" action="{{ url_for('delete_file', job_id=job['id'], file_id=f['id']) }}"
+              onsubmit="return confirm('Send this document to the trash?');" style="display:inline; margin:0 0 0 0.4rem;">
+          <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data"
+          style="display:flex; gap:0.4rem; align-items:center; margin:0; flex-wrap:wrap;">
+      <input type="hidden" name="rule_label" value="">
+      <label style="font-size:0.85rem; margin:0;">Anything else:</label>
+      <input type="file" name="document" required style="font-size:0.8rem; max-width:16rem;">
+      <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.6rem; font-size:0.8rem;">⬆ Upload</button>
+    </form>
+  </details>
 </div>
 </div>
 
