@@ -45,6 +45,11 @@
       {{ "✅" if stage.tasks_done >= stage.tasks_total else "⬜" }} Stage tasks
       <strong>{{ stage.tasks_done }}/{{ stage.tasks_total }}</strong> done</span>
     {% endif %}
+    {% if stage.status == "Proposal" %}
+    <span title="Electric loads are collected during the walkthrough, not at job creation">
+      {{ "✅" if stage.loads_ok else "⬜" }} Electric loads recorded
+      {% if not stage.loads_ok %}<a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.55rem; font-size:0.78rem; margin-left:0.3rem;">Record loads</a>{% endif %}</span>
+    {% endif %}
     {% if stage.status == "Job Prep" %}
     <span title="Permit-category requirements with a filed document">
       {{ "✅" if stage.permits_ok else "⬜" }} Permits filed

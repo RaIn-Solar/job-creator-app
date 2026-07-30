@@ -81,7 +81,9 @@ can confirm a pull/update took effect.
 - **Per-job BPMN process charts**: an in-app viewer plus `.bpmn` export, with
   each step tagged by pipeline status.
 - **Loads & Sizing** (`/jobs/<id>/loads`): electrical loads and system sizing on
-  its own page.
+  its own page. Electric loads are **not** entered at job creation (they aren't
+  known until the walkthrough) — they're recorded here during the proposal, and
+  the **Proposal stage can't advance until loads are recorded**.
 - **Materials lists** per job and **document upload/storage** with per-requirement
   filing coverage (each job page shows which requirements have a document on file
   and warns on gaps).

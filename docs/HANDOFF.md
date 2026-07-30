@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.4** (footer shows it plainly as "Version 20.4" — the "did my pull work?" check)
+**Current build:** **Piece 20.5** (footer shows it plainly as "Version 20.5" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,18 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### Electric loads → proposal step, not creation — Piece 20.5
+- `electric_loads` removed from the **new-job** form (shown only when
+  `editing_job_id`); the create form carries a note pointing to Loads & Sizing.
+  Column and JOB_FIELDS unchanged — new jobs just post it empty.
+- New Proposal-stage gate: `_loads_recorded(db, job)` is True when the
+  structured Loads & Sizing worksheet has items (job_load_items) OR the
+  free-text `electric_loads` summary is filled. `stage_info` adds `loads_ok`,
+  puts "electric loads not recorded" in `pending`, and folds it into `ready`
+  for Proposal — so the Advance button warns until loads are in. Stage panel
+  shows a "⬜ Electric loads recorded · Record loads" indicator linking to the
+  loads page. Existing jobs that already have a loads summary pass the gate.
 
 ### County → utility auto-matching — Piece 20.4
 - `COUNTY_UTILITIES` in `nm_directory.py` (from doc 03's verified "Utility by

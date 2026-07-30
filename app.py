@@ -726,7 +726,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.4"
+VERSION = "Piece 20.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3307,6 +3307,17 @@ def _permit_coverage(groups, filed_labels):
     return filed, total
 
 
+def _loads_recorded(db, job):
+    """True once the walkthrough loads have been captured for a job — either
+    the structured Loads & Sizing worksheet has line items, or the free-text
+    loads summary on the job is filled. Used to gate the Proposal stage."""
+    if (job["electric_loads"] if "electric_loads" in job.keys() else "").strip():
+        return True
+    n = db.execute("SELECT COUNT(*) FROM job_load_items WHERE job_id = ?",
+                   (job["id"],)).fetchone()[0]
+    return n > 0
+
+
 def stage_info(db, job, groups, filed_labels):
     """Piece 18: who governs the job's current stage (department + the head of
     each staffing function), the exit criteria, and Job-Prep prerequisites."""
@@ -3319,16 +3330,25 @@ def stage_info(db, job, groups, filed_labels):
     filed, total = _permit_coverage(groups, filed_labels)
     permits_ok = filed >= total
     install_date = job["install_date"] if "install_date" in job.keys() else ""
+    # Loads are collected during the walkthrough, not at job creation — the
+    # Proposal stage requires them recorded before it can advance. "Recorded"
+    # means either the structured Loads & Sizing worksheet has entries or the
+    # free-text loads summary is filled.
+    loads_ok = _loads_recorded(db, job)
     # Progress: this stage's own tasks (tagged with pipeline_status = status).
     tdone, ttotal = db.execute(
         "SELECT COALESCE(SUM(status = 'Done'), 0), COUNT(*) FROM job_tasks"
         " WHERE job_id = ? AND pipeline_status = ?", (job["id"], status)).fetchone()
-    # Ready to advance? All this stage's tasks done; Job Prep also needs permits
-    # filed + an install date.
+    # Ready to advance? All this stage's tasks done; Proposal also needs the
+    # loads collected; Job Prep also needs permits filed + an install date.
     ready = (ttotal == 0 or tdone >= ttotal)
     pending = []
     if ttotal and tdone < ttotal:
         pending.append(f"{ttotal - tdone} task(s) still open")
+    if status == "Proposal":
+        if not loads_ok:
+            pending.append("electric loads not recorded")
+        ready = ready and loads_ok
     if status == "Job Prep":
         if not permits_ok:
             pending.append(f"{total - filed} permit(s) not filed")
@@ -3339,6 +3359,7 @@ def stage_info(db, job, groups, filed_labels):
         "status": status, "dept": spec["dept"], "exit": spec["exit"], "team": team,
         "permits_filed": filed, "permits_total": total, "permits_ok": permits_ok,
         "install_date": install_date, "tasks_done": tdone, "tasks_total": ttotal,
+        "loads_ok": loads_ok,
         "ready": ready, "pending": pending, "next": next_stage(status),
     }
 

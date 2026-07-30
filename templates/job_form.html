@@ -48,11 +48,20 @@ recordkeeping.</p>
       </div>
       <p id="util_note" class="muted" style="margin:0.25rem 0 0; font-size:0.8rem;"></p>
     </div>
+    {% if editing_job_id %}
     <div class="field wide">
-      <label for="electric_loads">Electric loads</label>
+      <label for="electric_loads">Electric loads <span class="muted">(loads summary — the detailed worksheet is on the Loads &amp; Sizing page)</span></label>
       <textarea id="electric_loads" name="electric_loads" rows="2"
                 placeholder="3-ton AC, well pump, shop sub-panel…">{{ values.get('electric_loads', '') }}</textarea>
     </div>
+    {% else %}
+    <div class="field wide">
+      <p class="muted" style="margin:0.2rem 0 0; font-size:0.85rem;">⚡ <strong>Electric loads</strong> are
+      collected during the proposal walkthrough — not at job creation. After the
+      site visit, record them on the job's <strong>Loads &amp; Sizing</strong> page;
+      the Proposal stage can't advance until they're recorded.</p>
+    </div>
+    {% endif %}
     <div class="field">
       <label for="warranty_type">Warranty type</label>
       <input id="warranty_type" name="warranty_type"
