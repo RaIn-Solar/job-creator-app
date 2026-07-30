@@ -27,6 +27,51 @@ COUNTIES_ALL = [f"{c} County" for c in (
     "Santa Fe", "Sierra", "Socorro", "Taos", "Torrance", "Union", "Valencia",
 )]
 
+# Which retail electric utilities serve each county, listed with the most
+# common first — from the verified "Utility by County" table in doc 03 (the
+# July 2026 reference set). Co-op boundaries overlap, so several counties list
+# more than one; the job form shows a county's utilities in the dropdown and
+# the user picks the one on the customer's bill (a Manual override button opens
+# the full statewide list for the rare non-standard case). Names match
+# UTILITIES_ALL exactly.
+COUNTY_UTILITIES = {
+    "Bernalillo County": ["PNM", "CNMEC"],
+    "Catron County": ["Navopache EC", "Socorro EC"],
+    "Chaves County": ["Xcel Energy (SPS)", "Central Valley EC", "Lea County EC",
+                      "Otero County EC", "Roosevelt County EC", "CNMEC"],
+    "Cibola County": ["Continental Divide EC", "Socorro EC", "NTUA"],
+    "Colfax County": ["Springer Electric", "KCEC", "Raton Public Service"],
+    "Curry County": ["Xcel Energy (SPS)", "Farmers EC"],
+    "De Baca County": ["Farmers EC", "CNMEC", "Roosevelt County EC"],
+    "Doña Ana County": ["El Paso Electric"],
+    "Eddy County": ["Central Valley EC", "Xcel Energy (SPS)", "Rio Grande EC"],
+    "Grant County": ["PNM", "Columbus EC", "Duncan Valley EC"],
+    "Guadalupe County": ["MSMEC", "CNMEC", "Farmers EC"],
+    "Harding County": ["Springer Electric", "Southwestern EC"],
+    "Hidalgo County": ["Columbus EC", "Duncan Valley EC"],
+    "Lea County": ["Xcel Energy (SPS)", "Lea County EC"],
+    "Lincoln County": ["PNM", "Otero County EC", "CNMEC"],
+    "Los Alamos County": ["Los Alamos DPU"],
+    "Luna County": ["Columbus EC", "El Paso Electric", "Sierra EC"],
+    "McKinley County": ["Continental Divide EC", "Gallup Joint Utilities", "NTUA"],
+    "Mora County": ["MSMEC", "KCEC", "Springer Electric"],
+    "Otero County": ["Otero County EC", "PNM", "Central Valley EC", "Rio Grande EC"],
+    "Quay County": ["Xcel Energy (SPS)", "Farmers EC", "Southwestern EC"],
+    "Rio Arriba County": ["KCEC", "JMEC", "NORA"],
+    "Roosevelt County": ["Xcel Energy (SPS)", "Roosevelt County EC", "Farmers EC"],
+    "San Juan County": ["FEUS", "City of Aztec", "JMEC", "NTUA",
+                        "Continental Divide EC"],
+    "San Miguel County": ["MSMEC", "PNM", "Springer Electric"],
+    "Sandoval County": ["PNM", "JMEC", "CNMEC", "NTUA"],
+    "Santa Fe County": ["PNM", "JMEC", "MSMEC", "CNMEC"],
+    "Sierra County": ["Sierra EC", "City of T or C"],
+    "Socorro County": ["Socorro EC", "PNM"],
+    "Taos County": ["KCEC"],
+    "Torrance County": ["CNMEC"],
+    "Union County": ["Southwestern EC", "Springer Electric"],
+    "Valencia County": ["PNM", "Socorro EC", "CNMEC"],
+}
+
 # ---------------------------------------------------------------------------
 # New utility contact rules (Link) and special-step rules (Compliance),
 # keyed on the job's utility provider.

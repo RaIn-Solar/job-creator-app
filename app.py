@@ -32,7 +32,8 @@ from werkzeug.utils import secure_filename
 
 from bpmn_export import build_job_bpmn
 from nm_directory import (
-    COUNTIES_ALL, CORRECTIONS_V10, CORRECTIONS_V11, NEW_RULES_V10, UTILITIES_ALL,
+    COUNTIES_ALL, CORRECTIONS_V10, CORRECTIONS_V11, COUNTY_UTILITIES,
+    NEW_RULES_V10, UTILITIES_ALL,
 )
 from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
 
@@ -725,7 +726,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.3"
+VERSION = "Piece 20.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2566,6 +2567,8 @@ def render_job_form(client, values, selected, existing_jobs=False,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
         utilities=UTILITIES, counties=COUNTIES,
+        county_utilities_json=json.dumps(COUNTY_UTILITIES),
+        utilities_json=json.dumps(UTILITIES),
         existing_jobs=jobs_on_books, editing_job_id=editing_job_id,
     )
 

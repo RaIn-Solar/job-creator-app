@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.3** (footer shows it plainly as "Version 20.3" — the "did my pull work?" check)
+**Current build:** **Piece 20.4** (footer shows it plainly as "Version 20.4" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,18 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### County → utility auto-matching — Piece 20.4
+- `COUNTY_UTILITIES` in `nm_directory.py` (from doc 03's verified "Utility by
+  County" table, canonical UTILITIES_ALL names, all 33 counties). Passed to the
+  job form as `county_utilities_json` + `utilities_json`.
+- `job_form.html`: the utility field is now a `<select>` filtered by county via
+  JS — single serving utility auto-selects, multiple are all listed to pick
+  from, and a **Manual override** button toggles to the full statewide list.
+  Editing preserves a saved out-of-map value (`data-current`). `N/A` always
+  available (off-grid / no utility); the field is intentionally kept for
+  off-grid jobs since the meter ties to the provider. No schema change — still
+  posts the `utility_provider` field.
 
 ### Rules display: compaction + verification callouts — Piece 20.3
 - `group_rules(matched, dedupe=True)` now collapses a shared requirement into

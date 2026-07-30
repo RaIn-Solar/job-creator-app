@@ -71,6 +71,12 @@ can confirm a pull/update took effect.
 - **NM reference data** (statewide licensing, all 33 counties' AHJ contacts,
   every utility's interconnection contacts) is kept reconciled against the
   verified July 2026 reference set.
+- **County → utility auto-matching**: picking a county on the job form filters
+  the utility-provider dropdown to the providers that serve it (verified doc-03
+  table). If one utility serves the county it's auto-selected; if several do,
+  they're all listed so you pick the one on the customer's bill. A **Manual
+  override** button opens the full statewide list for non-standard cases. The
+  utility field is kept even for off-grid jobs (the meter/account ties to it).
 - **Job edit history / versioning** for recordkeeping.
 - **Per-job BPMN process charts**: an in-app viewer plus `.bpmn` export, with
   each step tagged by pipeline status.
