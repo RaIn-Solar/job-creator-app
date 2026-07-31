@@ -2,7 +2,21 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.2** (footer shows it plainly as "Version 21.2" — the "did my pull work?" check)
+**Current build:** **Piece 21.3** (footer shows it plainly as "Version 21.3" — the "did my pull work?" check)
+
+**Piece 21.3 — payroll: self-log + approval + auto-OT + rate lock.** Employees
+log their own hours from the Work Bag (`/work-bag/hours`, status Pending);
+supervisors approve on the Payroll page (`approve_time_entry`/`reject_time_entry`)
+— only Approved entries count in `payroll_summary`. Auto-overtime: `pay_types`
+gains `ot_eligible`; per employee per ISO week, hours over the threshold earn the
+OT premium (`ot_h × base × (mult−1)`). OT threshold + multiplier live in `meta`
+(`_meta_get/_meta_set`, `ot_rules`), editable in Pay settings. The manual
+"Overtime" pay type is gone from the seed; existing DBs set it/PTO/Holiday to
+`ot_eligible=0`. `time_entries` gains `status/approved_by/approved_at` (existing
+rows migrated to Approved). Rate editing (Pay settings + all save routes) gated
+by `pay_rates_required` = `_can_edit_pay_rates` (GM or "Payroll Manager" role =
+Cary + Lisa; exposed as `can_edit_pay_rates`). Payroll view stays
+`payroll_required` (Finance/Admin/GM).
 
 **Piece 21.2 — Payroll / hour tracking.** Tables `pay_types` (name, method
 [multiplier/flat], value, sort, active), `pay_rates` (per-employee per-type

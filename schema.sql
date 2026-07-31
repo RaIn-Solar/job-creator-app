@@ -461,12 +461,13 @@ CREATE TABLE IF NOT EXISTS job_transactions (
 -- multiplier on the employee's base wage, or a flat $/hr). pay_rates holds
 -- per-employee overrides of a type's value; time_entries are logged hours.
 CREATE TABLE IF NOT EXISTS pay_types (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT NOT NULL DEFAULT '',
-    method     TEXT NOT NULL DEFAULT 'multiplier',  -- multiplier / flat
-    value      REAL NOT NULL DEFAULT 0,             -- default multiplier or flat $/hr
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    active     INTEGER NOT NULL DEFAULT 1
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL DEFAULT '',
+    method      TEXT NOT NULL DEFAULT 'multiplier',  -- multiplier / flat
+    value       REAL NOT NULL DEFAULT 0,             -- default multiplier or flat $/hr
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    active      INTEGER NOT NULL DEFAULT 1,
+    ot_eligible INTEGER NOT NULL DEFAULT 1           -- counts toward the weekly OT threshold
 );
 CREATE TABLE IF NOT EXISTS pay_rates (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -482,6 +483,9 @@ CREATE TABLE IF NOT EXISTS time_entries (
     pay_type_id INTEGER REFERENCES pay_types(id),
     hours       REAL NOT NULL DEFAULT 0,
     note        TEXT DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'Pending',    -- Pending / Approved (supervisor review)
+    approved_by TEXT DEFAULT '',
+    approved_at TEXT DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     created_by  TEXT DEFAULT ''
 );

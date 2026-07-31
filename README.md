@@ -144,12 +144,15 @@ can confirm a pull/update took effect.
 - **QuickBooks export**: one-click CSV of all transactions
   (`/finance/quickbooks.csv`) whose first three columns (Date, Description,
   Amount, signed) map straight onto QuickBooks Online's import.
-- **Payroll** (`/payroll`, Finance/management only): log hours per employee (by
-  date, job, and **pay type**), with a configurable pay schema — each pay type is
-  a **multiplier** on the employee's base wage (overtime, roof time…) or a **flat
-  $/hr** (travel time…), and any rate is **overridable per employee**. A
-  pay-period summary rolls up hours + dollars per person, with its own
-  QuickBooks CSV export.
+- **Payroll**: employees **log their own hours** from the 🎒 Work Bag (by date,
+  job, and **pay type**); supervisors **review and approve** them on the Payroll
+  page before they count. The pay schema is configurable — each pay type is a
+  **multiplier** on the employee's base wage (roof time…) or a **flat $/hr**
+  (travel time…), **overridable per employee**. **Overtime is automatic** — hours
+  over the weekly threshold of OT-eligible time earn the OT premium (no manual OT
+  entry). Only **Cary (GM)** and **Lisa (Payroll Manager)** can change pay rates.
+  A pay-period summary rolls up hours + dollars per person with a QuickBooks CSV
+  export.
 
 ### Records & audit
 - **Audit log** of all changes (create/update/delete), with password fields

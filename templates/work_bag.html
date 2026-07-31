@@ -49,6 +49,62 @@ it counts. <strong>Keep this page open while you're offline.</strong></p>
   <div id="subs"><p class="muted">None yet.</p></div>
 </div>
 
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">⏱ Log payroll hours</h2>
+  <p class="muted" style="margin-top:0;">Record your hours by type (regular, roof,
+  travel…). These go to your supervisor to approve for payroll — overtime is
+  figured automatically once you pass the weekly limit, so don't log it separately.</p>
+  <form method="post" action="{{ url_for('log_my_hours') }}">
+    <div class="form-grid">
+      <div class="field"><label>Date</label><input type="date" name="work_date" value="{{ today }}"></div>
+      <div class="field">
+        <label>Pay type</label>
+        <select name="pay_type_id">
+          {% for t in pay_types %}<option value="{{ t['id'] }}">{{ t["name"] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field"><label>Hours *</label><input name="hours" type="number" step="0.25" min="0" required placeholder="8"></div>
+      <div class="field">
+        <label>Job (optional)</label>
+        <select name="job_id">
+          <option value="">— none —</option>
+          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j["job_name"] or "Job #" ~ j["id"] }} · {{ j["client_name"] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field wide"><label>Note</label><input name="note" placeholder="optional"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Submit hours</button></div>
+  </form>
+
+  {% if my_entries %}
+  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent hours</h3>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Date</th><th>Pay type</th><th>Job</th><th style="text-align:right;">Hours</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for e in my_entries %}
+      <tr>
+        <td class="muted">{{ e["work_date"] or "—" }}</td>
+        <td>{{ e["type_name"] or "—" }}</td>
+        <td class="muted">{{ e["job_name"] or "—" }}</td>
+        <td style="text-align:right;">{{ "%.2f"|format(e["hours"] or 0) }}</td>
+        <td><span class="badge {{ '' if e['status'] == 'Approved' else 'warn' }}">{{ e["status"] }}</span></td>
+        <td>
+          {% if e["status"] == "Pending" %}
+          <form method="post" action="{{ url_for('delete_my_hours', entry_id=e['id']) }}" style="margin:0;"
+                onsubmit="return confirm('Remove this pending time entry?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+
 <script>
 (function () {
   const LS_TASKS = "solbiz_wb_tasks", LS_QUEUE = "solbiz_wb_queue";

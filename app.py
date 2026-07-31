@@ -326,14 +326,18 @@ PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
 # value. ECC's real numbers get entered in Payroll → Settings.
 PAY_METHODS = ["multiplier", "flat"]
 PAY_TYPE_SEED = [
-    # (name, method, default value, sort_order)
+    # (name, method, default value, sort_order). Overtime is NOT a logged type —
+    # it's applied automatically past the weekly threshold (see OT_* below).
     ("Regular", "multiplier", 1.0, 0),
-    ("Overtime (1.5x)", "multiplier", 1.5, 1),
-    ("Roof time", "multiplier", 1.25, 2),
-    ("Travel time", "flat", 0.0, 3),
-    ("Holiday (2x)", "multiplier", 2.0, 4),
-    ("PTO", "multiplier", 1.0, 5),
+    ("Roof time", "multiplier", 1.25, 1),
+    ("Travel time", "flat", 0.0, 2),
+    ("Holiday (2x)", "multiplier", 2.0, 3),
+    ("PTO", "multiplier", 1.0, 4),
 ]
+# Auto-overtime defaults (editable in Pay settings, stored in `meta`): hours
+# over the weekly threshold of OT-eligible time earn the OT multiplier.
+OT_THRESHOLD_DEFAULT = 40.0
+OT_MULTIPLIER_DEFAULT = 1.5
 
 RULE_CATEGORIES = ["License", "Permit", "Compliance", "Link", "Phone", "Doc"]
 CATEGORY_HEADINGS = {
@@ -763,7 +767,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.2"
+VERSION = "Piece 21.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1207,6 +1211,16 @@ def _can_payroll():
     return is_gm() or _is_admin() or "Finance" in user_departments(user)
 
 
+def _can_edit_pay_rates():
+    """Only the GM (Cary) and the Payroll Manager (Lisa) can change pay rates —
+    a separation of duties from the people who log/approve/run payroll."""
+    user = current_user()
+    if user is None:
+        return True
+    roles = [r.strip() for r in (user["roles"] or "").split(",")]
+    return is_gm() or "Payroll Manager" in roles
+
+
 def payroll_required(view):
     """Guard payroll pages to Finance / Admin / GM."""
     @wraps(view)
@@ -1216,6 +1230,34 @@ def payroll_required(view):
             return redirect(url_for("home"))
         return view(*args, **kwargs)
     return wrapped
+
+
+def pay_rates_required(view):
+    """Guard pay-rate editing to the GM and Payroll Manager only."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not _can_edit_pay_rates():
+            flash("Only the General Manager or Payroll Manager can change pay rates.", "error")
+            return redirect(url_for("payroll"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def _meta_get(db, key, default=""):
+    row = db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def _meta_set(db, key, value):
+    db.execute("INSERT INTO meta (key, value) VALUES (?, ?)"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+               (key, str(value)))
+
+
+def ot_rules(db):
+    """Current weekly-overtime settings (threshold hours, multiplier)."""
+    return (_to_float(_meta_get(db, "payroll_ot_threshold")) or OT_THRESHOLD_DEFAULT,
+            _to_float(_meta_get(db, "payroll_ot_multiplier")) or OT_MULTIPLIER_DEFAULT)
 
 
 @app.context_processor
@@ -1231,7 +1273,9 @@ def inject_auth():
             pending = 0
     return {"current_user": user, "login_active": accounts_exist(),
             "is_admin": _is_admin(), "is_gm": is_gm(), "can": has_permission,
-            "can_payroll": _can_payroll(), "pending_submissions": pending}
+            "can_payroll": _can_payroll(),
+            "can_edit_pay_rates": _can_edit_pay_rates(),
+            "pending_submissions": pending}
 
 
 @app.route("/access")
@@ -1637,6 +1681,21 @@ def init_db():
         db.executemany(
             "INSERT INTO pay_types (name, method, value, sort_order)"
             " VALUES (?, ?, ?, ?)", PAY_TYPE_SEED)
+    # Piece 21.3: OT-eligibility on pay types + approval status on time entries
+    # (existing databases created these tables in 21.2 without the columns).
+    pt_cols = {r[1] for r in db.execute("PRAGMA table_info(pay_types)")}
+    if "ot_eligible" not in pt_cols:
+        db.execute("ALTER TABLE pay_types ADD COLUMN ot_eligible INTEGER NOT NULL DEFAULT 1")
+    # PTO / Holiday / a manual Overtime type don't count toward the OT threshold.
+    db.execute("UPDATE pay_types SET ot_eligible = 0"
+               " WHERE name IN ('PTO', 'Holiday (2x)', 'Overtime (1.5x)')")
+    te_cols = {r[1] for r in db.execute("PRAGMA table_info(time_entries)")}
+    if "status" not in te_cols:
+        db.execute("ALTER TABLE time_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'Pending'")
+        db.execute("ALTER TABLE time_entries ADD COLUMN approved_by TEXT DEFAULT ''")
+        db.execute("ALTER TABLE time_entries ADD COLUMN approved_at TEXT DEFAULT ''")
+        # Hours logged before approvals existed are treated as already approved.
+        db.execute("UPDATE time_entries SET status = 'Approved'")
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
@@ -2945,17 +3004,23 @@ def payroll():
         " JOIN employees e ON e.id = te.employee_id"
         " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
         " LEFT JOIN jobs j ON j.id = te.job_id"
-        " WHERE te.work_date >= ? AND te.work_date <= ?"
+        " WHERE te.work_date >= ? AND te.work_date <= ? AND te.status = 'Approved'"
         " ORDER BY te.work_date DESC, te.id DESC", (start, end)).fetchall()
-    employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
-    jobs = db.execute(
-        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id"
-        " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
+    # Supervisor approval queue: hours employees logged that await review.
+    pending = db.execute(
+        "SELECT te.*, e.name AS emp_name, pt.name AS type_name, j.job_name"
+        " FROM time_entries te"
+        " JOIN employees e ON e.id = te.employee_id"
+        " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
+        " LEFT JOIN jobs j ON j.id = te.job_id"
+        " WHERE te.status = 'Pending' ORDER BY te.work_date, e.name").fetchall()
+    ot_threshold, ot_mult = ot_rules(db)
     return render_template(
         "payroll.html", start=start, end=end, types=types, rollup=rollup,
-        totals=totals, entries=entries, employees=employees, jobs=jobs,
-        pay_types=types, today=datetime.now().strftime("%Y-%m-%d"))
+        totals=totals, entries=entries, pending=pending,
+        ot_threshold=ot_threshold, ot_mult=ot_mult,
+        can_edit_rates=_can_edit_pay_rates(),
+        today=datetime.now().strftime("%Y-%m-%d"))
 
 
 @app.route("/payroll/time/add", methods=["POST"])
@@ -2993,8 +3058,77 @@ def delete_time_entry(entry_id):
                             end=request.form.get("end")))
 
 
-@app.route("/payroll/settings", methods=["GET"])
+@app.route("/payroll/time/<int:entry_id>/approve", methods=["POST"])
 @payroll_required
+def approve_time_entry(entry_id):
+    who = current_user()
+    db = get_db()
+    db.execute("UPDATE time_entries SET status = 'Approved', approved_by = ?,"
+               " approved_at = datetime('now') WHERE id = ?",
+               (who["name"] if who else "", entry_id))
+    db.commit()
+    flash("Hours approved.")
+    return redirect(url_for("payroll"))
+
+
+@app.route("/payroll/time/<int:entry_id>/reject", methods=["POST"])
+@payroll_required
+def reject_time_entry(entry_id):
+    db = get_db()
+    db.execute("DELETE FROM time_entries WHERE id = ? AND status = 'Pending'", (entry_id,))
+    db.commit()
+    flash("Time entry rejected — the employee can re-submit it.")
+    return redirect(url_for("payroll"))
+
+
+@app.route("/payroll/ot-rules", methods=["POST"])
+@pay_rates_required
+def save_ot_rules():
+    db = get_db()
+    _meta_set(db, "payroll_ot_threshold",
+              _to_float(request.form.get("ot_threshold")) or OT_THRESHOLD_DEFAULT)
+    _meta_set(db, "payroll_ot_multiplier",
+              _to_float(request.form.get("ot_multiplier")) or OT_MULTIPLIER_DEFAULT)
+    db.commit()
+    flash("Overtime rules saved.")
+    return redirect(url_for("payroll_settings"))
+
+
+@app.route("/work-bag/hours", methods=["POST"])
+def log_my_hours():
+    """An employee logs their own hours from the Work Bag — saved as Pending
+    until a supervisor approves them for payroll."""
+    user = current_user()
+    if user is None:
+        abort(403)
+    db = get_db()
+    db.execute(
+        "INSERT INTO time_entries (employee_id, work_date, job_id, pay_type_id,"
+        " hours, note, status, created_by) VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)",
+        (user["id"], request.form.get("work_date", "").strip(),
+         int(request.form["job_id"]) if request.form.get("job_id", "").isdigit() else None,
+         int(request.form["pay_type_id"]) if request.form.get("pay_type_id", "").isdigit() else None,
+         _to_float(request.form.get("hours")) or 0.0,
+         request.form.get("note", "").strip(), user["name"]))
+    db.commit()
+    flash("Hours submitted for approval.")
+    return redirect(url_for("work_bag"))
+
+
+@app.route("/work-bag/hours/<int:entry_id>/delete", methods=["POST"])
+def delete_my_hours(entry_id):
+    user = current_user()
+    if user is None:
+        abort(403)
+    db = get_db()
+    db.execute("DELETE FROM time_entries WHERE id = ? AND employee_id = ?"
+               " AND status = 'Pending'", (entry_id, user["id"]))
+    db.commit()
+    return redirect(url_for("work_bag"))
+
+
+@app.route("/payroll/settings", methods=["GET"])
+@pay_rates_required
 def payroll_settings():
     db = get_db()
     types = db.execute("SELECT * FROM pay_types ORDER BY sort_order, id").fetchall()
@@ -3003,37 +3137,41 @@ def payroll_settings():
     rates = {}
     for r in db.execute("SELECT employee_id, pay_type_id, value FROM pay_rates").fetchall():
         rates[(r["employee_id"], r["pay_type_id"])] = r["value"]
+    ot_threshold, ot_mult = ot_rules(db)
     return render_template("payroll_settings.html", types=types,
-                           employees=employees, rates=rates, pay_methods=PAY_METHODS)
+                           employees=employees, rates=rates, pay_methods=PAY_METHODS,
+                           ot_threshold=ot_threshold, ot_mult=ot_mult)
 
 
 @app.route("/payroll/paytype/save", methods=["POST"])
-@payroll_required
+@pay_rates_required
 def save_pay_type():
     db = get_db()
     name = request.form.get("name", "").strip()
     method = request.form.get("method", "multiplier")
     method = method if method in PAY_METHODS else "multiplier"
     value = _to_float(request.form.get("value")) or 0.0
+    ot_eligible = 1 if request.form.get("ot_eligible") else 0
     tid = request.form.get("id", "")
     if not name:
         flash("A pay type needs a name.", "error")
     elif tid.isdigit():
-        db.execute("UPDATE pay_types SET name = ?, method = ?, value = ? WHERE id = ?",
-                   (name, method, value, int(tid)))
+        db.execute("UPDATE pay_types SET name = ?, method = ?, value = ?,"
+                   " ot_eligible = ? WHERE id = ?",
+                   (name, method, value, ot_eligible, int(tid)))
         db.commit()
         flash("Pay type updated.")
     else:
         nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM pay_types").fetchone()[0]
-        db.execute("INSERT INTO pay_types (name, method, value, sort_order)"
-                   " VALUES (?, ?, ?, ?)", (name, method, value, nxt))
+        db.execute("INSERT INTO pay_types (name, method, value, sort_order, ot_eligible)"
+                   " VALUES (?, ?, ?, ?, ?)", (name, method, value, nxt, ot_eligible))
         db.commit()
         flash("Pay type added.")
     return redirect(url_for("payroll_settings"))
 
 
 @app.route("/payroll/paytype/<int:type_id>/delete", methods=["POST"])
-@payroll_required
+@pay_rates_required
 def delete_pay_type(type_id):
     db = get_db()
     db.execute("UPDATE pay_types SET active = 0 WHERE id = ?", (type_id,))
@@ -3043,7 +3181,7 @@ def delete_pay_type(type_id):
 
 
 @app.route("/payroll/employee/<int:employee_id>/rates", methods=["POST"])
-@payroll_required
+@pay_rates_required
 def save_employee_rates(employee_id):
     db = get_db()
     db.execute("UPDATE employees SET base_wage = ? WHERE id = ?",
@@ -3871,19 +4009,30 @@ def payroll_pay_types(db):
                       " ORDER BY sort_order, id").fetchall()
 
 
+def _iso_week(date_str):
+    try:
+        y, w, _d = datetime.strptime(date_str, "%Y-%m-%d").isocalendar()
+        return (y, w)
+    except (ValueError, TypeError):
+        return None
+
+
 def payroll_summary(db, start, end):
     """Per-employee payroll rollup for a pay period [start, end]: hours and
-    dollars per pay type and totals, using each person's base wage and any
-    per-type rate overrides."""
+    dollars per pay type, plus auto-overtime (hours over the weekly threshold of
+    OT-eligible time earn the OT premium). Only *approved* time entries count.
+    Uses each person's base wage and any per-type rate overrides."""
     types = payroll_pay_types(db)
     type_by_id = {t["id"]: t for t in types}
     overrides = {}   # (employee_id, pay_type_id) -> value
     for r in db.execute("SELECT employee_id, pay_type_id, value FROM pay_rates").fetchall():
         overrides[(r["employee_id"], r["pay_type_id"])] = r["value"]
+    ot_threshold, ot_mult = ot_rules(db)
     entries = db.execute(
         "SELECT * FROM time_entries WHERE work_date >= ? AND work_date <= ?"
-        " ORDER BY work_date, id", (start, end)).fetchall()
+        " AND status = 'Approved' ORDER BY work_date, id", (start, end)).fetchall()
     emp = {}   # employee_id -> rollup
+    week_elig = {}   # (employee_id, isoweek) -> OT-eligible hours
     for e in entries:
         pt = type_by_id.get(e["pay_type_id"])
         if pt is None:
@@ -3895,18 +4044,35 @@ def payroll_summary(db, start, end):
             if who is None:
                 continue
             row = {"employee": who, "hours": 0.0, "pay": 0.0,
-                   "by_type": {t["id"]: {"hours": 0.0, "pay": 0.0} for t in types}}
+                   "by_type": {t["id"]: {"hours": 0.0, "pay": 0.0} for t in types},
+                   "ot_hours": 0.0, "ot_pay": 0.0}
             emp[e["employee_id"]] = row
+        hrs = e["hours"] or 0.0
         val = overrides.get((e["employee_id"], e["pay_type_id"]), pt["value"])
         rate = _rate_dollars(row["employee"]["base_wage"], pt["method"], val)
-        pay = (e["hours"] or 0.0) * rate
-        row["hours"] += e["hours"] or 0.0
-        row["pay"] += pay
+        row["hours"] += hrs
+        row["pay"] += hrs * rate
         cell = row["by_type"].setdefault(e["pay_type_id"], {"hours": 0.0, "pay": 0.0})
-        cell["hours"] += e["hours"] or 0.0
-        cell["pay"] += pay
+        cell["hours"] += hrs
+        cell["pay"] += hrs * rate
+        if pt["ot_eligible"]:
+            wk = _iso_week(e["work_date"])
+            if wk is not None:
+                week_elig[(e["employee_id"], wk)] = week_elig.get((e["employee_id"], wk), 0.0) + hrs
+    # Auto-overtime: per employee per ISO week, hours over the threshold earn the
+    # OT premium (extra multiplier − 1) on the base wage, added on top.
+    for (emp_id, _wk), elig in week_elig.items():
+        if elig > ot_threshold and emp_id in emp:
+            row = emp[emp_id]
+            ot_h = elig - ot_threshold
+            base = _to_float(row["employee"]["base_wage"]) or 0.0
+            prem = ot_h * base * (ot_mult - 1.0)
+            row["ot_hours"] += ot_h
+            row["ot_pay"] += prem
+            row["pay"] += prem
     rollup = sorted(emp.values(), key=lambda r: r["employee"]["name"].lower())
     totals = {"hours": sum(r["hours"] for r in rollup),
+              "ot_hours": sum(r["ot_hours"] for r in rollup),
               "pay": sum(r["pay"] for r in rollup)}
     return types, rollup, totals
 
@@ -4222,8 +4388,24 @@ def work_bag():
     """The Work Bag: an offline-capable page holding the signed-in worker's
     field tasks. Task data and submission happen in the browser via the /api
     endpoints, so it keeps working through a dropped connection."""
+    db = get_db()
+    user = current_user()
+    pay_types = payroll_pay_types(db)
+    jobs = db.execute(
+        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id"
+        " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
+    my_entries = []
+    if user is not None:
+        my_entries = db.execute(
+            "SELECT te.*, pt.name AS type_name, j.job_name FROM time_entries te"
+            " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
+            " LEFT JOIN jobs j ON j.id = te.job_id"
+            " WHERE te.employee_id = ?"
+            " ORDER BY te.work_date DESC, te.id DESC LIMIT 12", (user["id"],)).fetchall()
     return render_template("work_bag.html", task_statuses=TASK_STATUSES,
-                           today=datetime.now().strftime("%Y-%m-%d"))
+                           today=datetime.now().strftime("%Y-%m-%d"),
+                           pay_types=pay_types, jobs=jobs, my_entries=my_entries)
 
 
 @app.route("/api/my-tasks")

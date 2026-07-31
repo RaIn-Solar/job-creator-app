@@ -3,16 +3,31 @@
 {% block content %}
 <div style="margin-bottom:0.8rem;"><a href="{{ url_for('payroll') }}" class="btn btn-secondary">← Back to payroll</a></div>
 <h1>⚙ Pay settings</h1>
+{% set ns = namespace(active=0) %}
+{% for t in types if t["active"] %}{% set ns.active = ns.active + 1 %}{% endfor %}
 
 <details class="card sect" open>
-  <summary>Pay types <span class="sect-count">{{ types|selectattr("active")|list|length }}</span></summary>
+  <summary>⏱ Overtime rule</summary>
+  <form method="post" action="{{ url_for('save_ot_rules') }}" style="display:flex; gap:0.8rem; align-items:end; flex-wrap:wrap;">
+    <div class="field" style="margin:0;"><label>Hours/week before OT</label><input name="ot_threshold" type="number" step="0.5" min="0" value="{{ '%.0f'|format(ot_threshold) }}" style="width:8rem;"></div>
+    <div class="field" style="margin:0;"><label>OT multiplier</label><input name="ot_multiplier" type="number" step="0.05" min="1" value="{{ '%.2f'|format(ot_mult) }}" style="width:8rem;"></div>
+    <button type="submit" class="btn btn-secondary">Save</button>
+  </form>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.82rem;">Once someone passes
+  this many hours of overtime-eligible time in a week, the extra hours automatically
+  earn the multiplier — nobody logs overtime as its own type.</p>
+</details>
+
+<details class="card sect" open>
+  <summary>Pay types <span class="sect-count">{{ ns.active }}</span></summary>
   <p class="muted" style="margin-top:0; font-size:0.85rem;">A <strong>multiplier</strong>
-  type pays the employee's base wage × the multiplier (e.g. 1.5× for overtime).
-  A <strong>flat</strong> type pays a fixed $/hr regardless of base wage. These
-  values are the defaults; override them per person below.</p>
+  type pays the employee's base wage × the multiplier. A <strong>flat</strong> type
+  pays a fixed $/hr regardless of base wage. "Counts toward OT" = these hours add up
+  toward the weekly overtime threshold (turn it off for PTO/Holiday). Values are the
+  defaults; override them per person below.</p>
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Name</th><th>Method</th><th>Default value</th><th></th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Method</th><th>Default value</th><th>Counts toward OT</th><th></th><th></th></tr></thead>
     <tbody>
       {% for t in types if t["active"] %}
       <tr>
@@ -25,6 +40,7 @@
           </select>
         </td>
         <td><input name="value" type="number" step="0.01" min="0" value="{{ '%.2f'|format(t['value']) }}" style="padding:0.25rem; width:7rem;"></td>
+        <td style="text-align:center;"><input type="checkbox" name="ot_eligible" value="1" {% if t['ot_eligible'] %}checked{% endif %}></td>
         <td><button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Save</button></td>
         </form>
         <td>
@@ -45,6 +61,7 @@
         <select name="method">{% for m in pay_methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}</select>
       </div>
       <div class="field"><label>Default value <span class="muted">(× base, or $/hr)</span></label><input name="value" type="number" step="0.01" min="0" placeholder="1.00"></div>
+      <div class="field"><label>Counts toward OT?</label><input type="checkbox" name="ot_eligible" value="1" checked></div>
     </div>
     <div class="actions"><button type="submit" class="btn">＋ Add pay type</button></div>
   </form>
