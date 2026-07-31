@@ -134,6 +134,17 @@ can confirm a pull/update took effect.
   case-insensitive** (passwords stay case-sensitive); the Accounts page scans for
   case-duplicate usernames.
 
+### Finance & billing
+- **Per-job billing ledger** (💵 Billing tab): set the contract total and record
+  every **income** (deposits, invoices, rebates) and **expense** (materials,
+  permits, labor, subs) with a dollar amount, date, category, party, reference,
+  method, and paid/outstanding status.
+- **Payments table** on the Finance dashboard: every active job with Contract /
+  Collected / Outstanding / Expenses / Net and a grand-total row.
+- **QuickBooks export**: one-click CSV of all transactions
+  (`/finance/quickbooks.csv`) whose first three columns (Date, Description,
+  Amount, signed) map straight onto QuickBooks Online's import.
+
 ### Records & audit
 - **Audit log** of all changes (create/update/delete), with password fields
   redacted and never logged in plaintext.

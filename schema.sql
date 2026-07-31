@@ -437,3 +437,22 @@ CREATE TABLE IF NOT EXISTS audit_log (
     status   INTEGER,
     ip       TEXT DEFAULT ''
 );
+
+-- Piece 21: per-job financial ledger — income (deposits/invoices/rebates) and
+-- expenses (materials, permits, labor, subs). Drives the Finance viewport's
+-- Payments table and the QuickBooks CSV export. Dollar amounts stored as REAL.
+CREATE TABLE IF NOT EXISTS job_transactions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id      INTEGER NOT NULL REFERENCES jobs(id),
+    kind        TEXT NOT NULL DEFAULT 'Expense',      -- Income / Expense
+    category    TEXT DEFAULT '',                      -- 50% Deposit, Materials, Permit / Fees, ...
+    description TEXT DEFAULT '',
+    amount      REAL NOT NULL DEFAULT 0,
+    txn_date    TEXT DEFAULT '',                      -- YYYY-MM-DD
+    status      TEXT NOT NULL DEFAULT 'Outstanding',  -- Outstanding / Paid
+    party       TEXT DEFAULT '',                      -- customer (income) or vendor (expense)
+    reference   TEXT DEFAULT '',                      -- invoice / check / PO number
+    method      TEXT DEFAULT '',                      -- Cash / Check / Card / ACH / Financing
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by  TEXT DEFAULT ''
+);

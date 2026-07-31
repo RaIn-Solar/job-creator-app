@@ -86,6 +86,7 @@
   <button class="tab-btn" data-tab="materials">Materials ({{ materials|length }})</button>
   <button class="tab-btn" data-tab="documents">Documents ({{ files|length }})</button>
   <button class="tab-btn" data-tab="tasks">Tasks ({{ tasks|length }})</button>
+  <button class="tab-btn" data-tab="billing" title="Payments &amp; expenses">💵 Billing</button>
 </div>
 
 <div class="tab-panel" id="tab-general">
@@ -424,10 +425,114 @@
 </div>
 </div>
 
+<div class="tab-panel" id="tab-billing">
+
+<div class="card">
+  <div class="toolbar" style="margin-bottom:0.6rem;">
+    <h2 style="margin:0; font-size:1.1rem;">💵 Billing</h2>
+    <form method="post" action="{{ url_for('set_contract', job_id=job['id']) }}"
+          style="margin:0; display:flex; gap:0.4rem; align-items:center;">
+      <label style="margin:0; font-size:0.85rem; color:var(--muted);">Contract total $</label>
+      <input name="contract_amount" type="number" step="0.01" min="0"
+             value="{{ '%.2f'|format(billing.contract) if billing.contract else '' }}"
+             placeholder="0.00" style="padding:0.3rem; width:9rem;">
+      <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem;">Save</button>
+    </form>
+  </div>
+
+  <div class="form-grid" style="margin-bottom:0.9rem;">
+    <div class="field"><label>Contract total</label><div style="font-weight:700; font-size:1.05rem;">${{ "%.2f"|format(billing.contract) }}</div></div>
+    <div class="field"><label>Collected</label><div style="font-weight:700; font-size:1.05rem; color:var(--brand);">${{ "%.2f"|format(billing.collected) }}</div></div>
+    <div class="field"><label>Outstanding (invoiced)</label><div style="font-weight:700; font-size:1.05rem; color:#8a5a00;">${{ "%.2f"|format(billing.outstanding) }}</div></div>
+    <div class="field"><label>Not yet invoiced</label><div style="font-weight:700; font-size:1.05rem;">${{ "%.2f"|format(billing.uninvoiced) }}</div></div>
+    <div class="field"><label>Expenses</label><div style="font-weight:700; font-size:1.05rem; color:#b02a2a;">${{ "%.2f"|format(billing.expense) }}</div></div>
+    <div class="field"><label>Net (collected − expenses paid)</label><div style="font-weight:700; font-size:1.05rem;">${{ "%.2f"|format(billing.net) }}</div></div>
+  </div>
+
+  {% if billing.txns %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Party</th><th>Description</th><th style="text-align:right;">Amount</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for t in billing.txns %}
+      <tr>
+        <td class="muted">{{ t["txn_date"] or "—" }}</td>
+        <td><span class="badge {{ '' if t['kind'] == 'Income' else 'danger' }}">{{ t["kind"] }}</span></td>
+        <td>{{ t["category"] or "—" }}</td>
+        <td class="muted">{{ t["party"] or "—" }}{% if t["reference"] %}<br><span style="font-size:0.78rem;">#{{ t["reference"] }}</span>{% endif %}</td>
+        <td>{{ t["description"] or "—" }}</td>
+        <td style="text-align:right; font-weight:600;">${{ "%.2f"|format(t["amount"] or 0) }}</td>
+        <td>
+          <form method="post" action="{{ url_for('toggle_transaction_paid', job_id=job['id'], txn_id=t['id']) }}" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;"
+                    title="Toggle paid / outstanding">{{ "✓ Paid" if t["status"] == "Paid" else "⬜ Outstanding" }}</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('delete_transaction', job_id=job['id'], txn_id=t['id']) }}"
+                onsubmit="return confirm('Delete this transaction?');" style="margin:0;">
+            <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No transactions yet — record deposits, invoices and expenses below.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('add_transaction', job_id=job['id']) }}" style="margin-top:0.9rem;">
+    <div class="form-grid">
+      <div class="field">
+        <label>Type *</label>
+        <select name="kind" id="txn_kind" onchange="txnCats()">
+          {% for k in txn_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Category</label>
+        <select name="category" id="txn_cat"></select>
+      </div>
+      <div class="field"><label>Amount $ *</label><input name="amount" type="number" step="0.01" min="0" required placeholder="0.00"></div>
+      <div class="field"><label>Date</label><input name="txn_date" type="date" value="{{ today }}"></div>
+      <div class="field">
+        <label>Status</label>
+        <select name="status">{% for s in txn_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select>
+      </div>
+      <div class="field"><label id="party_label">Customer / Vendor</label><input name="party" placeholder="who paid / who was paid"></div>
+      <div class="field"><label>Reference #</label><input name="reference" placeholder="invoice / check / PO"></div>
+      <div class="field">
+        <label>Method</label>
+        <select name="method">{% for m in payment_methods %}<option value="{{ m }}">{{ m or "—" }}</option>{% endfor %}</select>
+      </div>
+      <div class="field wide"><label>Description</label><input name="description" placeholder="e.g. 50% deposit, panel order, permit fee"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Record transaction</button></div>
+  </form>
+  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Export all jobs'
+  transactions for QuickBooks from your <a href="{{ url_for('dashboard', mode='Finance') }}">Finance dashboard</a>.</p>
+</div>
+<script>
+  const INCOME_CATS = {{ income_categories|tojson }};
+  const EXPENSE_CATS = {{ expense_categories|tojson }};
+  function txnCats() {
+    const kind = document.getElementById("txn_kind").value;
+    const sel = document.getElementById("txn_cat");
+    const cats = kind === "Income" ? INCOME_CATS : EXPENSE_CATS;
+    sel.innerHTML = "";
+    cats.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); });
+    document.getElementById("party_label").textContent = kind === "Income" ? "Customer" : "Vendor";
+  }
+  txnCats();
+</script>
+</div>
+
 <script>
   // Tabs remember their state through the URL hash, so form posts that
   // redirect back (materials, uploads) land on the tab you were using.
-  const TABS = ["general", "requirements", "materials", "documents", "tasks"];
+  const TABS = ["general", "requirements", "materials", "documents", "tasks", "billing"];
   function activateTab(name, updateHash) {
     if (!TABS.includes(name)) name = "general";
     document.querySelectorAll(".tab-btn").forEach(b =>

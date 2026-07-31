@@ -16,6 +16,56 @@
 </div>
 {% endif %}
 
+{# ---- Finance: Payments table (money in flight across every active job) ---- #}
+{% if show_payments %}
+<details class="card sect" open>
+  <summary>💵 Payments <span class="sect-count">{{ payments|length }} job{{ "s" if payments|length != 1 }}</span></summary>
+  <p style="margin:0 0 0.5rem;">
+    <a href="{{ url_for('quickbooks_export') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;"
+       title="Download all transactions as a QuickBooks-importable CSV">⬇ Export to QuickBooks (CSV)</a>
+  </p>
+  {% if payments %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Job</th><th>Client</th><th>Stage</th>
+      <th style="text-align:right;">Contract</th><th style="text-align:right;">Collected</th>
+      <th style="text-align:right;">Outstanding</th><th style="text-align:right;">Expenses</th>
+      <th style="text-align:right;">Net</th></tr></thead>
+    <tbody>
+      {% for p in payments %}
+      <tr>
+        <td><a href="{{ url_for('job_detail', job_id=p.job['id'], _anchor='billing') }}">{{ p.job["job_name"] or "Job #" ~ p.job["id"] }}</a></td>
+        <td class="muted" style="font-size:0.82rem;">{{ p.job["client_name"] }}</td>
+        <td><span class="badge {{ job_status_class.get(p.job['status'], 'neutral') }}">{{ p.job["status"] }}</span></td>
+        <td style="text-align:right;">${{ "%.0f"|format(p.b.contract) }}</td>
+        <td style="text-align:right; color:var(--brand);">${{ "%.0f"|format(p.b.collected) }}</td>
+        <td style="text-align:right; color:#8a5a00;">${{ "%.0f"|format(p.b.outstanding) }}</td>
+        <td style="text-align:right; color:#b02a2a;">${{ "%.0f"|format(p.b.expense) }}</td>
+        <td style="text-align:right; font-weight:600;">${{ "%.0f"|format(p.b.net) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr style="font-weight:700; border-top:2px solid var(--border);">
+        <td colspan="3">Totals</td>
+        <td style="text-align:right;">${{ "%.0f"|format(pay_totals.contract) }}</td>
+        <td style="text-align:right; color:var(--brand);">${{ "%.0f"|format(pay_totals.collected) }}</td>
+        <td style="text-align:right; color:#8a5a00;">${{ "%.0f"|format(pay_totals.outstanding) }}</td>
+        <td style="text-align:right; color:#b02a2a;">${{ "%.0f"|format(pay_totals.expense) }}</td>
+        <td style="text-align:right;">${{ "%.0f"|format(pay_totals.net) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+  <p class="muted" style="margin:0.5rem 0 0; font-size:0.82rem;">Open a job's
+  <strong>💵 Billing</strong> tab to set its contract total and record deposits,
+  invoices and expenses. Net = collected − expenses paid.</p>
+  {% else %}
+  <p class="empty">No active jobs to bill right now.</p>
+  {% endif %}
+</details>
+{% endif %}
+
 {# ---- Jobs in your stages (per department). A Proposal-only section reads as
        "Active Proposals". Columns: Progress · Client · Job · Install date. ---- #}
 {% for s in sections %}
@@ -29,15 +79,28 @@
   {% if s.jobs %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th style="min-width:200px;">Progress</th><th>Client</th><th>Job</th>{% if proposals %}<th title="Electric loads recorded from the walkthrough">Loads</th>{% endif %}<th>Install date</th></tr></thead>
+    <thead><tr>
+      {% if proposals %}
+      <th style="min-width:200px;">Progress</th><th>Client</th><th>Job</th><th title="Electric loads recorded from the walkthrough">Loads</th><th>Install date</th>
+      {% else %}
+      <th>Client</th><th>Job</th><th>Install date</th><th style="min-width:200px;">Progress</th>
+      {% endif %}
+    </tr></thead>
     <tbody>
       {% for j in s.jobs %}
       <tr>
+        {% if proposals %}
         <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
         <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
         <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
-        {% if proposals %}<td title="{{ 'Loads recorded' if loads_by_job[j['id']] else 'Loads not recorded yet' }}">{{ "✅" if loads_by_job[j['id']] else "⬜" }}</td>{% endif %}
+        <td title="{{ 'Loads recorded' if loads_by_job[j['id']] else 'Loads not recorded yet' }}">{{ "✅" if loads_by_job[j['id']] else "⬜" }}</td>
         <td class="muted">{{ j["install_date"] or "—" }}</td>
+        {% else %}
+        <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
+        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+        <td class="muted">{{ j["install_date"] or "—" }}</td>
+        <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>

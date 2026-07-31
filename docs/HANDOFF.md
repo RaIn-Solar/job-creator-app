@@ -2,7 +2,7 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 20.9** (footer shows it plainly as "Version 20.9" — the "did my pull work?" check)
+**Current build:** **Piece 21.0** (footer shows it plainly as "Version 21.0" — the "did my pull work?" check)
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).
@@ -148,6 +148,23 @@ footer with the build version. Flash messages render at the top of `main`.
   duplicating. Import in Google Calendar via Settings → Import & export. Deliberately
   a **one-time import** for the desktop app; live two-way sync / availability waits
   for the hosted version + Workspace OAuth (see next steps).
+
+### Finance viewport: billing ledger + QuickBooks — Piece 21.0
+- New `job_transactions` table (schema.sql) + `jobs.contract_amount`
+  (ensure_columns, TEXT affinity — coerce with `_to_float`). Constants
+  `TXN_KINDS`, `TXN_STATUSES`, `INCOME_CATEGORIES`, `EXPENSE_CATEGORIES`,
+  `PAYMENT_METHODS`. Helper `job_billing(db, job_id, contract)` → collected /
+  outstanding / invoiced / uninvoiced / expense / net rollup + raw txns.
+- Routes: `set_contract`, `add_transaction`, `toggle_transaction_paid`,
+  `delete_transaction`, and `quickbooks_export` (`/finance/quickbooks.csv` —
+  Date/Description/Amount first, signed +income/−expense, then detail columns).
+- Job detail: **💵 Billing tab** (contract total, summary tiles, transaction
+  table with paid toggle, add-transaction form with JS-swapped income/expense
+  categories). Route passes `billing` + the txn constants.
+- Finance dashboard: **Payments table** (all non-Lost jobs: contract / collected
+  / outstanding / expenses / net + totals row + QuickBooks export button), gated
+  on `show_payments = "Finance" in shown`. "jobs in your stages" progress column
+  moved to the **rightmost** position for non-Proposal sections.
 
 ### Designer viewport + job-page overhaul — Piece 20.9
 - **Dashboard:** Active Proposals gains a **Loads** column (✅/⬜ from

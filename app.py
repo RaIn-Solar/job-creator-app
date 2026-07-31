@@ -305,6 +305,21 @@ STANDARD_JOB_DOCS = [
     "Signed Contract", "Site Photos", "Design / One-Line", "Site Plan (KMZ/KML)",
 ]
 
+# Piece 21: Finance ledger vocabulary. Income = money in (deposits, invoices,
+# rebates); Expense = money out (materials, permits, labor, subs). Categories
+# map cleanly onto QuickBooks income/expense accounts on export.
+TXN_KINDS = ["Income", "Expense"]
+TXN_STATUSES = ["Outstanding", "Paid"]
+INCOME_CATEGORIES = [
+    "50% Deposit", "40% Deposit", "Final 10% Invoice", "Financing / Rebate",
+    "Change Order", "Other Income",
+]
+EXPENSE_CATEGORIES = [
+    "Materials", "Equipment", "Permit / Fees", "Labor", "Subcontractor",
+    "Fuel / Travel", "Other Expense",
+]
+PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
+
 RULE_CATEGORIES = ["License", "Permit", "Compliance", "Link", "Phone", "Doc"]
 CATEGORY_HEADINGS = {
     "License": "Technician licenses",
@@ -733,7 +748,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 20.9"
+VERSION = "Piece 21.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1563,6 +1578,8 @@ def init_db():
     db.execute("UPDATE clients SET lead_status = 'Lead'"
                " WHERE COALESCE(lead_status, '') = ''")
     ensure_columns(db, "jobs", JOB_FIELDS + ["status", "install_date"])
+    # Piece 21: contract total for the Finance viewport (dollar amounts).
+    ensure_columns(db, "jobs", ["contract_amount"])
     # Piece 16: migrate Piece 12.1 statuses to the new phases, and default blanks.
     for old, new in OLD_TO_NEW_STATUS.items():
         db.execute("UPDATE jobs SET status = ? WHERE status = ?", (new, old))
@@ -2014,6 +2031,23 @@ def dashboard():
     # Leads worklist (Piece 20.8): active leads (not yet converted) with their
     # next open follow-up, for the Sales viewport. Replaces the generic Client
     # Profiles list here — converted clients now live under Active Proposals.
+    # Finance viewport: Payments table across every active job (all in-flight
+    # money — deposits, invoices, expenses), with a QuickBooks export.
+    show_payments = "Finance" in shown
+    payments = []
+    pay_totals = {"contract": 0.0, "collected": 0.0, "outstanding": 0.0,
+                  "expense": 0.0, "net": 0.0}
+    if show_payments:
+        for j in db.execute(
+                "SELECT j.id, j.job_name, j.status, j.contract_amount,"
+                " c.name AS client_name FROM jobs j"
+                " JOIN clients c ON c.id = j.client_id"
+                " WHERE j.status != 'Lost' ORDER BY j.status, j.id").fetchall():
+            b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
+            payments.append({"job": j, "b": b})
+            for k in pay_totals:
+                pay_totals[k] += b[k]
+
     show_leads = "Sales" in shown
     leads = []
     if show_leads:
@@ -2033,6 +2067,7 @@ def dashboard():
     return render_template(
         "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
         sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
+        payments=payments, pay_totals=pay_totals, show_payments=show_payments,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
         dept_icons={d: c["icon"] for d, c in DASHBOARD_DEPARTMENTS.items()},
         progress_by_job=progress_by_job, loads_by_job=loads_by_job,
@@ -2739,6 +2774,9 @@ def job_detail(job_id):
         files_by_label.setdefault(f["rule_label"] or "", []).append(f)
     other_files = [f for f in files if (f["rule_label"] or "") not in needed_labels]
 
+    billing = job_billing(
+        db, job_id, job["contract_amount"] if "contract_amount" in job.keys() else 0.0)
+
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
         materials=materials, files=files, filed_labels=filed_labels,
@@ -2750,7 +2788,99 @@ def job_detail(job_id):
         load_daily_kwh=load_daily_kwh, load_peak_w=load_peak_w,
         load_has_survey=load_has_survey, doc_sections=doc_sections,
         files_by_label=files_by_label, other_files=other_files,
+        billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
+        income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
+        payment_methods=PAYMENT_METHODS,
     )
+
+
+@app.route("/jobs/<int:job_id>/contract", methods=["POST"])
+def set_contract(job_id):
+    fetch_job(job_id)
+    db = get_db()
+    db.execute("UPDATE jobs SET contract_amount = ? WHERE id = ?",
+               (_to_float(request.form.get("contract_amount")) or 0.0, job_id))
+    db.commit()
+    flash("Contract total updated.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+
+
+@app.route("/jobs/<int:job_id>/transactions/add", methods=["POST"])
+def add_transaction(job_id):
+    fetch_job(job_id)
+    kind = request.form.get("kind", "Expense")
+    kind = kind if kind in TXN_KINDS else "Expense"
+    status = request.form.get("status", "Outstanding")
+    status = status if status in TXN_STATUSES else "Outstanding"
+    who = current_user()
+    db = get_db()
+    db.execute(
+        "INSERT INTO job_transactions"
+        " (job_id, kind, category, description, amount, txn_date, status,"
+        "  party, reference, method, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (job_id, kind, request.form.get("category", "").strip(),
+         request.form.get("description", "").strip(),
+         _to_float(request.form.get("amount")) or 0.0,
+         request.form.get("txn_date", "").strip(), status,
+         request.form.get("party", "").strip(),
+         request.form.get("reference", "").strip(),
+         request.form.get("method", "").strip(),
+         who["name"] if who else ""))
+    db.commit()
+    flash(f"{kind} recorded.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+
+
+@app.route("/jobs/<int:job_id>/transactions/<int:txn_id>/paid", methods=["POST"])
+def toggle_transaction_paid(job_id, txn_id):
+    db = get_db()
+    row = db.execute("SELECT status FROM job_transactions WHERE id = ? AND job_id = ?",
+                     (txn_id, job_id)).fetchone()
+    if row:
+        db.execute("UPDATE job_transactions SET status = ? WHERE id = ? AND job_id = ?",
+                   ("Outstanding" if row["status"] == "Paid" else "Paid", txn_id, job_id))
+        db.commit()
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+
+
+@app.route("/jobs/<int:job_id>/transactions/<int:txn_id>/delete", methods=["POST"])
+def delete_transaction(job_id, txn_id):
+    db = get_db()
+    db.execute("DELETE FROM job_transactions WHERE id = ? AND job_id = ?",
+               (txn_id, job_id))
+    db.commit()
+    flash("Transaction deleted.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+
+
+@app.route("/finance/quickbooks.csv")
+def quickbooks_export():
+    """Export every job transaction as a QuickBooks-importable CSV. The first
+    three columns (Date, Description, Amount) map directly onto QuickBooks
+    Online's bank/transaction import; the remaining columns carry the detail."""
+    import csv
+    import io
+    db = get_db()
+    rows = db.execute(
+        "SELECT t.*, j.job_name, j.id AS jid, c.name AS client_name"
+        " FROM job_transactions t JOIN jobs j ON j.id = t.job_id"
+        " JOIN clients c ON c.id = j.client_id"
+        " ORDER BY t.txn_date, t.id").fetchall()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Date", "Description", "Amount", "Type", "Customer", "Job",
+                "Category", "Status", "Reference", "Method"])
+    for r in rows:
+        job_label = r["job_name"] or f"Job #{r['jid']}"
+        signed = (r["amount"] or 0.0) if r["kind"] == "Income" else -(r["amount"] or 0.0)
+        desc = " · ".join(p for p in (r["client_name"], job_label,
+                                      r["category"], r["description"]) if p)
+        w.writerow([r["txn_date"], desc, f"{signed:.2f}", r["kind"],
+                    r["client_name"], job_label, r["category"], r["status"],
+                    r["reference"], r["method"]])
+    return Response(buf.getvalue(), mimetype="text/csv", headers={
+        "Content-Disposition": "attachment; filename=solbiz_quickbooks.csv"})
 
 
 @app.route("/jobs/<int:job_id>/loads")
@@ -3492,6 +3622,35 @@ def build_job_progress(db, job):
         "next_label": next_label, "next_who": next_who,
         "lost": lost, "complete": complete,
         "cur_done": cur_done, "cur_total": cur_total,
+    }
+
+
+def job_billing(db, job_id, contract_amount=0.0):
+    """Piece 21: financial rollup for a job — income collected/outstanding,
+    expenses, and the balance — plus the raw transactions. Drives the Finance
+    Payments table and the per-job Billing tab."""
+    txns = db.execute(
+        "SELECT * FROM job_transactions WHERE job_id = ? ORDER BY txn_date, id",
+        (job_id,)).fetchall()
+    def total(kind, paid=None):
+        return sum(t["amount"] or 0 for t in txns if t["kind"] == kind
+                   and (paid is None or (t["status"] == "Paid") == paid))
+    collected = total("Income", paid=True)
+    outstanding = total("Income", paid=False)
+    expense = total("Expense")
+    expense_paid = total("Expense", paid=True)
+    # contract_amount is stored with TEXT affinity (added via ensure_columns),
+    # so coerce it to a number before any arithmetic.
+    contract = _to_float(contract_amount) or 0.0
+    return {
+        "txns": txns, "contract": contract,
+        "collected": collected, "outstanding": outstanding,
+        "invoiced": collected + outstanding,
+        "uninvoiced": max(contract - (collected + outstanding), 0.0),
+        "expense": expense, "expense_paid": expense_paid,
+        "expense_out": expense - expense_paid,
+        "net": collected - expense_paid,          # cash in hand vs. cash out
+        "net_accrual": (collected + outstanding) - expense,
     }
 
 
