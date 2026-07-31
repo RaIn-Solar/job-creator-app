@@ -2,7 +2,11 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.0** (footer shows it plainly as "Version 21.0" — the "did my pull work?" check)
+**Current build:** **Piece 21.1** (footer shows it plainly as "Version 21.1" — the "did my pull work?" check)
+
+**Piece 21.1:** login no longer treats the bare root "/" (Client Profiles) as a
+post-login `next`, so everyone reliably lands on their own dashboard; real deep
+links are still honored.
 **Stack:** Flask + SQLite + Jinja templates. No JS framework. Pure Python; raw SQL (no ORM).
 **Branch/workflow:** develop on `main`; bump the `VERSION` string in `app.py` each change;
 commit + push after each feature so Rachel can pull (GitHub Desktop on Windows).

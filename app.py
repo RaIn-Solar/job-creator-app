@@ -748,7 +748,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.0"
+VERSION = "Piece 21.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1462,8 +1462,11 @@ def login():
             session["user_id"] = user["id"]
             flash(f"Signed in as {user['name']}.")
             session.pop("dash_mode", None)  # start on their saved default
+            # Honor a deep link (e.g. a specific job someone opened while
+            # logged out), but never treat the bare root "/" (Client Profiles)
+            # as the landing — everyone should land on their own dashboard.
             nxt = request.form.get("next") or ""
-            if nxt.startswith("/") and not nxt.startswith("//"):
+            if nxt.startswith("/") and not nxt.startswith("//") and nxt != "/":
                 return redirect(nxt)
             return redirect(url_for("dashboard"))
         flash("Wrong username or password.", "error")
