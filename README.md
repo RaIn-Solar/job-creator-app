@@ -84,9 +84,14 @@ can confirm a pull/update took effect.
   its own page. Electric loads are **not** entered at job creation (they aren't
   known until the walkthrough) — they're recorded here during the proposal, and
   the **Proposal stage can't advance until loads are recorded**.
-- **Materials lists** per job and **document upload/storage** with per-requirement
-  filing coverage (each job page shows which requirements have a document on file
-  and warns on gaps).
+- **Materials lists** per job (status: Needed → Quoted → Ordered → Backordered →
+  Received → On hand → Installed) and **document upload/storage** with
+  per-requirement filing coverage. The job's **L/P/C tab** leads with **Permits**
+  — each with an **inline upload slot** so the permit coordinator views the
+  requirement and files the document in one place — with licenses and compliance
+  collapsed below. The **Permits dashboard** shows a **permits-filed X/Y** column;
+  the **Purchasing dashboard** shows a **procurement rollup** of materials by
+  status across Job-Prep jobs.
 - **Exportable job report**.
 
 ### Pipeline, tasks & scheduling

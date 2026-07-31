@@ -66,11 +66,46 @@
 </details>
 {% endif %}
 
+{# ---- Purchasing: procurement rollup (materials by status across Job-Prep jobs) ---- #}
+{% if show_procurement %}
+<details class="card sect" open>
+  <summary>📦 Procurement <span class="sect-count">{{ procurement|length }} job{{ "s" if procurement|length != 1 }}</span></summary>
+  {% if procurement %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Job</th><th>Client</th>
+      {% for s in material_statuses %}<th style="text-align:right;">{{ s }}</th>{% endfor %}
+      <th style="text-align:right;">Total</th></tr></thead>
+    <tbody>
+      {% for p in procurement %}
+      <tr>
+        <td><a href="{{ url_for('job_detail', job_id=p.job['id'], _anchor='materials') }}">{{ p.job["job_name"] or "Job #" ~ p.job["id"] }}</a></td>
+        <td class="muted" style="font-size:0.82rem;">{{ p.job["client_name"] }}</td>
+        {% for s in material_statuses %}
+        <td style="text-align:right;{% if s in ['Needed','Quoted','Backordered'] and p.counts[s] %} color:#8a5a00; font-weight:600;{% endif %}">{{ p.counts[s] or "—" }}</td>
+        {% endfor %}
+        <td style="text-align:right; font-weight:600;">{{ p.total or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="margin:0.5rem 0 0; font-size:0.82rem;">Materials still to
+  source (Needed / Quoted / Backordered) are highlighted. Open a job's
+  <strong>Materials</strong> tab to update. <em>Coming later: auto-populated from
+  the designer's system + inventory sheet.</em></p>
+  {% else %}
+  <p class="empty">No jobs in procurement right now.</p>
+  {% endif %}
+</details>
+{% endif %}
+
 {# ---- Jobs in your stages (per department). A Proposal-only section reads as
        "Active Proposals". Columns: Progress · Client · Job · Install date. ---- #}
 {% for s in sections %}
 {% if s.stages %}
 {% set proposals = s.stages == ["Proposal"] %}
+{% set is_permits = s.name == "Permits" %}
 <details class="card sect" open>
   <summary>{{ s.icon }} {% if proposals %}Active Proposals{% else %}{{ s.name }} · jobs in your stages
     <span class="sect-sub">— {{ s.stages|join(" / ") }}</span>{% endif %}
@@ -83,7 +118,7 @@
       {% if proposals %}
       <th style="min-width:200px;">Progress</th><th>Client</th><th>Job</th><th title="Electric loads recorded from the walkthrough">Loads</th><th>Install date</th>
       {% else %}
-      <th>Client</th><th>Job</th><th>Install date</th><th style="min-width:200px;">Progress</th>
+      <th>Client</th><th>Job</th>{% if is_permits %}<th title="Permit documents filed / required">Permits</th>{% endif %}<th>Install date</th><th style="min-width:200px;">Progress</th>
       {% endif %}
     </tr></thead>
     <tbody>
@@ -98,6 +133,11 @@
         {% else %}
         <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
         <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+        {% if is_permits %}
+        {% set pc = permits_by_job[j['id']] %}
+        <td><a href="{{ url_for('job_detail', job_id=j['id'], _anchor='requirements') }}" title="Permit documents filed">
+          {% if pc[1] %}<span class="badge {{ '' if pc[0] >= pc[1] else 'warn' }}">{{ pc[0] }}/{{ pc[1] }}</span>{% else %}<span class="muted">—</span>{% endif %}</a></td>
+        {% endif %}
         <td class="muted">{{ j["install_date"] or "—" }}</td>
         <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
         {% endif %}

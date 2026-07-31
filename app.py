@@ -767,14 +767,15 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.3"
+VERSION = "Piece 21.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
     "pdf", "png", "jpg", "jpeg", "heic", "gif", "doc", "docx", "xls", "xlsx",
     "csv", "txt", "kmz", "kml", "zip", "bpmn",
 }
-MATERIAL_STATUSES = ["Needed", "Ordered", "Received", "Installed"]
+MATERIAL_STATUSES = ["Needed", "Quoted", "Ordered", "Backordered",
+                     "Received", "On hand", "Installed"]
 # Piece 12: categories for client-level documents (distinct from a job's
 # requirement categories — these describe the client relationship).
 CLIENT_FILE_CATEGORIES = ["Contracts", "Correspondence", "Intake", "Photos", "Other"]
@@ -2129,6 +2130,36 @@ def dashboard():
                 progress_by_job[j["id"]] = build_job_progress(db, j)
                 loads_by_job[j["id"]] = _loads_recorded(db, j)
 
+    # Permits viewport: permit filing coverage (X/Y) per job on the jobs table.
+    show_permits = "Permits" in shown
+    permits_by_job = {}
+    if show_permits:
+        rules = db.execute("SELECT * FROM resource_rules").fetchall()
+        for sec in sections:
+            if sec["name"] == "Permits":
+                for j in sec["jobs"]:
+                    full = db.execute("SELECT * FROM jobs WHERE id = ?", (j["id"],)).fetchone()
+                    permits_by_job[j["id"]] = job_permit_coverage(db, full, rules)
+
+    # Purchasing viewport: procurement rollup — material counts by status per job.
+    show_procurement = "Purchasing" in shown
+    procurement = []
+    if show_procurement:
+        for sec in sections:
+            if sec["name"] == "Purchasing":
+                for j in sec["jobs"]:
+                    counts = {s: 0 for s in MATERIAL_STATUSES}
+                    total = 0
+                    for m in db.execute(
+                            "SELECT status, COUNT(*) AS n FROM job_materials"
+                            " WHERE job_id = ? GROUP BY status", (j["id"],)).fetchall():
+                        counts[m["status"]] = counts.get(m["status"], 0) + m["n"]
+                        total += m["n"]
+                    outstanding = (counts.get("Needed", 0) + counts.get("Quoted", 0)
+                                   + counts.get("Backordered", 0))
+                    procurement.append({"job": j, "counts": counts, "total": total,
+                                        "outstanding": outstanding})
+
     # Leads worklist (Piece 20.8): active leads (not yet converted) with their
     # next open follow-up, for the Sales viewport. Replaces the generic Client
     # Profiles list here — converted clients now live under Active Proposals.
@@ -2172,6 +2203,8 @@ def dashboard():
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
         dept_icons={d: c["icon"] for d, c in DASHBOARD_DEPARTMENTS.items()},
         progress_by_job=progress_by_job, loads_by_job=loads_by_job,
+        permits_by_job=permits_by_job, show_procurement=show_procurement,
+        procurement=procurement, material_statuses=MATERIAL_STATUSES,
         job_status_class=JOB_STATUS_CLASS)
 
 
@@ -3835,6 +3868,16 @@ def _permit_coverage(groups, filed_labels):
             total += len(items)
             filed += sum(1 for r in items if r["label"] in filed_labels)
     return filed, total
+
+
+def job_permit_coverage(db, job, rules):
+    """(filed, total) permits for a job — its resolved permit requirements vs.
+    the permit documents already filed. For the Permits dashboard column."""
+    groups = group_rules(match_rules(job, rules))
+    filed_labels = {f["rule_label"] for f in db.execute(
+        "SELECT rule_label FROM job_files WHERE job_id = ?", (job["id"],)).fetchall()
+        if f["rule_label"]}
+    return _permit_coverage(groups, filed_labels)
 
 
 def _loads_recorded(db, job):

@@ -2,7 +2,18 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.3** (footer shows it plainly as "Version 21.3" — the "did my pull work?" check)
+**Current build:** **Piece 21.4** (footer shows it plainly as "Version 21.4" — the "did my pull work?" check)
+
+**Piece 21.4 — Permits/Warehouse viewport.** Permits dashboard jobs table gains a
+**Permits X/Y** column (`permits_by_job` from `job_permit_coverage`, shown when
+`s.name == "Permits"`). Purchasing dashboard gains a **Procurement** rollup
+(`procurement`, material counts per status per Job-Prep job; Needed/Quoted/
+Backordered highlighted) — placeholder for the future designer→inventory-sheet
+auto-fill. `MATERIAL_STATUSES` expanded to Needed/Quoted/Ordered/Backordered/
+Received/On hand/Installed. Job **L/P/C tab** reordered: Permits (+ portals/
+phones) first and open, with an **inline per-permit file-upload slot** (merges
+the requirement with filing); **Technician Licenses + Compliance collapsed at the
+bottom** (Lead Installer owns those, not the Permit Coordinator).
 
 **Piece 21.3 — payroll: self-log + approval + auto-OT + rate lock.** Employees
 log their own hours from the Work Bag (`/work-bag/hours`, status Pending);

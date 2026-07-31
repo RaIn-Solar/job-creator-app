@@ -156,7 +156,10 @@
     <a href="{{ url_for('job_report', job_id=job['id']) }}" class="btn">⬇ Export report</a>
   </div>
   {% if groups %}
-    {% for heading, items in groups %}
+    {% set bottom = ["Technician licenses", "Compliance notes"] %}
+    {# Top: Permits (with inline filing) + portals/phones — open. #}
+    {% for heading, items in groups if heading not in bottom %}
+    {% set can_file = heading == "Permits" %}
     <details class="req-group" open>
       <summary>
         <span>{{ heading }}</span>
@@ -164,7 +167,7 @@
       </summary>
       <ul style="margin:0.4rem 0 0; padding-left:1.2rem;">
         {% for r in items %}
-        <li style="margin-bottom:0.3rem;">
+        <li style="margin-bottom:{{ '0.55rem' if can_file else '0.3rem' }};">
           {% if r["label"] in filed_labels %}<span title="document on file">📎</span> {% endif %}{{ r["label"] }}
           {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}" title="Flagged in the NM reference set — {{ 'could not be verified online; confirm by phone' if r['alert_kind'] == 'unverified' else 'confirm before relying on it' }}">{{ r["alert_text"] }}</span>{% endif %}
           {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
@@ -174,6 +177,49 @@
           <ul class="instances" title="Required by these selections on this job">
             {% for inst in r["instances"] %}<li>{{ inst }}</li>{% endfor %}
           </ul>
+          {% endif %}
+          {% if can_file %}
+          {% set filed = files_by_label.get(r["label"], []) %}
+          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.2rem;">
+            {% for f in filed %}
+            <span class="badge">📎 <a href="{{ url_for('download_file', job_id=job['id'], file_id=f['id']) }}">{{ f["original_name"] }}</a></span>
+            {% if can('delete') %}
+            <form method="post" action="{{ url_for('delete_file', job_id=job['id'], file_id=f['id']) }}"
+                  onsubmit="return confirm('Send this document to the trash?');" style="margin:0;">
+              <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;">✕</button>
+            </form>
+            {% endif %}
+            {% endfor %}
+            <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data"
+                  style="display:flex; gap:0.3rem; align-items:center; margin:0;">
+              <input type="hidden" name="rule_label" value="{{ r['label'] }}">
+              <input type="file" name="document" required style="font-size:0.78rem; max-width:12rem;">
+              <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;" title="File the {{ r['label'] }}">⬆ File</button>
+            </form>
+          </div>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endfor %}
+    {# Bottom: Technician licenses + Compliance notes — the Lead Installer owns
+       these, so they're collapsed here for the Permit Coordinator. #}
+    {% for heading, items in groups if heading in bottom %}
+    <details class="req-group">
+      <summary>
+        <span>{{ heading }}</span>
+        <span class="count-badge" title="documents on file / requirements">{{ coverage[heading] }}/{{ items|length }} on file</span>
+      </summary>
+      <ul style="margin:0.4rem 0 0; padding-left:1.2rem;">
+        {% for r in items %}
+        <li style="margin-bottom:0.3rem;">
+          {% if r["label"] in filed_labels %}<span title="document on file">📎</span> {% endif %}{{ r["label"] }}
+          {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}">{{ r["alert_text"] }}</span>{% endif %}
+          {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
+          {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
+          {% if r["instances"] and r["instances"]|length > 1 %}
+          <ul class="instances">{% for inst in r["instances"] %}<li>{{ inst }}</li>{% endfor %}</ul>
           {% endif %}
           {% if r["category"] == "License" and license_staffing %}
             {% set holders = license_staffing.get(r["label"], []) %}
