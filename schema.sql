@@ -456,3 +456,32 @@ CREATE TABLE IF NOT EXISTS job_transactions (
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     created_by  TEXT DEFAULT ''
 );
+
+-- Piece 21.2: payroll. pay_types is the calculation schema (each type is a
+-- multiplier on the employee's base wage, or a flat $/hr). pay_rates holds
+-- per-employee overrides of a type's value; time_entries are logged hours.
+CREATE TABLE IF NOT EXISTS pay_types (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL DEFAULT '',
+    method     TEXT NOT NULL DEFAULT 'multiplier',  -- multiplier / flat
+    value      REAL NOT NULL DEFAULT 0,             -- default multiplier or flat $/hr
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active     INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS pay_rates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL REFERENCES employees(id),
+    pay_type_id INTEGER NOT NULL REFERENCES pay_types(id),
+    value       REAL NOT NULL DEFAULT 0             -- this person's multiplier or flat $/hr
+);
+CREATE TABLE IF NOT EXISTS time_entries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL REFERENCES employees(id),
+    work_date   TEXT DEFAULT '',                    -- YYYY-MM-DD
+    job_id      INTEGER,                            -- optional job the hours were on
+    pay_type_id INTEGER REFERENCES pay_types(id),
+    hours       REAL NOT NULL DEFAULT 0,
+    note        TEXT DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by  TEXT DEFAULT ''
+);

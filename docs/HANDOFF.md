@@ -2,7 +2,20 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.1** (footer shows it plainly as "Version 21.1" — the "did my pull work?" check)
+**Current build:** **Piece 21.2** (footer shows it plainly as "Version 21.2" — the "did my pull work?" check)
+
+**Piece 21.2 — Payroll / hour tracking.** Tables `pay_types` (name, method
+[multiplier/flat], value, sort, active), `pay_rates` (per-employee per-type
+override), `time_entries` (employee, date, job, pay type, hours). Employee
+`base_wage` column (ensure_columns, TEXT — coerce with `_to_float`). Pay math:
+multiplier type → base_wage × value; flat type → value; per-employee override
+beats the type default. `payroll_summary(db, start, end)` rolls up hours/$ per
+employee per type. Pages: `/payroll` (period summary + log-hours form + entries)
+and `/payroll/settings` (pay types + per-employee wages/overrides), gated by
+`payroll_required` (`_can_payroll` = GM/Admin/Finance; exposed to templates as
+`can_payroll` for the header link). `/payroll/quickbooks.csv` exports the period
+as negative expense lines. Seeded pay types have placeholder values — ECC sets
+real numbers in Pay settings.
 
 **Piece 21.1:** login no longer treats the bare root "/" (Client Profiles) as a
 post-login `next`, so everyone reliably lands on their own dashboard; real deep

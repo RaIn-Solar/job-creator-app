@@ -320,6 +320,21 @@ EXPENSE_CATEGORIES = [
 ]
 PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
 
+# Piece 21.2: payroll pay-type calculation. A type is either a "multiplier" on
+# the employee's base wage (so it's per-employee automatically) or a "flat"
+# $/hr. Seeded once; fully editable, and each employee can override any type's
+# value. ECC's real numbers get entered in Payroll → Settings.
+PAY_METHODS = ["multiplier", "flat"]
+PAY_TYPE_SEED = [
+    # (name, method, default value, sort_order)
+    ("Regular", "multiplier", 1.0, 0),
+    ("Overtime (1.5x)", "multiplier", 1.5, 1),
+    ("Roof time", "multiplier", 1.25, 2),
+    ("Travel time", "flat", 0.0, 3),
+    ("Holiday (2x)", "multiplier", 2.0, 4),
+    ("PTO", "multiplier", 1.0, 5),
+]
+
 RULE_CATEGORIES = ["License", "Permit", "Compliance", "Link", "Phone", "Doc"]
 CATEGORY_HEADINGS = {
     "License": "Technician licenses",
@@ -748,7 +763,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.1"
+VERSION = "Piece 21.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1183,6 +1198,26 @@ def gm_required(view):
     return wrapped
 
 
+def _can_payroll():
+    """Payroll is Finance work: the General Manager, any Admin, or anyone in
+    the Finance department. (Open mode — no logins — allows everyone.)"""
+    user = current_user()
+    if user is None:
+        return True
+    return is_gm() or _is_admin() or "Finance" in user_departments(user)
+
+
+def payroll_required(view):
+    """Guard payroll pages to Finance / Admin / GM."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not _can_payroll():
+            flash("Payroll is limited to Finance and management.", "error")
+            return redirect(url_for("home"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
 @app.context_processor
 def inject_auth():
     user = current_user()
@@ -1196,7 +1231,7 @@ def inject_auth():
             pending = 0
     return {"current_user": user, "login_active": accounts_exist(),
             "is_admin": _is_admin(), "is_gm": is_gm(), "can": has_permission,
-            "pending_submissions": pending}
+            "can_payroll": _can_payroll(), "pending_submissions": pending}
 
 
 @app.route("/access")
@@ -1597,7 +1632,11 @@ def init_db():
     db.execute("UPDATE job_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
                " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
     ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS
-                   + ["dashboard_mode"])
+                   + ["dashboard_mode", "base_wage"])  # Piece 21.2: hourly base wage
+    if db.execute("SELECT COUNT(*) FROM pay_types").fetchone()[0] == 0:
+        db.executemany(
+            "INSERT INTO pay_types (name, method, value, sort_order)"
+            " VALUES (?, ?, ?, ?)", PAY_TYPE_SEED)
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
@@ -2886,6 +2925,168 @@ def quickbooks_export():
         "Content-Disposition": "attachment; filename=solbiz_quickbooks.csv"})
 
 
+def _pay_period():
+    """Default pay period: the last 14 days, overridable via ?start/?end."""
+    end = request.args.get("end") or datetime.now().date().strftime("%Y-%m-%d")
+    start = request.args.get("start") or (
+        datetime.now().date() - timedelta(days=13)).strftime("%Y-%m-%d")
+    return start, end
+
+
+@app.route("/payroll")
+@payroll_required
+def payroll():
+    db = get_db()
+    start, end = _pay_period()
+    types, rollup, totals = payroll_summary(db, start, end)
+    entries = db.execute(
+        "SELECT te.*, e.name AS emp_name, pt.name AS type_name, j.job_name"
+        " FROM time_entries te"
+        " JOIN employees e ON e.id = te.employee_id"
+        " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
+        " LEFT JOIN jobs j ON j.id = te.job_id"
+        " WHERE te.work_date >= ? AND te.work_date <= ?"
+        " ORDER BY te.work_date DESC, te.id DESC", (start, end)).fetchall()
+    employees = db.execute("SELECT id, name FROM employees ORDER BY name").fetchall()
+    jobs = db.execute(
+        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id"
+        " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
+    return render_template(
+        "payroll.html", start=start, end=end, types=types, rollup=rollup,
+        totals=totals, entries=entries, employees=employees, jobs=jobs,
+        pay_types=types, today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/payroll/time/add", methods=["POST"])
+@payroll_required
+def add_time_entry():
+    db = get_db()
+    emp_id = request.form.get("employee_id", "")
+    if not emp_id.isdigit():
+        flash("Pick an employee for the time entry.", "error")
+        return redirect(url_for("payroll"))
+    who = current_user()
+    db.execute(
+        "INSERT INTO time_entries"
+        " (employee_id, work_date, job_id, pay_type_id, hours, note, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (int(emp_id), request.form.get("work_date", "").strip(),
+         int(request.form["job_id"]) if request.form.get("job_id", "").isdigit() else None,
+         int(request.form["pay_type_id"]) if request.form.get("pay_type_id", "").isdigit() else None,
+         _to_float(request.form.get("hours")) or 0.0,
+         request.form.get("note", "").strip(), who["name"] if who else ""))
+    db.commit()
+    flash("Hours logged.")
+    return redirect(url_for("payroll", start=request.form.get("start"),
+                            end=request.form.get("end")))
+
+
+@app.route("/payroll/time/<int:entry_id>/delete", methods=["POST"])
+@payroll_required
+def delete_time_entry(entry_id):
+    db = get_db()
+    db.execute("DELETE FROM time_entries WHERE id = ?", (entry_id,))
+    db.commit()
+    flash("Time entry deleted.")
+    return redirect(url_for("payroll", start=request.form.get("start"),
+                            end=request.form.get("end")))
+
+
+@app.route("/payroll/settings", methods=["GET"])
+@payroll_required
+def payroll_settings():
+    db = get_db()
+    types = db.execute("SELECT * FROM pay_types ORDER BY sort_order, id").fetchall()
+    employees = db.execute(
+        "SELECT id, name, base_wage FROM employees ORDER BY name").fetchall()
+    rates = {}
+    for r in db.execute("SELECT employee_id, pay_type_id, value FROM pay_rates").fetchall():
+        rates[(r["employee_id"], r["pay_type_id"])] = r["value"]
+    return render_template("payroll_settings.html", types=types,
+                           employees=employees, rates=rates, pay_methods=PAY_METHODS)
+
+
+@app.route("/payroll/paytype/save", methods=["POST"])
+@payroll_required
+def save_pay_type():
+    db = get_db()
+    name = request.form.get("name", "").strip()
+    method = request.form.get("method", "multiplier")
+    method = method if method in PAY_METHODS else "multiplier"
+    value = _to_float(request.form.get("value")) or 0.0
+    tid = request.form.get("id", "")
+    if not name:
+        flash("A pay type needs a name.", "error")
+    elif tid.isdigit():
+        db.execute("UPDATE pay_types SET name = ?, method = ?, value = ? WHERE id = ?",
+                   (name, method, value, int(tid)))
+        db.commit()
+        flash("Pay type updated.")
+    else:
+        nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM pay_types").fetchone()[0]
+        db.execute("INSERT INTO pay_types (name, method, value, sort_order)"
+                   " VALUES (?, ?, ?, ?)", (name, method, value, nxt))
+        db.commit()
+        flash("Pay type added.")
+    return redirect(url_for("payroll_settings"))
+
+
+@app.route("/payroll/paytype/<int:type_id>/delete", methods=["POST"])
+@payroll_required
+def delete_pay_type(type_id):
+    db = get_db()
+    db.execute("UPDATE pay_types SET active = 0 WHERE id = ?", (type_id,))
+    db.commit()
+    flash("Pay type removed.")
+    return redirect(url_for("payroll_settings"))
+
+
+@app.route("/payroll/employee/<int:employee_id>/rates", methods=["POST"])
+@payroll_required
+def save_employee_rates(employee_id):
+    db = get_db()
+    db.execute("UPDATE employees SET base_wage = ? WHERE id = ?",
+               (_to_float(request.form.get("base_wage")) or 0.0, employee_id))
+    # Per-type overrides: a blank field means "use the pay type's default".
+    for t in db.execute("SELECT id FROM pay_types WHERE active = 1").fetchall():
+        raw = request.form.get(f"rate_{t['id']}", "").strip()
+        db.execute("DELETE FROM pay_rates WHERE employee_id = ? AND pay_type_id = ?",
+                   (employee_id, t["id"]))
+        if raw != "":
+            db.execute("INSERT INTO pay_rates (employee_id, pay_type_id, value)"
+                       " VALUES (?, ?, ?)", (employee_id, t["id"], _to_float(raw) or 0.0))
+    db.commit()
+    flash("Pay rates saved.")
+    return redirect(url_for("payroll_settings"))
+
+
+@app.route("/payroll/quickbooks.csv")
+@payroll_required
+def payroll_quickbooks_export():
+    """Payroll register for the pay period as a QuickBooks-importable CSV — one
+    row per employee per pay type, amounts negative (money out)."""
+    import csv
+    import io
+    db = get_db()
+    start, end = _pay_period()
+    types, rollup, _totals = payroll_summary(db, start, end)
+    type_name = {t["id"]: t["name"] for t in types}
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Date", "Description", "Amount", "Type", "Employee", "Pay Type",
+                "Hours", "Period Start", "Period End"])
+    for r in rollup:
+        for tid, cell in r["by_type"].items():
+            if not cell["hours"] and not cell["pay"]:
+                continue
+            w.writerow([end, f"Payroll · {r['employee']['name']} · {type_name.get(tid, '')}",
+                        f"{-cell['pay']:.2f}", "Expense", r["employee"]["name"],
+                        type_name.get(tid, ""), f"{cell['hours']:.2f}", start, end])
+    return Response(buf.getvalue(), mimetype="text/csv", headers={
+        "Content-Disposition": "attachment; filename=solbiz_payroll.csv"})
+
+
 @app.route("/jobs/<int:job_id>/loads")
 def job_loads(job_id):
     """Piece 15.1: Electric loads & system sizing — its own page (was a tab
@@ -3655,6 +3856,59 @@ def job_billing(db, job_id, contract_amount=0.0):
         "net": collected - expense_paid,          # cash in hand vs. cash out
         "net_accrual": (collected + outstanding) - expense,
     }
+
+
+def _rate_dollars(base_wage, method, value):
+    """Resolve a pay type to a $/hr rate for an employee: a multiplier type is
+    the base wage times the multiplier; a flat type is the value itself."""
+    base = _to_float(base_wage) or 0.0
+    v = value or 0.0
+    return base * v if method == "multiplier" else v
+
+
+def payroll_pay_types(db):
+    return db.execute("SELECT * FROM pay_types WHERE active = 1"
+                      " ORDER BY sort_order, id").fetchall()
+
+
+def payroll_summary(db, start, end):
+    """Per-employee payroll rollup for a pay period [start, end]: hours and
+    dollars per pay type and totals, using each person's base wage and any
+    per-type rate overrides."""
+    types = payroll_pay_types(db)
+    type_by_id = {t["id"]: t for t in types}
+    overrides = {}   # (employee_id, pay_type_id) -> value
+    for r in db.execute("SELECT employee_id, pay_type_id, value FROM pay_rates").fetchall():
+        overrides[(r["employee_id"], r["pay_type_id"])] = r["value"]
+    entries = db.execute(
+        "SELECT * FROM time_entries WHERE work_date >= ? AND work_date <= ?"
+        " ORDER BY work_date, id", (start, end)).fetchall()
+    emp = {}   # employee_id -> rollup
+    for e in entries:
+        pt = type_by_id.get(e["pay_type_id"])
+        if pt is None:
+            continue
+        row = emp.get(e["employee_id"])
+        if row is None:
+            who = db.execute("SELECT id, name, base_wage FROM employees WHERE id = ?",
+                             (e["employee_id"],)).fetchone()
+            if who is None:
+                continue
+            row = {"employee": who, "hours": 0.0, "pay": 0.0,
+                   "by_type": {t["id"]: {"hours": 0.0, "pay": 0.0} for t in types}}
+            emp[e["employee_id"]] = row
+        val = overrides.get((e["employee_id"], e["pay_type_id"]), pt["value"])
+        rate = _rate_dollars(row["employee"]["base_wage"], pt["method"], val)
+        pay = (e["hours"] or 0.0) * rate
+        row["hours"] += e["hours"] or 0.0
+        row["pay"] += pay
+        cell = row["by_type"].setdefault(e["pay_type_id"], {"hours": 0.0, "pay": 0.0})
+        cell["hours"] += e["hours"] or 0.0
+        cell["pay"] += pay
+    rollup = sorted(emp.values(), key=lambda r: r["employee"]["name"].lower())
+    totals = {"hours": sum(r["hours"] for r in rollup),
+              "pay": sum(r["pay"] for r in rollup)}
+    return types, rollup, totals
 
 
 def _lane_from_task(notes, title):
