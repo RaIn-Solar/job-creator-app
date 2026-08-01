@@ -2,7 +2,12 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.8** (footer shows it plainly as "Version 22.8" — the "did my pull work?" check)
+**Current build:** **Piece 22.9** (footer shows it plainly as "Version 22.9" — the "did my pull work?" check)
+
+**Piece 22.9 — "Team" nav dropdown (Employees + Payroll).** Employees and Payroll
+now sit under a **👥 Team** `navdrop` — but only when `can_payroll` is true (so
+the dropdown always has ≥2 items); users without payroll access get the plain
+👥 Employees link as before. Same JS-free `<details>` pattern as Databases.
 
 **Piece 22.8 — "Databases" nav dropdown + Inventory placeholder.** Header nav is
 tidied: Client Profiles, Rules, Directory, Inventory, and Catalog now live inside

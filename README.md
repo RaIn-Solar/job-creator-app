@@ -159,7 +159,9 @@ can confirm a pull/update took effect.
   remaining close-out steps). Each sub-section sits in its own panel.
 - **Nav grouping**: the reference/data pages — **Client Profiles, Rules,
   Directory, Inventory, Catalog** — are consolidated under a single **🗄
-  Databases** dropdown in the header to keep the top bar tidy.
+  Databases** dropdown in the header; **Employees + Payroll** sit under a **👥
+  Team** dropdown (which falls back to a plain Employees link for staff who can't
+  see Payroll). Keeps the top bar tidy.
 - **Permissions**: the General Manager (identified by the GM role) has unfettered
   access and can grant individuals access to specific tools/functions **with an
   expiration date**. Admin tier sits below GM; granular grants everywhere else.

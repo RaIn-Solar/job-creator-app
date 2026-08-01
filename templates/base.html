@@ -319,10 +319,19 @@
         <a href="/catalog">🔌 Catalog</a>
       </div>
     </details>
+    {% if can_payroll %}
+    <details class="navdrop">
+      <summary>👥 Team</summary>
+      <div class="navdrop-menu">
+        <a href="/employees">👥 Employees</a>
+        <a href="/payroll">💵 Payroll</a>
+      </div>
+    </details>
+    {% else %}
     <a href="/employees" style="font-size:0.9rem; font-weight:500;">👥 Employees</a>
+    {% endif %}
     <a href="/tasks" style="font-size:0.9rem; font-weight:500;">✅ Tasks</a>
     <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
-    {% if can_payroll %}<a href="/payroll" style="font-size:0.9rem; font-weight:500;">💵 Payroll</a>{% endif %}
     {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
     {% if can('audit.view') %}<a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>{% endif %}
     {% if can('delete') %}<a href="/trash" style="font-size:0.9rem; font-weight:500;">🗑 Trash</a>{% endif %}
