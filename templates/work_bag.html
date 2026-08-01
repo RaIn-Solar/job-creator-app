@@ -8,10 +8,11 @@
     <button id="refresh" class="btn btn-secondary">Refresh</button>
   </div>
 </div>
-<p class="muted">Your assigned tasks for the field. Update them even with no
-signal — changes are saved on this device. When you're back online, submit
-your completed work and hours; it's held for your manager to approve before
-it counts. <strong>Keep this page open while you're offline.</strong></p>
+<p class="muted">Your on-site work, grouped by job with each install date. Update
+tasks even with no signal — changes are saved on this device. When you're back
+online, submit your completed work and hours; it's held for your manager to
+approve before it counts. <strong>Keep this page open while you're
+offline.</strong></p>
 
 <div id="status" class="flash" style="display:none;"></div>
 
@@ -109,6 +110,10 @@ it counts. <strong>Keep this page open while you're offline.</strong></p>
 (function () {
   const LS_TASKS = "solbiz_wb_tasks", LS_QUEUE = "solbiz_wb_queue";
   const STATUSES = {{ task_statuses | tojson }};
+  // Piece 21.6: the bag is a field tool — show only on-site work (install &
+  // inspection) and cluster it by job. Office/scheduling steps live on the
+  // dashboard, not in the crew's bag.
+  const FIELD_STAGES = ["Installation", "Inspections"];
   const $ = s => document.querySelector(s);
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
   let tasks = load(LS_TASKS, []);
@@ -135,30 +140,51 @@ it counts. <strong>Keep this page open while you're offline.</strong></p>
   }
   const queueCount = () => Object.keys(queue).length;
 
+  function taskRow(t) {
+    const row = document.createElement("div");
+    row.style.cssText = "border-bottom:1px solid var(--border); padding:0.6rem 0;";
+    let badge = "";
+    if (queue[t.id]) badge = ' <span class="badge warn">not submitted</span>';
+    else if (pending[t.id]) badge = ' <span class="badge neutral">submitted: ' + esc(pending[t.id].new_status) + ' — awaiting approval</span>';
+    row.innerHTML =
+      '<div style="font-weight:600;">' + esc(t.title) + badge + '</div>' +
+      (t.due_date ? '<div class="muted" style="font-size:0.8rem; margin-bottom:0.3rem;">due ' + esc(t.due_date) + '</div>' : '') +
+      '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">' +
+        '<select data-id="' + t.id + '" class="st" style="padding:0.2rem;">' +
+          STATUSES.map(s => '<option' + (s === t.status ? ' selected' : '') + '>' + esc(s) + '</option>').join('') +
+        '</select>' +
+        '<input data-id="' + t.id + '" class="nt" value="' + esc(t.notes) +
+          '" placeholder="notes" style="flex:1; min-width:8rem; padding:0.2rem;">' +
+      '</div>';
+    return row;
+  }
+
   function render() {
     const list = $("#tasklist");
-    if (!tasks.length) { list.innerHTML = '<p class="empty">No tasks assigned to you.</p>'; }
-    else {
-      list.innerHTML = "";
-      tasks.forEach(t => {
-        const row = document.createElement("div");
-        row.style.cssText = "border-bottom:1px solid var(--border); padding:0.6rem 0;";
-        let badge = "";
-        if (queue[t.id]) badge = ' <span class="badge warn">not submitted</span>';
-        else if (pending[t.id]) badge = ' <span class="badge neutral">submitted: ' + esc(pending[t.id].new_status) + ' — awaiting approval</span>';
-        row.innerHTML =
-          '<div style="font-weight:600;">' + esc(t.title) + badge + '</div>' +
-          '<div class="muted" style="font-size:0.85rem; margin-bottom:0.3rem;">' +
-            esc(t.job_name) + ' · ' + esc(t.client_name) +
-            (t.due_date ? (' · due ' + esc(t.due_date)) : '') + '</div>' +
-          '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">' +
-            '<select data-id="' + t.id + '" class="st" style="padding:0.2rem;">' +
-              STATUSES.map(s => '<option' + (s === t.status ? ' selected' : '') + '>' + esc(s) + '</option>').join('') +
-            '</select>' +
-            '<input data-id="' + t.id + '" class="nt" value="' + esc(t.notes) +
-              '" placeholder="notes" style="flex:1; min-width:8rem; padding:0.2rem;">' +
-          '</div>';
-        list.appendChild(row);
+    // Field work only, clustered by job (with its install date as the header).
+    const field = tasks.filter(t => FIELD_STAGES.indexOf(t.pipeline_status) !== -1);
+    list.innerHTML = "";
+    if (!tasks.length) {
+      list.innerHTML = '<p class="empty">No tasks assigned to you.</p>';
+    } else if (!field.length) {
+      list.innerHTML = '<p class="empty">No field work in your bag right now. Office and scheduling tasks are on your <a href="/dashboard">dashboard</a>.</p>';
+    } else {
+      const order = [], groups = {};
+      field.forEach(t => {
+        const k = t.job_id;
+        if (!groups[k]) { groups[k] = []; order.push(k); }
+        groups[k].push(t);
+      });
+      order.forEach(k => {
+        const first = groups[k][0];
+        const head = document.createElement("div");
+        head.style.cssText = "margin:0.9rem 0 0.1rem; padding-top:0.5rem; border-top:2px solid var(--border);";
+        head.innerHTML =
+          '<div style="font-weight:700;">' + esc(first.job_name) + '</div>' +
+          '<div class="muted" style="font-size:0.82rem;">' + esc(first.client_name) +
+            (first.install_date ? ' · 🔧 install ' + esc(first.install_date) : ' · install date TBD') + '</div>';
+        list.appendChild(head);
+        groups[k].forEach(t => list.appendChild(taskRow(t)));
       });
     }
     const qc = queueCount();

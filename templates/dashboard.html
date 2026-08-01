@@ -113,12 +113,45 @@
 {% if s.stages %}
 {% set proposals = s.stages == ["Proposal"] %}
 {% set is_permits = s.name == "Permits" %}
+{% set is_install = show_install and s.name == "Installation" %}
 <details class="card sect" open>
-  <summary>{{ s.icon }} {% if proposals %}Active Proposals{% else %}{{ s.name }} · jobs in your stages
+  <summary>{{ s.icon }} {% if proposals %}Active Proposals{% elif is_install %}Installs · by date{% else %}{{ s.name }} · jobs in your stages
     <span class="sect-sub">— {{ s.stages|join(" / ") }}</span>{% endif %}
     <span class="sect-count">{{ s.jobs|length }}</span>
   </summary>
+  {% if is_install %}
+  {# ---- Foreman viewport: installs bucketed by install-date timing ---- #}
   {% if s.jobs %}
+  {% for bucket in install_buckets %}
+  <div style="margin-bottom:0.8rem;">
+    <div style="font-weight:700; margin:0.2rem 0 0.4rem; display:flex; gap:0.4rem; align-items:baseline;">
+      {{ bucket.label }} <span class="muted" style="font-weight:400; font-size:0.8rem;">— {{ bucket.hint }} · {{ bucket.jobs|length }}</span>
+    </div>
+    {% if bucket.jobs %}
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Install date</th><th>Client</th><th>Job</th><th style="min-width:200px;">Progress</th></tr></thead>
+      <tbody>
+        {% for j in bucket.jobs %}
+        <tr>
+          <td style="white-space:nowrap; font-weight:600;">{{ j["install_date"] or "—" }}{% if j["install_date"] and j["install_date"] < today and bucket.key != 'other' %} <span class="badge danger">past</span>{% endif %}</td>
+          <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
+          <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+          <td>{{ job_progress(progress_by_job[j['id']], compact=true) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty" style="margin:0 0 0.4rem;">None.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="empty">No installs on the board right now.</p>
+  {% endif %}
+  {% elif s.jobs %}
   <div style="overflow-x:auto;">
   <table>
     <thead><tr>

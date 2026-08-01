@@ -112,7 +112,10 @@ can confirm a pull/update took effect.
   import into Google Calendar (or Outlook/Apple). Stable IDs so re-importing
   updates events instead of duplicating.
 - **Work Bag** for field crews to update task status/notes; changes flow through
-  an **approval queue** before being applied to the authoritative tasks.
+  an **approval queue** before being applied to the authoritative tasks. The bag
+  shows **only on-site field work** (install & inspection), **grouped by job**
+  with each job's install date as the header — office/scheduling steps stay on
+  the dashboards.
 
 ### People, roles & permissions
 - **Employees** matched to the org chart, with first / last / optional nickname
@@ -126,7 +129,10 @@ can confirm a pull/update took effect.
   (mode switch for people who hold multiple roles). Every section is
   **collapsible**. The **Sales** viewport shows **Active Proposals** (jobs in
   Proposal), a **Leads** worklist (prospects not yet converted, with follow-up
-  actions), and My tasks. **Client Profiles** is its own header-nav button.
+  actions), and My tasks. The **Installation** (Foreman) viewport lists installs
+  **bucketed by date** — This week / Upcoming / In inspection · unscheduled —
+  with the install date leading, and trims **My tasks** to on-site field work.
+  **Client Profiles** is its own header-nav button.
 - **Permissions**: the General Manager (identified by the GM role) has unfettered
   access and can grant individuals access to specific tools/functions **with an
   expiration date**. Admin tier sits below GM; granular grants everywhere else.
@@ -192,6 +198,7 @@ can confirm a pull/update took effect.
 - **Piece 21** — Finance viewport: per-job billing ledger, Payments dashboard,
   QuickBooks CSV; payroll (self-logged hours, approvals, configurable pay types,
   auto-overtime); permits/warehouse tuning; **receipts/invoices/bills** tagging
-  feeding the QuickBooks reports.
+  feeding the QuickBooks reports; **Foreman/Installation viewport** (installs
+  bucketed by date) + a field-focused, job-grouped Work Bag.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

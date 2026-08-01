@@ -2,7 +2,19 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.5** (footer shows it plainly as "Version 21.5" — the "did my pull work?" check)
+**Current build:** **Piece 21.6** (footer shows it plainly as "Version 21.6" — the "did my pull work?" check)
+
+**Piece 21.6 — Foreman / Installation viewport (Screen 5).** `FIELD_STAGES =
+{"Installation", "Inspections"}`. Dashboard route: when `mode == "Installation"`
+it builds `install_buckets` (This week / Upcoming / In inspection·unscheduled)
+from the Installation section's jobs by parsing `install_date` against today,
+and trims `my_tasks` to `FIELD_STAGES` (drops office steps like Set Installation
+Date). `dashboard.html` renders the Installation section as three date-bucketed
+tables (Install date · Client · Job · Progress) instead of the flat table.
+Work Bag: `_my_tasks_rows` now also selects `pipeline_status`, `install_date`
+and orders by install_date; `work_bag.html` JS filters to `FIELD_STAGES` and
+clusters tasks **by job** under a header showing job · client · 🔧 install date
+(office/scheduling tasks no longer clutter the crew's bag).
 
 **Piece 21.5 — Receipts / invoices / bills.** New `doc_type` column on
 `job_transactions` (`DOC_TYPES = ["Receipt", "Invoice", "Bill"]`; schema.sql

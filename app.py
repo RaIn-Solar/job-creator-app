@@ -18,7 +18,7 @@ import os
 import sqlite3
 import sys
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
 
 from functools import wraps
@@ -775,7 +775,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.5"
+VERSION = "Piece 21.6"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -831,6 +831,10 @@ STAGE_ORDER = ["Proposal", "Job Prep", "Installation", "Inspections",
 STAGE_SHORT = {"Proposal": "Proposal", "Job Prep": "Prep",
                "Installation": "Install", "Inspections": "Inspect",
                "Closing": "Closing", "Complete": "Done"}
+# Piece 21.6: the stages a crew physically works on site. The Work Bag and the
+# Foreman's "My tasks" show only these — office/scheduling steps stay on the
+# dashboards where they belong.
+FIELD_STAGES = {"Installation", "Inspections"}
 
 
 def next_stage(status):
@@ -2115,6 +2119,12 @@ def dashboard():
         " JOIN clients c ON c.id = j.client_id"
         " WHERE t.employee_id = ? AND t.status != 'Done'"
         " ORDER BY (t.due_date = ''), t.due_date, j.id", (user["id"],)).fetchall()
+    # Piece 21.6: on the Installation (Foreman) viewport, My tasks is the crew's
+    # punch list — trim it to on-site field work, dropping office/scheduling
+    # steps (e.g. Set Installation Date) that live on other dashboards.
+    if mode == "Installation":
+        my_tasks = [t for t in my_tasks
+                    if (t["pipeline_status"] or "") in FIELD_STAGES]
 
     sections = []
     for d in shown:
@@ -2170,6 +2180,43 @@ def dashboard():
                     procurement.append({"job": j, "counts": counts, "total": total,
                                         "outstanding": outstanding})
 
+    # Piece 21.6: Installation (Foreman) viewport — split the Installation /
+    # Inspections jobs by install-date timing so the crew sees what's imminent.
+    show_install = "Installation" in shown
+    install_buckets = []
+    if show_install:
+        today_d = datetime.now().date()
+        week_end = today_d + timedelta(days=7)
+
+        def _idate(j):
+            try:
+                return datetime.strptime(j["install_date"], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return None
+        wk, up, other = [], [], []
+        for sec in sections:
+            if sec["name"] == "Installation":
+                for j in sec["jobs"]:
+                    d = _idate(j)
+                    if d and today_d <= d <= week_end:
+                        wk.append((d, j))
+                    elif d and d > week_end:
+                        up.append((d, j))
+                    else:
+                        other.append((d, j))
+
+        def _srt(rows):
+            return [j for _d, j in sorted(
+                rows, key=lambda x: (x[0] is None, x[0] or date.max))]
+        install_buckets = [
+            {"key": "week", "label": "🔨 This week",
+             "hint": "installs in the next 7 days", "jobs": _srt(wk)},
+            {"key": "upcoming", "label": "📅 Upcoming",
+             "hint": "scheduled further out", "jobs": _srt(up)},
+            {"key": "other", "label": "🔎 In inspection / unscheduled",
+             "hint": "install date passed or not set yet", "jobs": _srt(other)},
+        ]
+
     # Leads worklist (Piece 20.8): active leads (not yet converted) with their
     # next open follow-up, for the Sales viewport. Replaces the generic Client
     # Profiles list here — converted clients now live under Active Proposals.
@@ -2215,6 +2262,7 @@ def dashboard():
         progress_by_job=progress_by_job, loads_by_job=loads_by_job,
         permits_by_job=permits_by_job, show_procurement=show_procurement,
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
+        show_install=show_install, install_buckets=install_buckets,
         job_status_class=JOB_STATUS_CLASS)
 
 
@@ -4439,13 +4487,17 @@ def tasks_dashboard():
 
 # ------------------------------------------- Piece 14: Work Bag (offline sync)
 def _my_tasks_rows(db, employee_id):
+    # Piece 21.6: also surface pipeline_status + install_date so the Work Bag
+    # can group tasks by job (with the install date) and show only field work.
     return db.execute(
         "SELECT t.id, t.title, t.status, t.due_date, t.notes, t.updated_at,"
-        " j.id AS job_id, j.job_name, c.name AS client_name"
+        " t.pipeline_status, j.id AS job_id, j.job_name, j.install_date,"
+        " c.name AS client_name"
         " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
         " JOIN clients c ON c.id = j.client_id"
         " WHERE t.employee_id = ?"
-        " ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date, t.id",
+        " ORDER BY (t.status = 'Done'), (j.install_date = ''), j.install_date,"
+        " j.id, (t.due_date = ''), t.due_date, t.id",
         (employee_id,)).fetchall()
 
 
