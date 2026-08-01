@@ -2,7 +2,18 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.7** (footer shows it plainly as "Version 21.7" — the "did my pull work?" check)
+**Current build:** **Piece 21.8** (footer shows it plainly as "Version 21.8" — the "did my pull work?" check)
+
+**Piece 21.8 — photo capture on every photo-requiring step.** `_is_photo_step`
+now matches `PHOTO_STEP_KEYWORDS = ("photo", "picture", "site visit", "site
+installation", "install walkthrough", "doc tube", "meter set", "re-inspect")`
+instead of just "photo"/"picture", so the Work Bag camera button covers the
+whole set of BPMN steps that need pictures: Site Visit, Site Installation, Crew
+Install Walkthrough, Doc Tube and Pictures, Correct & Re-inspect, Meter set, and
+Photograph Final Inspection Sticker. Keywords are deliberately specific
+("install walkthrough"/"re-inspect" not bare "walkthrough"/"inspect") so the
+Sales *Final Client Walkthrough* and the *Final CID Inspection* don't get a
+camera they don't need. Retroactive — no schema/data change, purely detection.
 
 **Piece 21.7 — Work Bag photo capture.** Any task whose title matches
 `_is_photo_step()` ("photo"/"picture") grows a 📷 button in the Work Bag that

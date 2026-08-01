@@ -116,10 +116,12 @@ can confirm a pull/update took effect.
   shows **only on-site field work** (install & inspection), **grouped by job**
   with each job's install date as the header — office/scheduling steps stay on
   the dashboards.
-- **Job photos from the field**: any step that mentions photos/pictures gets a
-  **📷 button** that opens a phone-camera capture/upload page; the photos save to
-  the job and **load back into the Work Bag** as thumbnails (and appear on the
-  job record). Crews can remove their own shots.
+- **Job photos from the field**: every pipeline step that requires photos — the
+  site visit, the install itself, the crew walkthrough, doc tube, the meter set,
+  re-inspection of corrections, and the final-sticker photo — gets a **📷 button**
+  that opens a phone-camera capture/upload page; the photos save to the job and
+  **load back into the Work Bag** as thumbnails (and appear on the job record).
+  Crews can remove their own shots.
 
 ### People, roles & permissions
 - **Employees** matched to the org chart, with first / last / optional nickname

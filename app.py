@@ -775,7 +775,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.7"
+VERSION = "Piece 21.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -783,15 +783,26 @@ ALLOWED_EXTENSIONS = {
     "csv", "txt", "kmz", "kml", "zip", "bpmn",
 }
 # Piece 21.7: field crews snap job photos from the Work Bag. Photos are stored
-# as job_files tagged with FIELD_PHOTO_LABEL and the originating task, and any
-# task whose title mentions photos/pictures grows a camera button.
+# as job_files tagged with FIELD_PHOTO_LABEL and the originating task.
 PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "heic", "gif"}
 FIELD_PHOTO_LABEL = "Field Photo"
+# Piece 21.8: every pipeline step that requires photographic documentation gets
+# the Work Bag camera button — not only the ones with "photo"/"picture" in the
+# name. These substrings are chosen to hit exactly the photo steps in the BPMN
+# process and nothing else: the site visit, the install itself, the crew
+# walkthrough, doc tube, the meter set, and the re-inspection of corrections
+# ("install walkthrough" and "re-inspect" are used, rather than bare
+# "walkthrough"/"inspect", so the Sales final walkthrough and the CID inspection
+# don't get a camera they don't need).
+PHOTO_STEP_KEYWORDS = (
+    "photo", "picture", "site visit", "site installation",
+    "install walkthrough", "doc tube", "meter set", "re-inspect",
+)
 
 
 def _is_photo_step(title):
     t = (title or "").lower()
-    return "photo" in t or "picture" in t
+    return any(k in t for k in PHOTO_STEP_KEYWORDS)
 MATERIAL_STATUSES = ["Needed", "Quoted", "Ordered", "Backordered",
                      "Received", "On hand", "Installed"]
 # Piece 12: categories for client-level documents (distinct from a job's
