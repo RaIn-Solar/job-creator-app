@@ -83,7 +83,10 @@ can confirm a pull/update took effect.
 - **Loads & Sizing** (`/jobs/<id>/loads`): electrical loads and system sizing on
   its own page. Electric loads are **not** entered at job creation (they aren't
   known until the walkthrough) — they're recorded here during the proposal, and
-  the **Proposal stage can't advance until loads are recorded**.
+  the **Proposal stage can't advance until loads are recorded**. It's a
+  **Proposal-phase tool**: once the contract is signed (the job moves past
+  Proposal) the editor **locks** — the recorded figures stay visible here and in
+  Design, but no one edits them (enforced in the UI and on the server).
 - **Materials lists** per job (status: Needed → Quoted → Ordered → Backordered →
   Received → On hand → Installed) and **document upload/storage** with
   per-requirement filing coverage. The job's **L/P/C tab** leads with **Permits**

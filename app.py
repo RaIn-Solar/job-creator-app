@@ -775,7 +775,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 22.1"
+VERSION = "Piece 22.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3461,7 +3461,7 @@ def job_loads(job_id):
     bom_total = sum((b["qty"] or 0) * (b["unit_cost"] or 0) for b in bom)
 
     return render_template(
-        "job_loads.html", job=job,
+        "job_loads.html", job=job, locked=_loads_locked(job),
         rooms=rooms, items_by_room=items_by_room, sizing=sizing, bom=bom,
         bom_total=bom_total, appliances_by_category=appliances_by_category,
         components_by_category=components_by_category,
@@ -3483,7 +3483,34 @@ def _float(val, default=0.0):
 
 
 # ------------------------------------------------------------ loads & sizing
+def _loads_locked(job):
+    """Piece 22.2: Loads & Sizing is a Proposal-phase tool. Once the job
+    advances past Proposal (the contract is signed), the editor locks — the
+    recorded figures stay visible on the job and in Design, but no one re-opens
+    the tool to change them. Lost jobs (outside the normal stage order) are left
+    editable in case one is revived."""
+    status = job["status"] if "status" in job.keys() else ""
+    return status in STAGE_ORDER and STAGE_ORDER.index(status) > 0
+
+
+LOADS_LOCK_MSG = ("Loads & Sizing locks once the contract is signed — the "
+                  "recorded figures are final and view-only from here.")
+
+
+def loads_unlocked(view):
+    """Guard a loads-editing POST: refuse the write once the job is past
+    Proposal, so the locked figures can't be changed from anywhere."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if _loads_locked(fetch_job(kwargs["job_id"])):
+            flash(LOADS_LOCK_MSG, "error")
+            return redirect(url_for("job_loads", job_id=kwargs["job_id"]))
+        return view(*args, **kwargs)
+    return wrapped
+
+
 @app.route("/jobs/<int:job_id>/loads/rooms/add", methods=["POST"])
+@loads_unlocked
 def add_load_room(job_id):
     fetch_job(job_id)
     name = request.form.get("name", "").strip()
@@ -3508,6 +3535,7 @@ def add_load_room(job_id):
 
 
 @app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/toggle", methods=["POST"])
+@loads_unlocked
 def toggle_load_room(job_id, room_id):
     db = get_db()
     db.execute(
@@ -3520,6 +3548,7 @@ def toggle_load_room(job_id, room_id):
 
 @app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/delete", methods=["POST"])
 @delete_required
+@loads_unlocked
 def delete_load_room(job_id, room_id):
     ok, msg = trash_item("load_room", room_id)
     flash(msg, "" if ok else "error")
@@ -3527,6 +3556,7 @@ def delete_load_room(job_id, room_id):
 
 
 @app.route("/jobs/<int:job_id>/loads/items/add", methods=["POST"])
+@loads_unlocked
 def add_load_item(job_id):
     fetch_job(job_id)
     db = get_db()
@@ -3577,6 +3607,7 @@ def add_load_item(job_id):
 
 @app.route("/jobs/<int:job_id>/loads/items/<int:item_id>/delete", methods=["POST"])
 @delete_required
+@loads_unlocked
 def delete_load_item(job_id, item_id):
     ok, msg = trash_item("load_item", item_id)
     flash(msg, "" if ok else "error")
@@ -3584,6 +3615,7 @@ def delete_load_item(job_id, item_id):
 
 
 @app.route("/jobs/<int:job_id>/loads/bom/add", methods=["POST"])
+@loads_unlocked
 def add_bom_item(job_id):
     fetch_job(job_id)
     db = get_db()
@@ -3635,6 +3667,7 @@ def add_bom_item(job_id):
 
 @app.route("/jobs/<int:job_id>/loads/bom/<int:bom_id>/delete", methods=["POST"])
 @delete_required
+@loads_unlocked
 def delete_bom_item(job_id, bom_id):
     ok, msg = trash_item("bom", bom_id)
     flash(msg, "" if ok else "error")
@@ -3642,6 +3675,7 @@ def delete_bom_item(job_id, bom_id):
 
 
 @app.route("/jobs/<int:job_id>/loads/sizing", methods=["POST"])
+@loads_unlocked
 def update_sizing(job_id):
     fetch_job(job_id)
     db = get_db()

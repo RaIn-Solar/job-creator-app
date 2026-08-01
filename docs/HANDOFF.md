@@ -2,16 +2,23 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.1** (footer shows it plainly as "Version 22.1" — the "did my pull work?" check)
+**Current build:** **Piece 22.2** (footer shows it plainly as "Version 22.2" — the "did my pull work?" check)
+
+**Piece 22.2 — Loads & Sizing locks past Proposal.** Implements the 22.1 note.
+`_loads_locked(job)` = job status is in `STAGE_ORDER` beyond Proposal (Lost, off
+the normal order, stays editable). New `loads_unlocked` decorator (fetch_job +
+lock check → flash + redirect) guards all eight loads-editing POSTs
+(rooms/items/bom add+delete+toggle, sizing) — the view-only `set_ui_mode` toggle
+stays open. `job_loads` passes `locked` to the template: a 🔒 lock banner shows,
+the add/delete/toggle forms are hidden, and the sizing form is wrapped in a
+`<fieldset disabled>` (values stay visible + greyed) with its Save button hidden.
+Load survey, summary, and computed sizing outputs remain fully visible — and the
+figures still surface read-only on the job General tab + in Design. Enforced both
+UI-side and server-side.
 
 **Piece 22.1 — "Packing list" rename.** The Work Bag materials list is now
 labelled **📦 Packing list** (was "Load list") to avoid confusion with the
-electrical **Loads & Sizing** tool. Product note captured for later: the Loads &
-Sizing *tool* (`/jobs/<id>/loads`) is a Proposal-phase instrument — past the
-signed contract nobody else in the company needs to open it. The captured load
-*numbers* still surface read-only on the job (General tab + design), so any
-future access-gating should hide the loads editor post-contract WITHOUT hiding
-the saved survey figures. Not gated yet — recorded as intent.
+electrical **Loads & Sizing** tool.
 
 **Piece 22.0 — Work Bag packing list.** `/api/my-tasks` returns
 `materials_by_job` (item/quantity/unit/status for every job on the board); the
