@@ -2,7 +2,15 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.4** (footer shows it plainly as "Version 22.4" — the "did my pull work?" check)
+**Current build:** **Piece 22.5** (footer shows it plainly as "Version 22.5" — the "did my pull work?" check)
+
+**Piece 22.5 — separate the Company-overview sub-sections.** Each of the five
+sub-sections (Pipeline, Money in flight, Needs attention, This week's installs,
+Closing) is now wrapped in its own `<section>` panel (`background:var(--bg)`,
+border, radius, padding) so they read as distinct blocks; the count/money tiles
+were given a white (`var(--card)`) fill so they pop against the panel. Shared
+`panel`/`panelh`/`tile` inline-style vars set at the top of the block. Content
+and column structure unchanged (installs + closing tables revisited next).
 
 **Piece 22.4 — drop the Executive flat job list.** The generic "jobs in your
 stages" section is now skipped on the Executive viewport

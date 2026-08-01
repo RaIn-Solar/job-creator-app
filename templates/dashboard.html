@@ -21,103 +21,117 @@
 <details class="card sect" open style="border-left:4px solid var(--brand);">
   <summary>⭐ Company overview</summary>
 
+  {% set panel = "background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:0.75rem 0.9rem; margin-bottom:0.85rem;" %}
+  {% set panelh = "font-weight:700; margin:0 0 0.5rem; font-size:0.95rem;" %}
+  {% set tile = "background:var(--card); border:1px solid var(--border); border-radius:8px;" %}
+
   {# Pipeline counts by stage #}
-  <div style="font-weight:700; margin:0.3rem 0 0.4rem;">Pipeline</div>
-  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:0.5rem; margin-bottom:1rem;">
-    {% for stage, n in gm.counts %}
-    <div style="border:1px solid var(--border); border-radius:8px; padding:0.5rem 0.6rem; text-align:center;">
-      <div style="font-size:1.5rem; font-weight:800; color:var(--brand-dark);">{{ n }}</div>
-      <div class="muted" style="font-size:0.78rem;">{{ stage }}</div>
+  <section style="{{ panel }}">
+    <div style="{{ panelh }}">Pipeline</div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:0.5rem;">
+      {% for stage, n in gm.counts %}
+      <div style="{{ tile }} padding:0.5rem 0.6rem; text-align:center;">
+        <div style="font-size:1.5rem; font-weight:800; color:var(--brand-dark);">{{ n }}</div>
+        <div class="muted" style="font-size:0.78rem;">{{ stage }}</div>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
-  </div>
+  </section>
 
   {# Money in flight #}
-  <div style="font-weight:700; margin:0.3rem 0 0.4rem;">Money in flight <span class="muted" style="font-weight:400; font-size:0.8rem;">— across active jobs</span></div>
-  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem; margin-bottom:1rem;">
-    <div style="border:1px solid var(--border); border-radius:8px; padding:0.5rem 0.7rem;">
-      <div class="muted" style="font-size:0.78rem;">Contract value</div>
-      <div style="font-size:1.25rem; font-weight:800;">${{ "%.0f"|format(gm.money.contract) }}</div></div>
-    <div style="border:1px solid var(--border); border-radius:8px; padding:0.5rem 0.7rem;">
-      <div class="muted" style="font-size:0.78rem;">Collected</div>
-      <div style="font-size:1.25rem; font-weight:800; color:var(--brand);">${{ "%.0f"|format(gm.money.collected) }}</div></div>
-    <div style="border:1px solid var(--border); border-radius:8px; padding:0.5rem 0.7rem;">
-      <div class="muted" style="font-size:0.78rem;">Outstanding</div>
-      <div style="font-size:1.25rem; font-weight:800; color:#8a5a00;">${{ "%.0f"|format(gm.money.outstanding) }}</div></div>
-    <div style="border:1px solid var(--border); border-radius:8px; padding:0.5rem 0.7rem;">
-      <div class="muted" style="font-size:0.78rem;">Expenses</div>
-      <div style="font-size:1.25rem; font-weight:800; color:#b02a2a;">${{ "%.0f"|format(gm.money.expense) }}</div></div>
-  </div>
+  <section style="{{ panel }}">
+    <div style="{{ panelh }}">Money in flight <span class="muted" style="font-weight:400; font-size:0.8rem;">— across active jobs</span></div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem;">
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Contract value</div>
+        <div style="font-size:1.25rem; font-weight:800;">${{ "%.0f"|format(gm.money.contract) }}</div></div>
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Collected</div>
+        <div style="font-size:1.25rem; font-weight:800; color:var(--brand);">${{ "%.0f"|format(gm.money.collected) }}</div></div>
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Outstanding</div>
+        <div style="font-size:1.25rem; font-weight:800; color:#8a5a00;">${{ "%.0f"|format(gm.money.outstanding) }}</div></div>
+      <div style="{{ tile }} padding:0.5rem 0.7rem;">
+        <div class="muted" style="font-size:0.78rem;">Expenses</div>
+        <div style="font-size:1.25rem; font-weight:800; color:#b02a2a;">${{ "%.0f"|format(gm.money.expense) }}</div></div>
+    </div>
+  </section>
 
   {# Attention needed #}
-  <div style="font-weight:700; margin:0.3rem 0 0.4rem;">Needs attention</div>
-  <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.6rem;">
-    <a href="{{ url_for('submissions_page') }}" class="btn {{ 'btn-secondary' if not gm.approvals }}" style="padding:0.3rem 0.7rem; font-size:0.85rem;">🕗 {{ gm.approvals }} approval{{ "s" if gm.approvals != 1 }} waiting</a>
-    <span class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; {{ 'border-color:#b02a2a; color:#b02a2a !important;' if gm.overdue }}">⏰ {{ gm.overdue }} overdue task{{ "s" if gm.overdue != 1 }}</span>
-    <span class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; {{ 'border-color:#8a5a00; color:#8a5a00 !important;' if gm.stalled }}">🐢 {{ gm.stalled|length }} stalled job{{ "s" if gm.stalled|length != 1 }}</span>
-  </div>
-  {% if gm.stalled %}
-  <div style="overflow-x:auto; margin-bottom:1rem;">
-  <table>
-    <thead><tr><th>Stalled job</th><th>Client</th><th>Stage</th><th>Last activity</th></tr></thead>
-    <tbody>
-      {% for s in gm.stalled %}
-      <tr>
-        <td><a href="{{ url_for('job_detail', job_id=s['id']) }}">{{ s["job_name"] or "Job #" ~ s["id"] }}</a></td>
-        <td class="muted" style="font-size:0.82rem;">{{ s["client_name"] }}</td>
-        <td><span class="badge {{ job_status_class.get(s['status'], 'neutral') }}">{{ s["status"] }}</span></td>
-        <td class="muted" style="font-size:0.82rem;">{{ s["last"][:10] }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
+  <section style="{{ panel }}">
+    <div style="{{ panelh }}">Needs attention</div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;{% if gm.stalled %} margin-bottom:0.6rem;{% endif %}">
+      <a href="{{ url_for('submissions_page') }}" class="btn {{ 'btn-secondary' if not gm.approvals }}" style="padding:0.3rem 0.7rem; font-size:0.85rem;">🕗 {{ gm.approvals }} approval{{ "s" if gm.approvals != 1 }} waiting</a>
+      <span class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; {{ 'border-color:#b02a2a; color:#b02a2a !important;' if gm.overdue }}">⏰ {{ gm.overdue }} overdue task{{ "s" if gm.overdue != 1 }}</span>
+      <span class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem; {{ 'border-color:#8a5a00; color:#8a5a00 !important;' if gm.stalled }}">🐢 {{ gm.stalled|length }} stalled job{{ "s" if gm.stalled|length != 1 }}</span>
+    </div>
+    {% if gm.stalled %}
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Stalled job</th><th>Client</th><th>Stage</th><th>Last activity</th></tr></thead>
+      <tbody>
+        {% for s in gm.stalled %}
+        <tr>
+          <td><a href="{{ url_for('job_detail', job_id=s['id']) }}">{{ s["job_name"] or "Job #" ~ s["id"] }}</a></td>
+          <td class="muted" style="font-size:0.82rem;">{{ s["client_name"] }}</td>
+          <td><span class="badge {{ job_status_class.get(s['status'], 'neutral') }}">{{ s["status"] }}</span></td>
+          <td class="muted" style="font-size:0.82rem;">{{ s["last"][:10] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </section>
 
   {# This week's installs #}
-  <div style="font-weight:700; margin:0.6rem 0 0.4rem;">🔨 This week's installs <span class="muted" style="font-weight:400; font-size:0.8rem;">— next 7 days</span></div>
-  {% if gm.installs_week %}
-  <div style="overflow-x:auto; margin-bottom:1rem;">
-  <table>
-    <thead><tr><th>Install date</th><th>Job</th><th>Client</th><th>Stage</th></tr></thead>
-    <tbody>
-      {% for j in gm.installs_week %}
-      <tr>
-        <td style="white-space:nowrap; font-weight:600;">{{ j["install_date"] }}</td>
-        <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
-        <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
-        <td><span class="badge {{ job_status_class.get(j['status'], 'neutral') }}">{{ j["status"] }}</span></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <p class="empty" style="margin:0 0 1rem;">No installs scheduled in the next 7 days.</p>
-  {% endif %}
+  <section style="{{ panel }}">
+    <div style="{{ panelh }}">🔨 This week's installs <span class="muted" style="font-weight:400; font-size:0.8rem;">— next 7 days</span></div>
+    {% if gm.installs_week %}
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Install date</th><th>Job</th><th>Client</th><th>Stage</th></tr></thead>
+      <tbody>
+        {% for j in gm.installs_week %}
+        <tr>
+          <td style="white-space:nowrap; font-weight:600;">{{ j["install_date"] }}</td>
+          <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+          <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
+          <td><span class="badge {{ job_status_class.get(j['status'], 'neutral') }}">{{ j["status"] }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty" style="margin:0;">No installs scheduled in the next 7 days.</p>
+    {% endif %}
+  </section>
 
   {# Closing worklist #}
-  <div style="font-weight:700; margin:0.6rem 0 0.4rem;">🏁 Closing <span class="muted" style="font-weight:400; font-size:0.8rem;">— final invoice, walkthrough &amp; sign-off</span></div>
-  {% if gm.closing %}
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Job</th><th>Client</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
-    <tbody>
-      {% for c in gm.closing %}
-      <tr>
-        <td><a href="{{ url_for('job_detail', job_id=c.job['id'], _anchor='billing') }}">{{ c.job["job_name"] or "Job #" ~ c.job["id"] }}</a></td>
-        <td class="muted" style="font-size:0.82rem;">{{ c.job["client_name"] }}</td>
-        <td style="text-align:right; font-weight:700; {{ 'color:#8a5a00;' if c.balance else 'color:var(--brand);' }}">${{ "%.0f"|format(c.balance) }}</td>
-        <td>{% if c.total %}<span class="badge {{ '' if c.open == 0 else 'warn' }}">{{ c.total - c.open }}/{{ c.total }} done</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td style="font-size:0.85rem;">{{ c.next or "✓ all steps done" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <p class="empty" style="margin:0;">No jobs in Closing right now.</p>
-  {% endif %}
+  <section style="{{ panel }} margin-bottom:0;">
+    <div style="{{ panelh }}">🏁 Closing <span class="muted" style="font-weight:400; font-size:0.8rem;">— final invoice, walkthrough &amp; sign-off</span></div>
+    {% if gm.closing %}
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Job</th><th>Client</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
+      <tbody>
+        {% for c in gm.closing %}
+        <tr>
+          <td><a href="{{ url_for('job_detail', job_id=c.job['id'], _anchor='billing') }}">{{ c.job["job_name"] or "Job #" ~ c.job["id"] }}</a></td>
+          <td class="muted" style="font-size:0.82rem;">{{ c.job["client_name"] }}</td>
+          <td style="text-align:right; font-weight:700; {{ 'color:#8a5a00;' if c.balance else 'color:var(--brand);' }}">${{ "%.0f"|format(c.balance) }}</td>
+          <td>{% if c.total %}<span class="badge {{ '' if c.open == 0 else 'warn' }}">{{ c.total - c.open }}/{{ c.total }} done</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td style="font-size:0.85rem;">{{ c.next or "✓ all steps done" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty" style="margin:0;">No jobs in Closing right now.</p>
+    {% endif %}
+  </section>
 </details>
 {% endif %}
 
