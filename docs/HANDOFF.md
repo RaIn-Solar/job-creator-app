@@ -2,7 +2,12 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.6** (footer shows it plainly as "Version 22.6" — the "did my pull work?" check)
+**Current build:** **Piece 22.7** (footer shows it plainly as "Version 22.7" — the "did my pull work?" check)
+
+**Piece 22.7 — bolder headings on the installs & Closing panels.** "This week's
+installs" and "Closing" get a heavier title (font-weight 800, 1.1rem) and a
+larger tagline (0.92rem) for readability; other panels unchanged. (Structural
+rework of these two tables still to come.)
 
 **Piece 22.6 — "Ready for design" panel.** New Company-overview panel (under
 Needs attention) listing the Sales→Designer hand-off queue: `gm["ready_design"]`
