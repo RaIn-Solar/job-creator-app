@@ -2,7 +2,23 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.8** (footer shows it plainly as "Version 21.8" — the "did my pull work?" check)
+**Current build:** **Piece 22.0** (footer shows it plainly as "Version 22.0" — the "did my pull work?" check)
+
+**Piece 22.0 — Work Bag truck load list.** `/api/my-tasks` now returns
+`materials_by_job` (item/quantity/unit/status for every job on the board); the
+Work Bag JS renders a collapsible **📦 Load list** under each job banner,
+colour-coded by readiness via `matClass()` (Backordered→danger, Needed/Quoted→
+warn, On hand/Received→green). Cached in `localStorage` (LS_MATS) so it works
+offline. Lets installers load the truck before leaving.
+
+**Piece 21.9 — Work Bag field notes.** New `job_notes` table (job_id, note,
+author, `created_at` default `datetime('now')` — the same clock as
+`audit_log.ts`); each note is independently timestamped. `POST /work-bag/notes`
+adds one (job + text required), `POST /work-bag/notes/<id>/delete` removes it
+(author-scoped). A standard **📝 Job notes** card in `work_bag.html` (job picker +
+textarea + the author's recent notes); the job's notes render newest-first as a
+**📝 Field notes** card on the job_detail General tab (`job_notes` passed from the
+route) so the office can read them later.
 
 **Piece 21.8 — photo capture on every photo-requiring step.** `_is_photo_step`
 now matches `PHOTO_STEP_KEYWORDS = ("photo", "picture", "site visit", "site

@@ -775,7 +775,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.8"
+VERSION = "Piece 22.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2992,8 +2992,14 @@ def job_detail(job_id):
     billing = job_billing(
         db, job_id, job["contract_amount"] if "contract_amount" in job.keys() else 0.0)
 
+    # Piece 21.9: field notes the crew left from the Work Bag, newest first.
+    job_notes = db.execute(
+        "SELECT * FROM job_notes WHERE job_id = ? ORDER BY id DESC",
+        (job_id,)).fetchall()
+
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
+        job_notes=job_notes,
         materials=materials, files=files, filed_labels=filed_labels,
         coverage=coverage, requirement_groups=requirement_groups,
         material_statuses=MATERIAL_STATUSES, license_staffing=license_staffing(),
@@ -3252,6 +3258,41 @@ def delete_my_hours(entry_id):
                " AND status = 'Pending'", (entry_id, user["id"]))
     db.commit()
     return redirect(url_for("work_bag"))
+
+
+@app.route("/work-bag/notes", methods=["POST"])
+def add_job_note():
+    """Piece 21.9: jot a free-form note about a job from the Work Bag. Each note
+    keeps its own timestamp (datetime('now'), the same clock the audit log uses)
+    and author, so the office can read the field's notes later."""
+    user = current_user()
+    if user is None:
+        abort(403)
+    db = get_db()
+    job_id = request.form.get("job_id", "")
+    note = request.form.get("note", "").strip()
+    if not job_id.isdigit() or not note:
+        flash("Pick a job and type a note.", "error")
+        return redirect(url_for("work_bag", _anchor="notes"))
+    db.execute("INSERT INTO job_notes (job_id, note, author) VALUES (?, ?, ?)",
+               (int(job_id), note, user["name"]))
+    db.commit()
+    flash("Note saved for the office.")
+    return redirect(url_for("work_bag", _anchor="notes"))
+
+
+@app.route("/work-bag/notes/<int:note_id>/delete", methods=["POST"])
+def delete_job_note(note_id):
+    """Remove a note — scoped to the author who wrote it."""
+    user = current_user()
+    if user is None:
+        abort(403)
+    db = get_db()
+    db.execute("DELETE FROM job_notes WHERE id = ? AND author = ?",
+               (note_id, user["name"]))
+    db.commit()
+    flash("Note removed.")
+    return redirect(url_for("work_bag", _anchor="notes"))
 
 
 @app.route("/payroll/settings", methods=["GET"])
@@ -4543,7 +4584,7 @@ def work_bag():
         "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
         " JOIN clients c ON c.id = j.client_id"
         " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
-    my_entries = []
+    my_entries = my_notes = []
     if user is not None:
         my_entries = db.execute(
             "SELECT te.*, pt.name AS type_name, j.job_name FROM time_entries te"
@@ -4551,9 +4592,15 @@ def work_bag():
             " LEFT JOIN jobs j ON j.id = te.job_id"
             " WHERE te.employee_id = ?"
             " ORDER BY te.work_date DESC, te.id DESC LIMIT 12", (user["id"],)).fetchall()
+        # Piece 21.9: the notes this worker recently left, for confirmation.
+        my_notes = db.execute(
+            "SELECT n.*, j.job_name, c.name AS client_name FROM job_notes n"
+            " JOIN jobs j ON j.id = n.job_id JOIN clients c ON c.id = j.client_id"
+            " WHERE n.author = ? ORDER BY n.id DESC LIMIT 12", (user["name"],)).fetchall()
     return render_template("work_bag.html", task_statuses=TASK_STATUSES,
                            today=datetime.now().strftime("%Y-%m-%d"),
-                           pay_types=pay_types, jobs=jobs, my_entries=my_entries)
+                           pay_types=pay_types, jobs=jobs, my_entries=my_entries,
+                           my_notes=my_notes)
 
 
 @app.route("/api/my-tasks")
@@ -4594,10 +4641,24 @@ def api_my_tasks():
         d["photos_url"] = url_for("task_photos", task_id=r["id"])
         d["photos"] = photos_by_task.get(str(r["id"]), [])
         tasks_out.append(d)
+    # Piece 22.0: the materials list for each job on the board, so installers can
+    # load the truck before they leave. Keyed by job so the Work Bag can show it
+    # under each job's banner.
+    materials_by_job = {}
+    job_ids = {r["job_id"] for r in rows}
+    if job_ids:
+        ph = ", ".join("?" * len(job_ids))
+        for m in db.execute(
+                f"SELECT job_id, item, quantity, unit, status FROM job_materials"
+                f" WHERE job_id IN ({ph}) ORDER BY id", tuple(job_ids)).fetchall():
+            materials_by_job.setdefault(str(m["job_id"]), []).append({
+                "item": m["item"], "quantity": m["quantity"], "unit": m["unit"],
+                "status": m["status"]})
     return jsonify({
         "server_time": datetime.now().isoformat(timespec="seconds"),
         "user": user["name"],
         "tasks": tasks_out,
+        "materials_by_job": materials_by_job,
         "pending_items": [dict(r) for r in pend],
         "submissions": [dict(r) for r in subs],
     })

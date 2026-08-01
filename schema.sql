@@ -176,6 +176,17 @@ CREATE TABLE IF NOT EXISTS job_files (
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 21.9: free-form field notes on a job, jotted from the Work Bag for the
+-- office to read later. Each note carries its own timestamp (same clock as the
+-- audit log) and author.
+CREATE TABLE IF NOT EXISTS job_notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     INTEGER NOT NULL REFERENCES jobs(id),
+    note       TEXT NOT NULL DEFAULT '',
+    author     TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- App metadata (e.g. which rule seed batches have been applied).
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,

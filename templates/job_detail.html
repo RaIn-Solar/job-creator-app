@@ -132,6 +132,23 @@
   </dl>
 </div>
 
+{# Piece 21.9: field notes jotted from the Work Bag, for the office to read. #}
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">📝 Field notes <span class="badge">{{ job_notes|length }}</span></h2>
+  {% if job_notes %}
+  <ul style="list-style:none; margin:0; padding:0;">
+    {% for n in job_notes %}
+    <li style="padding:0.5rem 0; border-bottom:1px solid var(--border);">
+      <div class="muted" style="font-size:0.8rem;">{{ n["created_at"] }} · {{ n["author"] or "—" }}</div>
+      <div style="white-space:pre-wrap;">{{ n["note"] }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty" style="margin:0;">No field notes yet. Crews can add them from the 🎒 Work Bag.</p>
+  {% endif %}
+</div>
+
 {% if versions %}
 <div class="card">
   <h2 style="margin-top:0; font-size:1.1rem;">Version history</h2>

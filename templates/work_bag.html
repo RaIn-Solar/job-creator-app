@@ -106,9 +106,54 @@ offline.</strong></p>
   {% endif %}
 </div>
 
+<div class="card" id="notes">
+  <h2 style="margin-top:0; font-size:1.1rem;">📝 Job notes</h2>
+  <p class="muted" style="margin-top:0;">Jot anything the office should know about
+  a job — access details, a change on site, a callback needed. Each note is
+  stamped with the time and your name.</p>
+  <form method="post" action="{{ url_for('add_job_note') }}">
+    <div class="form-grid">
+      <div class="field wide">
+        <label>Job *</label>
+        <select name="job_id" required>
+          <option value="">— pick a job —</option>
+          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j["job_name"] or "Job #" ~ j["id"] }} · {{ j["client_name"] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field wide"><label>Note *</label>
+        <textarea name="note" rows="2" required placeholder="what happened / what the office should know"></textarea></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Save note</button></div>
+  </form>
+
+  {% if my_notes %}
+  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent notes</h3>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>When</th><th>Job</th><th>Note</th><th></th></tr></thead>
+    <tbody>
+      {% for n in my_notes %}
+      <tr>
+        <td class="muted" style="white-space:nowrap; font-size:0.82rem;">{{ n["created_at"] }}</td>
+        <td style="font-size:0.85rem;"><a href="{{ url_for('job_detail', job_id=n['job_id']) }}">{{ n["job_name"] or "Job #" ~ n["job_id"] }}</a><br><span class="muted" style="font-size:0.78rem;">{{ n["client_name"] }}</span></td>
+        <td>{{ n["note"] }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_job_note', note_id=n['id']) }}" style="margin:0;"
+                onsubmit="return confirm('Remove this note?');">
+            <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+
 <script>
 (function () {
-  const LS_TASKS = "solbiz_wb_tasks", LS_QUEUE = "solbiz_wb_queue";
+  const LS_TASKS = "solbiz_wb_tasks", LS_QUEUE = "solbiz_wb_queue", LS_MATS = "solbiz_wb_mats";
   const STATUSES = {{ task_statuses | tojson }};
   // Piece 21.6: the bag is a field tool — show only on-site work (install &
   // inspection) and cluster it by job. Office/scheduling steps live on the
@@ -120,9 +165,19 @@ offline.</strong></p>
   let queue = load(LS_QUEUE, {});           // id -> {status, notes, base_updated_at}
   let pending = {};                          // task_id -> {new_status,new_notes} (server pending)
   let submissions = [];
+  let materials = load(LS_MATS, {});         // job_id -> [{item, quantity, unit, status}] (truck load list)
   function save() {
     localStorage.setItem(LS_TASKS, JSON.stringify(tasks));
     localStorage.setItem(LS_QUEUE, JSON.stringify(queue));
+    localStorage.setItem(LS_MATS, JSON.stringify(materials));
+  }
+  // Colour a material by whether it's ready to load: green = on hand/received,
+  // amber = still to source, red = backordered.
+  function matClass(s) {
+    if (s === "Backordered") return "danger";
+    if (s === "Needed" || s === "Quoted") return "warn";
+    if (s === "On hand" || s === "Received") return "";
+    return "neutral";
   }
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
     c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -204,6 +259,25 @@ offline.</strong></p>
           '<span class="badge" style="white-space:nowrap; background:#fff; border-color:var(--brand); color:var(--brand-dark);">' +
             (first.install_date ? '🔧 install ' + esc(first.install_date) : 'install date TBD') + '</span>';
         list.appendChild(head);
+        // Truck load list: what materials this job needs, so the crew can load
+        // before leaving. Collapsible to stay out of the way once loaded.
+        const mats = materials[k] || materials[String(k)] || [];
+        if (mats.length) {
+          const md = document.createElement("details");
+          md.style.cssText = "margin:0.35rem 0 0.1rem 0.7rem;";
+          const rows = mats.map(m => {
+            const qty = [m.quantity, m.unit].filter(Boolean).join(" ");
+            return '<tr><td>' + esc(m.item) + '</td>' +
+              '<td class="muted" style="white-space:nowrap;">' + esc(qty || "—") + '</td>' +
+              '<td><span class="badge ' + matClass(m.status) + '">' + esc(m.status) + '</span></td></tr>';
+          }).join("");
+          md.innerHTML =
+            '<summary style="cursor:pointer; font-weight:600; font-size:0.9rem;">📦 Load list (' + mats.length + ')</summary>' +
+            '<div style="overflow-x:auto; margin-top:0.3rem;"><table>' +
+              '<thead><tr><th>Item</th><th>Qty</th><th>Status</th></tr></thead>' +
+              '<tbody>' + rows + '</tbody></table></div>';
+          list.appendChild(md);
+        }
         // Tasks sit in an indented rail so they read as belonging to the job above.
         const body = document.createElement("div");
         body.style.cssText = "margin:0 0 0.4rem 0.7rem; padding-left:0.7rem; border-left:2px solid var(--border);";
@@ -247,6 +321,7 @@ offline.</strong></p>
     pending = {};
     (data.pending_items || []).forEach(p => { pending[p.task_id] = p; });
     submissions = data.submissions || [];
+    materials = data.materials_by_job || {};
     // Server is the source of truth; re-apply any still-unsubmitted local edits.
     tasks = server.map(t => {
       const q = queue[t.id];
