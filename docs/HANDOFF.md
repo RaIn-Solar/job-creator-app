@@ -2,14 +2,23 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.0** (footer shows it plainly as "Version 22.0" — the "did my pull work?" check)
+**Current build:** **Piece 22.1** (footer shows it plainly as "Version 22.1" — the "did my pull work?" check)
 
-**Piece 22.0 — Work Bag truck load list.** `/api/my-tasks` now returns
+**Piece 22.1 — "Packing list" rename.** The Work Bag materials list is now
+labelled **📦 Packing list** (was "Load list") to avoid confusion with the
+electrical **Loads & Sizing** tool. Product note captured for later: the Loads &
+Sizing *tool* (`/jobs/<id>/loads`) is a Proposal-phase instrument — past the
+signed contract nobody else in the company needs to open it. The captured load
+*numbers* still surface read-only on the job (General tab + design), so any
+future access-gating should hide the loads editor post-contract WITHOUT hiding
+the saved survey figures. Not gated yet — recorded as intent.
+
+**Piece 22.0 — Work Bag packing list.** `/api/my-tasks` returns
 `materials_by_job` (item/quantity/unit/status for every job on the board); the
-Work Bag JS renders a collapsible **📦 Load list** under each job banner,
+Work Bag JS renders a collapsible **📦 Packing list** under each job banner,
 colour-coded by readiness via `matClass()` (Backordered→danger, Needed/Quoted→
 warn, On hand/Received→green). Cached in `localStorage` (LS_MATS) so it works
-offline. Lets installers load the truck before leaving.
+offline. Lets installers pack the truck before leaving.
 
 **Piece 21.9 — Work Bag field notes.** New `job_notes` table (job_id, note,
 author, `created_at` default `datetime('now')` — the same clock as

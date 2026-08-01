@@ -122,10 +122,11 @@ can confirm a pull/update took effect.
   that opens a phone-camera capture/upload page; the photos save to the job and
   **load back into the Work Bag** as thumbnails (and appear on the job record).
   Crews can remove their own shots.
-- **Truck load list**: each job in the Work Bag carries a collapsible **📦 Load
+- **Packing list**: each job in the Work Bag carries a collapsible **📦 Packing
   list** of its materials (item, qty, status) — colour-coded by readiness (on
-  hand / received vs. still-needed vs. backordered) — so installers can load the
-  truck before they leave.
+  hand / received vs. still-needed vs. backordered) — so installers can pack the
+  truck before they leave. (Named "Packing", not "Load", to keep it distinct
+  from the electrical **Loads & Sizing** tool.)
 - **Field notes**: a standard **📝 Job notes** box in the Work Bag lets crews jot
   free-form notes about a job (access details, on-site changes, callbacks). Each
   note is **individually timestamped** (the same clock as the audit log) with the
@@ -214,7 +215,7 @@ can confirm a pull/update took effect.
   auto-overtime); permits/warehouse tuning; **receipts/invoices/bills** tagging
   feeding the QuickBooks reports; **Foreman/Installation viewport** (installs
   bucketed by date) + a field-focused, job-grouped Work Bag with **on-site photo
-  capture** on photo steps, a **truck load list**, and **timestamped field
+  capture** on photo steps, a **packing list**, and **timestamped field
   notes**.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

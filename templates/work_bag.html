@@ -259,8 +259,9 @@ offline.</strong></p>
           '<span class="badge" style="white-space:nowrap; background:#fff; border-color:var(--brand); color:var(--brand-dark);">' +
             (first.install_date ? '🔧 install ' + esc(first.install_date) : 'install date TBD') + '</span>';
         list.appendChild(head);
-        // Truck load list: what materials this job needs, so the crew can load
-        // before leaving. Collapsible to stay out of the way once loaded.
+        // Packing list: what materials this job needs, so the crew can pack the
+        // truck before leaving. Named "Packing" (not "Load") to avoid confusion
+        // with the electrical Loads & Sizing tool. Collapsible once packed.
         const mats = materials[k] || materials[String(k)] || [];
         if (mats.length) {
           const md = document.createElement("details");
@@ -272,7 +273,7 @@ offline.</strong></p>
               '<td><span class="badge ' + matClass(m.status) + '">' + esc(m.status) + '</span></td></tr>';
           }).join("");
           md.innerHTML =
-            '<summary style="cursor:pointer; font-weight:600; font-size:0.9rem;">📦 Load list (' + mats.length + ')</summary>' +
+            '<summary style="cursor:pointer; font-weight:600; font-size:0.9rem;">📦 Packing list (' + mats.length + ')</summary>' +
             '<div style="overflow-x:auto; margin-top:0.3rem;"><table>' +
               '<thead><tr><th>Item</th><th>Qty</th><th>Status</th></tr></thead>' +
               '<tbody>' + rows + '</tbody></table></div>';
