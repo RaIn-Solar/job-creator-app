@@ -150,7 +150,12 @@ can confirm a pull/update took effect.
   actions), and My tasks. The **Installation** (Foreman) viewport lists installs
   **bucketed by date** — This week / Upcoming / In inspection · unscheduled —
   with the install date leading, and trims **My tasks** to on-site field work.
-  **Client Profiles** is its own header-nav button.
+  The **Executive** (GM) viewport opens with a **Company overview**: pipeline
+  counts by stage, money-in-flight tiles (contract / collected / outstanding /
+  expenses across active jobs), an attention row (approvals waiting, overdue
+  tasks, stalled jobs), this week's installs, and a **Closing worklist** (each
+  job's balance due and remaining close-out steps). **Client Profiles** is its
+  own header-nav button.
 - **Permissions**: the General Manager (identified by the GM role) has unfettered
   access and can grant individuals access to specific tools/functions **with an
   expiration date**. Admin tier sits below GM; granular grants everywhere else.

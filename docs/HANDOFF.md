@@ -2,7 +2,19 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.2** (footer shows it plainly as "Version 22.2" — the "did my pull work?" check)
+**Current build:** **Piece 22.3** (footer shows it plainly as "Version 22.3" — the "did my pull work?" check)
+
+**Piece 22.3 — Executive (GM) company overview (Screen 6).** The dashboard route
+builds a `gm` dict when `mode == "Executive"`: pipeline `counts` per stage
+(Proposal..Closing), `money` totals (contract/collected/outstanding/expense via
+`job_billing` over non-Lost jobs), `approvals` (pending field submissions),
+`overdue` task count (open tasks past due on active jobs), `stalled` jobs (active
+jobs whose newest `job_tasks.updated_at` is >14 days old — no-task jobs
+excluded), `installs_week` (install_date in the next 7 days), and a `closing`
+worklist (each Closing job's balance due = contract − collected, plus open/total
+close-out steps and the next one). `dashboard.html` renders a ⭐ **Company
+overview** card (tiles + tables) above the generic sections; the old standalone
+Manager approvals card is suppressed when `gm` is present (folded in).
 
 **Piece 22.2 — Loads & Sizing locks past Proposal.** Implements the 22.1 note.
 `_loads_locked(job)` = job status is in `STAGE_ORDER` beyond Proposal (Lost, off

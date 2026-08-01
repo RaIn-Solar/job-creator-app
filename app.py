@@ -775,7 +775,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 22.2"
+VERSION = "Piece 22.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2240,6 +2240,70 @@ def dashboard():
              "hint": "install date passed or not set yet", "jobs": _srt(other)},
         ]
 
+    # Piece 22.3: Executive (GM) overview — a whole-company snapshot: pipeline
+    # counts by stage, money in flight, what needs attention, this week's
+    # installs, and a Closing worklist (balance due + remaining closing steps).
+    show_exec = "Executive" in shown
+    gm = None
+    if show_exec:
+        today_s = datetime.now().date().strftime("%Y-%m-%d")
+        exec_stages = STAGE_ORDER[:-1]           # Proposal .. Closing
+        counts = {s: 0 for s in exec_stages}
+        money = {"contract": 0.0, "collected": 0.0,
+                 "outstanding": 0.0, "expense": 0.0}
+        for j in db.execute(
+                "SELECT id, status, contract_amount FROM jobs"
+                " WHERE status != 'Lost'").fetchall():
+            if j["status"] in counts:
+                counts[j["status"]] += 1
+            b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
+            for k in money:
+                money[k] += b[k]
+        overdue = db.execute(
+            "SELECT COUNT(*) FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+            " WHERE t.status != 'Done' AND t.due_date != '' AND t.due_date < ?"
+            " AND j.status NOT IN ('Lost', 'Complete')", (today_s,)).fetchone()[0]
+        # Stalled: active jobs whose newest task activity is over 14 days old
+        # (jobs that had movement and then went quiet; brand-new no-task jobs
+        # are excluded).
+        cutoff = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
+        stalled = db.execute(
+            "SELECT j.id, j.job_name, j.status, c.name AS client_name,"
+            " MAX(t.updated_at) AS last FROM jobs j"
+            " JOIN clients c ON c.id = j.client_id"
+            " JOIN job_tasks t ON t.job_id = j.id"
+            " WHERE j.status NOT IN ('Lost', 'Complete')"
+            " GROUP BY j.id HAVING last IS NOT NULL AND last < ?"
+            " ORDER BY last", (cutoff,)).fetchall()
+        wk_end = (datetime.now().date() + timedelta(days=7)).strftime("%Y-%m-%d")
+        installs_week = db.execute(
+            "SELECT j.id, j.job_name, j.status, j.install_date,"
+            " c.name AS client_name FROM jobs j JOIN clients c ON c.id = j.client_id"
+            " WHERE j.install_date != '' AND j.install_date BETWEEN ? AND ?"
+            " AND j.status != 'Lost' ORDER BY j.install_date",
+            (today_s, wk_end)).fetchall()
+        closing = []
+        for j in db.execute(
+                "SELECT j.*, c.name AS client_name FROM jobs j"
+                " JOIN clients c ON c.id = j.client_id"
+                " WHERE j.status = 'Closing' ORDER BY j.id").fetchall():
+            b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
+            steps = db.execute(
+                "SELECT title, status FROM job_tasks WHERE job_id = ?"
+                " AND pipeline_status = 'Closing' ORDER BY sort_order, id",
+                (j["id"],)).fetchall()
+            open_steps = [s for s in steps if s["status"] != "Done"]
+            closing.append({
+                "job": j, "balance": max(b["contract"] - b["collected"], 0.0),
+                "open": len(open_steps), "total": len(steps),
+                "next": open_steps[0]["title"] if open_steps else ""})
+        gm = {"counts": [(s, counts[s]) for s in exec_stages], "money": money,
+              "approvals": db.execute(
+                  "SELECT COUNT(*) FROM field_submissions"
+                  " WHERE status = 'Pending'").fetchone()[0],
+              "overdue": overdue, "stalled": stalled,
+              "installs_week": installs_week, "closing": closing}
+
     # Leads worklist (Piece 20.8): active leads (not yet converted) with their
     # next open follow-up, for the Sales viewport. Replaces the generic Client
     # Profiles list here — converted clients now live under Active Proposals.
@@ -2285,7 +2349,7 @@ def dashboard():
         progress_by_job=progress_by_job, loads_by_job=loads_by_job,
         permits_by_job=permits_by_job, show_procurement=show_procurement,
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
-        show_install=show_install, install_buckets=install_buckets,
+        show_install=show_install, install_buckets=install_buckets, gm=gm,
         job_status_class=JOB_STATUS_CLASS)
 
 
