@@ -775,7 +775,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 22.7"
+VERSION = "Piece 22.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3838,6 +3838,15 @@ def catalog_page():
         component_categories=COMPONENT_CATEGORIES, load_eras=LOAD_ERAS,
         load_usage_types=LOAD_USAGE_TYPES,
     )
+
+
+@app.route("/inventory")
+def inventory_page():
+    """Piece 22.8: placeholder for the inventory database. The seed inventory DB
+    is still being built; once it lands this becomes the module/component stock
+    list that will feed the designer → procurement auto-fill. Lives under the
+    Databases nav group alongside the catalog, rules, directory, and clients."""
+    return render_template("inventory.html")
 
 
 @app.route("/catalog/appliances/add", methods=["POST"])

@@ -156,8 +156,10 @@ can confirm a pull/update took effect.
   tasks, stalled jobs), a **Ready-for-design** queue (Proposal jobs whose load
   survey is captured but design isn't finalized — the Sales→Designer hand-off),
   this week's installs, and a **Closing worklist** (each job's balance due and
-  remaining close-out steps). Each sub-section sits in its own panel. **Client Profiles** is its
-  own header-nav button.
+  remaining close-out steps). Each sub-section sits in its own panel.
+- **Nav grouping**: the reference/data pages — **Client Profiles, Rules,
+  Directory, Inventory, Catalog** — are consolidated under a single **🗄
+  Databases** dropdown in the header to keep the top bar tidy.
 - **Permissions**: the General Manager (identified by the GM role) has unfettered
   access and can grant individuals access to specific tools/functions **with an
   expiration date**. Admin tier sits below GM; granular grants everywhere else.

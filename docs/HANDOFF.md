@@ -2,7 +2,16 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.7** (footer shows it plainly as "Version 22.7" — the "did my pull work?" check)
+**Current build:** **Piece 22.8** (footer shows it plainly as "Version 22.8" — the "did my pull work?" check)
+
+**Piece 22.8 — "Databases" nav dropdown + Inventory placeholder.** Header nav is
+tidied: Client Profiles, Rules, Directory, Inventory, and Catalog now live inside
+a single **🗄 Databases** dropdown (JS-free `<details class="navdrop">` +
+`.navdrop-menu` CSS in base.html). New `/inventory` route → `inventory.html`, a
+"coming soon" placeholder for the seed inventory DB (future designer →
+procurement auto-fill). The dropdown carries the `margin-left:auto` in open mode
+(previously on the Directory link). Employees/Tasks/Work Bag/Payroll/Approvals/
+Log/Trash/Access stay as top-level links.
 
 **Piece 22.7 — bolder headings on the installs & Closing panels.** "This week's
 installs" and "Closing" get a heavier title (font-weight 800, 1.1rem) and a

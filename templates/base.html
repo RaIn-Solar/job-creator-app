@@ -31,6 +31,26 @@
     }
     header a { color: white; text-decoration: none; font-weight: 600; font-size: 1.15rem; }
     header .sub { font-size: 0.85rem; opacity: 0.85; }
+    /* Grouped nav dropdown (e.g. "Databases"), JS-free via <details>. */
+    .navdrop { position: relative; }
+    .navdrop > summary {
+      color: white; cursor: pointer; font-size: 0.9rem; font-weight: 500;
+      list-style: none; user-select: none; white-space: nowrap;
+    }
+    .navdrop > summary::-webkit-details-marker { display: none; }
+    .navdrop > summary::after { content: " ▾"; opacity: 0.85; font-size: 0.75rem; }
+    .navdrop[open] > summary::after { content: " ▴"; }
+    .navdrop-menu {
+      position: absolute; top: calc(100% + 0.55rem); left: 0; z-index: 60;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.18); min-width: 190px; padding: 0.3rem;
+      display: flex; flex-direction: column; gap: 0.1rem;
+    }
+    .navdrop-menu a {
+      color: #1f2937 !important; font-size: 0.9rem; font-weight: 500;
+      padding: 0.45rem 0.6rem; border-radius: 6px; white-space: nowrap;
+    }
+    .navdrop-menu a:hover { background: var(--bg); }
     main { max-width: 960px; margin: 1.5rem auto; padding: 0 1rem; }
     h1 { font-size: 1.4rem; margin: 0 0 1rem; }
     .card {
@@ -288,11 +308,17 @@
     <a href="/">☀️ Solbiz</a>
     <span class="sub">ECC Solar internal tool</span>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
-    {% if current_user %}<a href="/" style="font-size:0.9rem; font-weight:500;">🗂 Client Profiles</a>{% endif %}
     {% if current_user or not login_active %}
-    <a href="/directory" style="{% if not current_user %}margin-left:auto; {% endif %}font-size:0.9rem; font-weight:500;">📖 Directory</a>
-    <a href="/catalog" style="font-size:0.9rem; font-weight:500;">🔌 Catalog</a>
-    <a href="/rules" style="font-size:0.9rem; font-weight:500;">⚙️ Rules</a>
+    <details class="navdrop"{% if not current_user %} style="margin-left:auto;"{% endif %}>
+      <summary>🗄 Databases</summary>
+      <div class="navdrop-menu">
+        <a href="/">🗂 Client Profiles</a>
+        <a href="/rules">⚙️ Rules</a>
+        <a href="/directory">📖 Directory</a>
+        <a href="/inventory">📦 Inventory</a>
+        <a href="/catalog">🔌 Catalog</a>
+      </div>
+    </details>
     <a href="/employees" style="font-size:0.9rem; font-weight:500;">👥 Employees</a>
     <a href="/tasks" style="font-size:0.9rem; font-weight:500;">✅ Tasks</a>
     <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
