@@ -333,9 +333,26 @@
     <a href="/tasks" style="font-size:0.9rem; font-weight:500;">✅ Tasks</a>
     <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
     {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
-    {% if can('audit.view') %}<a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>{% endif %}
-    {% if can('delete') %}<a href="/trash" style="font-size:0.9rem; font-weight:500;">🗑 Trash</a>{% endif %}
-    {% if is_gm %}<a href="/access" style="font-size:0.9rem; font-weight:500;">🔐 Access</a>{% endif %}
+    {# Admin group: Log / Trash / Access. Dropdown when the user can reach 2+;
+       a single reachable item stays a plain link (no one-item menu). #}
+    {% set adm_log = can('audit.view') %}
+    {% set adm_trash = can('delete') %}
+    {% set adm_access = is_gm %}
+    {% set adm_count = (adm_log|int) + (adm_trash|int) + (adm_access|int) %}
+    {% if adm_count > 1 %}
+    <details class="navdrop">
+      <summary>🔧 Admin</summary>
+      <div class="navdrop-menu">
+        {% if adm_log %}<a href="/audit">🧾 Log</a>{% endif %}
+        {% if adm_trash %}<a href="/trash">🗑 Trash</a>{% endif %}
+        {% if adm_access %}<a href="/access">🔐 Access</a>{% endif %}
+      </div>
+    </details>
+    {% elif adm_count == 1 %}
+    {% if adm_log %}<a href="/audit" style="font-size:0.9rem; font-weight:500;">🧾 Log</a>{% endif %}
+    {% if adm_trash %}<a href="/trash" style="font-size:0.9rem; font-weight:500;">🗑 Trash</a>{% endif %}
+    {% if adm_access %}<a href="/access" style="font-size:0.9rem; font-weight:500;">🔐 Access</a>{% endif %}
+    {% endif %}
     {% endif %}
     {% if login_active and current_user %}
     <a href="{{ url_for('account') }}" style="font-size:0.85rem; opacity:0.95; font-weight:500;"
