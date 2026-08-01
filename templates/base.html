@@ -309,16 +309,10 @@
     <span class="sub">ECC Solar internal tool</span>
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
     {% if current_user or not login_active %}
-    <details class="navdrop"{% if not current_user %} style="margin-left:auto;"{% endif %}>
-      <summary>🗄 Databases</summary>
-      <div class="navdrop-menu">
-        <a href="/">🗂 Client Profiles</a>
-        <a href="/rules">⚙️ Rules</a>
-        <a href="/directory">📖 Directory</a>
-        <a href="/inventory">📦 Inventory</a>
-        <a href="/catalog">🔌 Catalog</a>
-      </div>
-    </details>
+    {# Order (left→right): Tasks · Work Bag · Approvals · Team · Databases · Admin #}
+    <a href="/tasks" style="{% if not current_user %}margin-left:auto; {% endif %}font-size:0.9rem; font-weight:500;">✅ Tasks</a>
+    <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
+    {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
     {% if can_payroll %}
     <details class="navdrop">
       <summary>👥 Team</summary>
@@ -330,9 +324,16 @@
     {% else %}
     <a href="/employees" style="font-size:0.9rem; font-weight:500;">👥 Employees</a>
     {% endif %}
-    <a href="/tasks" style="font-size:0.9rem; font-weight:500;">✅ Tasks</a>
-    <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
-    {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
+    <details class="navdrop">
+      <summary>🗄 Databases</summary>
+      <div class="navdrop-menu">
+        <a href="/">🗂 Client Profiles</a>
+        <a href="/rules">⚙️ Rules</a>
+        <a href="/directory">📖 Directory</a>
+        <a href="/inventory">📦 Inventory</a>
+        <a href="/catalog">🔌 Catalog</a>
+      </div>
+    </details>
     {# Admin group: Log / Trash / Access. Dropdown when the user can reach 2+;
        a single reachable item stays a plain link (no one-item menu). #}
     {% set adm_log = can('audit.view') %}
@@ -355,12 +356,14 @@
     {% endif %}
     {% endif %}
     {% if login_active and current_user %}
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.2rem; line-height:1.1;">
     <a href="{{ url_for('account') }}" style="font-size:0.85rem; opacity:0.95; font-weight:500;"
        title="My account">
       {{ current_user["name"] }}{% if current_user["access_level"] == "Admin" %} · admin{% endif %}</a>
     <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
       <button type="submit" style="background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4); border-radius:6px; padding:0.3rem 0.6rem; font:inherit; font-size:0.8rem; cursor:pointer;">Log out</button>
     </form>
+    </div>
     {% endif %}
   </header>
   <main>

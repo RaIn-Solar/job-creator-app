@@ -2,7 +2,14 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.0** (footer shows it plainly as "Version 23.0" — the "did my pull work?" check)
+**Current build:** **Piece 23.1** (footer shows it plainly as "Version 23.1" — the "did my pull work?" check)
+
+**Piece 23.1 — nav order + stacked account.** Header order is now (left→right)
+My Dashboard · Tasks · Work Bag · Approvals · Team · Databases · Admin. The
+`margin-left:auto` that right-aligns the cluster rides on My Dashboard when
+signed in, else on the first block item (Tasks) in open mode. The account name +
+Log out button are wrapped in a flex-column div so they stack vertically at the
+far right.
 
 **Piece 23.0 — "Admin" nav dropdown (Log / Trash / Access).** The three
 admin-gated links now group under a **🔧 Admin** `navdrop`. Each has its own
