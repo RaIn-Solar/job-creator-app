@@ -2,7 +2,21 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.4** (footer shows it plainly as "Version 21.4" — the "did my pull work?" check)
+**Current build:** **Piece 21.5** (footer shows it plainly as "Version 21.5" — the "did my pull work?" check)
+
+**Piece 21.5 — Receipts / invoices / bills.** New `doc_type` column on
+`job_transactions` (`DOC_TYPES = ["Receipt", "Invoice", "Bill"]`; schema.sql
+CREATE + `ensure_columns` upgrade for existing DBs; blank = plain ledger note).
+`add_transaction` captures & validates it. Billing tab (`job_detail.html`) gains
+a **Document** selector on the add form — picking one nudges Type/Status via
+`txnDoc()` JS defaults (Invoice→Income/Outstanding, Bill→Expense/Outstanding,
+Receipt→Expense/Paid, all still editable), a **Doc** column in the ledger table,
+and a **paperwork-on-file** tally (`billing["docs"]` = per-type count+amount from
+`job_billing`). `quickbooks_export` adds a **Document** column and an optional
+`?doc=Receipt|Invoice|Bill` filter (validated; filename suffixed, e.g.
+`solbiz_quickbooks_bills.csv`); the Finance dashboard Payments section links the
+three per-document exports beside the full export. Rationale: QuickBooks imports
+invoices (A/R), bills (A/P) and receipts through separate flows.
 
 **Piece 21.4 — Permits/Warehouse viewport.** Permits dashboard jobs table gains a
 **Permits X/Y** column (`permits_by_job` from `job_permit_coverage`, shown when

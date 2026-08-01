@@ -453,6 +453,7 @@ CREATE TABLE IF NOT EXISTS job_transactions (
     party       TEXT DEFAULT '',                      -- customer (income) or vendor (expense)
     reference   TEXT DEFAULT '',                      -- invoice / check / PO number
     method      TEXT DEFAULT '',                      -- Cash / Check / Card / ACH / Financing
+    doc_type    TEXT DEFAULT '',                      -- Piece 21.5: Receipt / Invoice / Bill (source paperwork)
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     created_by  TEXT DEFAULT ''
 );

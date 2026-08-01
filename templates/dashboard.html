@@ -20,9 +20,16 @@
 {% if show_payments %}
 <details class="card sect" open>
   <summary>💵 Payments <span class="sect-count">{{ payments|length }} job{{ "s" if payments|length != 1 }}</span></summary>
-  <p style="margin:0 0 0.5rem;">
+  <p style="margin:0 0 0.5rem; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
     <a href="{{ url_for('quickbooks_export') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;"
        title="Download all transactions as a QuickBooks-importable CSV">⬇ Export to QuickBooks (CSV)</a>
+    <span class="muted" style="font-size:0.82rem;">or by document:</span>
+    <a href="{{ url_for('quickbooks_export', doc='Receipt') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
+       title="Only receipts">🧾 Receipts</a>
+    <a href="{{ url_for('quickbooks_export', doc='Invoice') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
+       title="Only invoices (A/R)">📄 Invoices</a>
+    <a href="{{ url_for('quickbooks_export', doc='Bill') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
+       title="Only bills (A/P)">📑 Bills</a>
   </p>
   {% if payments %}
   <div style="overflow-x:auto;">

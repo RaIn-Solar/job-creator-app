@@ -495,15 +495,24 @@
     <div class="field"><label>Net (collected − expenses paid)</label><div style="font-weight:700; font-size:1.05rem;">${{ "%.2f"|format(billing.net) }}</div></div>
   </div>
 
+  <p style="margin:0 0 0.8rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+    <span class="muted" style="font-size:0.85rem;">Paperwork on file:</span>
+    {% for dt in doc_types %}
+    <span class="badge neutral" title="{{ billing.docs[dt].count }} {{ dt|lower }}(s), ${{ '%.2f'|format(billing.docs[dt].amount) }}">
+      {{ dt }}s: {{ billing.docs[dt].count }} · ${{ "%.0f"|format(billing.docs[dt].amount) }}</span>
+    {% endfor %}
+  </p>
+
   {% if billing.txns %}
   <div style="overflow-x:auto;">
   <table>
-    <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Party</th><th>Description</th><th style="text-align:right;">Amount</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Type</th><th>Doc</th><th>Category</th><th>Party</th><th>Description</th><th style="text-align:right;">Amount</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for t in billing.txns %}
       <tr>
         <td class="muted">{{ t["txn_date"] or "—" }}</td>
         <td><span class="badge {{ '' if t['kind'] == 'Income' else 'danger' }}">{{ t["kind"] }}</span></td>
+        <td>{% set dt = t["doc_type"] if "doc_type" in t.keys() else "" %}{% if dt %}<span class="badge neutral">{{ dt }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{{ t["category"] or "—" }}</td>
         <td class="muted">{{ t["party"] or "—" }}{% if t["reference"] %}<br><span style="font-size:0.78rem;">#{{ t["reference"] }}</span>{% endif %}</td>
         <td>{{ t["description"] or "—" }}</td>
@@ -531,6 +540,13 @@
 
   <form method="post" action="{{ url_for('add_transaction', job_id=job['id']) }}" style="margin-top:0.9rem;">
     <div class="form-grid">
+      <div class="field">
+        <label>Document</label>
+        <select name="doc_type" id="txn_doc" onchange="txnDoc()">
+          <option value="">— none —</option>
+          {% for d in doc_types %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+        </select>
+      </div>
       <div class="field">
         <label>Type *</label>
         <select name="kind" id="txn_kind" onchange="txnCats()">
@@ -570,6 +586,25 @@
     sel.innerHTML = "";
     cats.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); });
     document.getElementById("party_label").textContent = kind === "Income" ? "Customer" : "Vendor";
+  }
+  // Picking a source document nudges Type/Status to the usual accounting flow:
+  //   Invoice → Income, Outstanding (we billed a customer)
+  //   Bill    → Expense, Outstanding (a vendor billed us)
+  //   Receipt → Expense, Paid (proof of a payment already made)
+  // All still hand-editable afterward.
+  const DOC_DEFAULTS = {
+    "Invoice": {kind: "Income",  status: "Outstanding"},
+    "Bill":    {kind: "Expense", status: "Outstanding"},
+    "Receipt": {kind: "Expense", status: "Paid"},
+  };
+  function txnDoc() {
+    const d = DOC_DEFAULTS[document.getElementById("txn_doc").value];
+    if (d) {
+      document.getElementById("txn_kind").value = d.kind;
+      const s = document.querySelector('select[name="status"]');
+      if (s) s.value = d.status;
+      txnCats();
+    }
   }
   txnCats();
 </script>

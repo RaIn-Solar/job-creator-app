@@ -144,11 +144,21 @@ can confirm a pull/update took effect.
   every **income** (deposits, invoices, rebates) and **expense** (materials,
   permits, labor, subs) with a dollar amount, date, category, party, reference,
   method, and paid/outstanding status.
+- **Receipts, invoices & bills**: each ledger entry can be tagged with the
+  **source document** behind it — **Receipt** (proof of a payment made),
+  **Invoice** (money billed to a customer, A/R), or **Bill** (money a vendor
+  billed us, A/P). Picking one auto-sets the usual accounting flow (Invoice →
+  Income/Outstanding, Bill → Expense/Outstanding, Receipt → Expense/Paid, all
+  still editable). The Billing tab shows a **paperwork-on-file** tally (count +
+  total for each type).
 - **Payments table** on the Finance dashboard: every active job with Contract /
   Collected / Outstanding / Expenses / Net and a grand-total row.
 - **QuickBooks export**: one-click CSV of all transactions
   (`/finance/quickbooks.csv`) whose first three columns (Date, Description,
-  Amount, signed) map straight onto QuickBooks Online's import.
+  Amount, signed) map straight onto QuickBooks Online's import; a **Document**
+  column carries the Receipt/Invoice/Bill tag. Because QuickBooks imports
+  invoices (A/R), bills (A/P) and receipts through separate flows, the Finance
+  dashboard also offers **per-document exports** (`?doc=Receipt|Invoice|Bill`).
 - **Payroll**: employees **log their own hours** from the 🎒 Work Bag (by date,
   job, and **pay type**); supervisors **review and approve** them on the Payroll
   page before they count. The pay schema is configurable — each pay type is a
@@ -179,5 +189,9 @@ can confirm a pull/update took effect.
   case-insensitive usernames; first/last/nickname; employee offboarding.
 - **Piece 20** — calendar (.ics) export; default 7-day task deadlines with a
   completion cascade; per-job pipeline progress widget.
+- **Piece 21** — Finance viewport: per-job billing ledger, Payments dashboard,
+  QuickBooks CSV; payroll (self-logged hours, approvals, configurable pay types,
+  auto-overtime); permits/warehouse tuning; **receipts/invoices/bills** tagging
+  feeding the QuickBooks reports.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

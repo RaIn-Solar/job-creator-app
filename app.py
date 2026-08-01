@@ -320,6 +320,14 @@ EXPENSE_CATEGORIES = [
 ]
 PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
 
+# Piece 21.5: source-document type for a ledger entry, so scanned/received
+# paperwork feeds the QuickBooks reports under the right account flow:
+#   Invoice — money we bill a customer (A/R, Income)
+#   Bill    — money a vendor bills us (A/P, Expense)
+#   Receipt — proof of a payment already made (an expense paid at the counter)
+# A blank doc type is a plain ledger note with no paperwork behind it.
+DOC_TYPES = ["Receipt", "Invoice", "Bill"]
+
 # Piece 21.2: payroll pay-type calculation. A type is either a "multiplier" on
 # the employee's base wage (so it's per-employee automatically) or a "flat"
 # $/hr. Seeded once; fully editable, and each employee can override any type's
@@ -767,7 +775,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.4"
+VERSION = "Piece 21.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1663,6 +1671,8 @@ def init_db():
     ensure_columns(db, "jobs", JOB_FIELDS + ["status", "install_date"])
     # Piece 21: contract total for the Finance viewport (dollar amounts).
     ensure_columns(db, "jobs", ["contract_amount"])
+    # Piece 21.5: source-document type (Receipt / Invoice / Bill) on ledger rows.
+    ensure_columns(db, "job_transactions", ["doc_type"])
     # Piece 16: migrate Piece 12.1 statuses to the new phases, and default blanks.
     for old, new in OLD_TO_NEW_STATUS.items():
         db.execute("UPDATE jobs SET status = ? WHERE status = ?", (new, old))
@@ -2924,7 +2934,7 @@ def job_detail(job_id):
         files_by_label=files_by_label, other_files=other_files,
         billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
         income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
-        payment_methods=PAYMENT_METHODS,
+        payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
     )
 
 
@@ -2946,23 +2956,25 @@ def add_transaction(job_id):
     kind = kind if kind in TXN_KINDS else "Expense"
     status = request.form.get("status", "Outstanding")
     status = status if status in TXN_STATUSES else "Outstanding"
+    doc_type = request.form.get("doc_type", "").strip()
+    doc_type = doc_type if doc_type in DOC_TYPES else ""
     who = current_user()
     db = get_db()
     db.execute(
         "INSERT INTO job_transactions"
         " (job_id, kind, category, description, amount, txn_date, status,"
-        "  party, reference, method, created_by)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "  party, reference, method, doc_type, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (job_id, kind, request.form.get("category", "").strip(),
          request.form.get("description", "").strip(),
          _to_float(request.form.get("amount")) or 0.0,
          request.form.get("txn_date", "").strip(), status,
          request.form.get("party", "").strip(),
          request.form.get("reference", "").strip(),
-         request.form.get("method", "").strip(),
+         request.form.get("method", "").strip(), doc_type,
          who["name"] if who else ""))
     db.commit()
-    flash(f"{kind} recorded.")
+    flash(f"{doc_type or kind} recorded.")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
 
 
@@ -2992,29 +3004,40 @@ def delete_transaction(job_id, txn_id):
 def quickbooks_export():
     """Export every job transaction as a QuickBooks-importable CSV. The first
     three columns (Date, Description, Amount) map directly onto QuickBooks
-    Online's bank/transaction import; the remaining columns carry the detail."""
+    Online's bank/transaction import; the remaining columns carry the detail.
+    Pass ?doc=Invoice|Bill|Receipt to export only that paperwork type — handy
+    because QuickBooks imports invoices (A/R), bills (A/P) and receipts through
+    separate flows."""
     import csv
     import io
     db = get_db()
-    rows = db.execute(
-        "SELECT t.*, j.job_name, j.id AS jid, c.name AS client_name"
-        " FROM job_transactions t JOIN jobs j ON j.id = t.job_id"
-        " JOIN clients c ON c.id = j.client_id"
-        " ORDER BY t.txn_date, t.id").fetchall()
+    doc_filter = request.args.get("doc", "").strip()
+    doc_filter = doc_filter if doc_filter in DOC_TYPES else ""
+    sql = ("SELECT t.*, j.job_name, j.id AS jid, c.name AS client_name"
+           " FROM job_transactions t JOIN jobs j ON j.id = t.job_id"
+           " JOIN clients c ON c.id = j.client_id")
+    params = ()
+    if doc_filter:
+        sql += " WHERE t.doc_type = ?"
+        params = (doc_filter,)
+    sql += " ORDER BY t.txn_date, t.id"
+    rows = db.execute(sql, params).fetchall()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Date", "Description", "Amount", "Type", "Customer", "Job",
-                "Category", "Status", "Reference", "Method"])
+    w.writerow(["Date", "Description", "Amount", "Type", "Document", "Customer",
+                "Job", "Category", "Status", "Reference", "Method"])
     for r in rows:
         job_label = r["job_name"] or f"Job #{r['jid']}"
         signed = (r["amount"] or 0.0) if r["kind"] == "Income" else -(r["amount"] or 0.0)
+        doc_type = r["doc_type"] if "doc_type" in r.keys() else ""
         desc = " · ".join(p for p in (r["client_name"], job_label,
                                       r["category"], r["description"]) if p)
-        w.writerow([r["txn_date"], desc, f"{signed:.2f}", r["kind"],
+        w.writerow([r["txn_date"], desc, f"{signed:.2f}", r["kind"], doc_type,
                     r["client_name"], job_label, r["category"], r["status"],
                     r["reference"], r["method"]])
+    suffix = f"_{doc_filter.lower()}s" if doc_filter else ""
     return Response(buf.getvalue(), mimetype="text/csv", headers={
-        "Content-Disposition": "attachment; filename=solbiz_quickbooks.csv"})
+        "Content-Disposition": f"attachment; filename=solbiz_quickbooks{suffix}.csv"})
 
 
 def _pay_period():
@@ -4027,6 +4050,12 @@ def job_billing(db, job_id, contract_amount=0.0):
     # contract_amount is stored with TEXT affinity (added via ensure_columns),
     # so coerce it to a number before any arithmetic.
     contract = _to_float(contract_amount) or 0.0
+    # Piece 21.5: roll up the source paperwork (Receipt / Invoice / Bill) so the
+    # Billing tab can show how many of each are on file and their totals.
+    def _doc(dt):
+        rows = [t for t in txns if (t["doc_type"] if "doc_type" in t.keys() else "") == dt]
+        return {"count": len(rows), "amount": sum(t["amount"] or 0 for t in rows)}
+    docs = {dt: _doc(dt) for dt in DOC_TYPES}
     return {
         "txns": txns, "contract": contract,
         "collected": collected, "outstanding": outstanding,
@@ -4036,6 +4065,7 @@ def job_billing(db, job_id, contract_amount=0.0):
         "expense_out": expense - expense_paid,
         "net": collected - expense_paid,          # cash in hand vs. cash out
         "net_accrual": (collected + outstanding) - expense,
+        "docs": docs,
     }
 
 
