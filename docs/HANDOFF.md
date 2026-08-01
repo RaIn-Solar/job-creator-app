@@ -2,7 +2,15 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.3** (footer shows it plainly as "Version 22.3" — the "did my pull work?" check)
+**Current build:** **Piece 22.4** (footer shows it plainly as "Version 22.4" — the "did my pull work?" check)
+
+**Piece 22.4 — drop the Executive flat job list.** The generic "jobs in your
+stages" section is now skipped on the Executive viewport
+(`{% if s.stages and not (gm and s.name == "Executive") %}` in dashboard.html) —
+it listed every active job and was redundant with the Company overview's
+pipeline counts, this-week installs, and Closing worklist. Other viewports are
+unchanged. (It was never an install-date window, despite the reading — it showed
+all active jobs in Proposal..Closing.)
 
 **Piece 22.3 — Executive (GM) company overview (Screen 6).** The dashboard route
 builds a `gm` dict when `mode == "Executive"`: pipeline `counts` per stage

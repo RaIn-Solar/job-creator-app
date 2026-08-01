@@ -213,9 +213,11 @@
 {% endif %}
 
 {# ---- Jobs in your stages (per department). A Proposal-only section reads as
-       "Active Proposals". Columns: Progress · Client · Job · Install date. ---- #}
+       "Active Proposals". Columns: Progress · Client · Job · Install date.
+       The Executive viewport skips this flat list — its Company overview above
+       already covers the pipeline, this week's installs, and Closing. ---- #}
 {% for s in sections %}
-{% if s.stages %}
+{% if s.stages and not (gm and s.name == "Executive") %}
 {% set proposals = s.stages == ["Proposal"] %}
 {% set is_permits = s.name == "Permits" %}
 {% set is_install = show_install and s.name == "Installation" %}
