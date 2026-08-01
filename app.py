@@ -775,7 +775,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 22.5"
+VERSION = "Piece 22.6"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2297,11 +2297,27 @@ def dashboard():
                 "job": j, "balance": max(b["contract"] - b["collected"], 0.0),
                 "open": len(open_steps), "total": len(steps),
                 "next": open_steps[0]["title"] if open_steps else ""})
+        # Ready for design: Proposal jobs whose load survey is captured (the
+        # step before design) but whose design isn't finalized yet — the
+        # Sales → Designer hand-off queue.
+        ready_design = []
+        for j in db.execute(
+                "SELECT j.id, j.job_name, j.electric_loads, c.name AS client_name"
+                " FROM jobs j JOIN clients c ON c.id = j.client_id"
+                " WHERE j.status = 'Proposal' ORDER BY j.id").fetchall():
+            if not _loads_recorded(db, j):
+                continue
+            designed = db.execute(
+                "SELECT 1 FROM job_tasks WHERE job_id = ?"
+                " AND LOWER(title) LIKE '%finalize%design%' AND status = 'Done'"
+                " LIMIT 1", (j["id"],)).fetchone()
+            if not designed:
+                ready_design.append(j)
         gm = {"counts": [(s, counts[s]) for s in exec_stages], "money": money,
               "approvals": db.execute(
                   "SELECT COUNT(*) FROM field_submissions"
                   " WHERE status = 'Pending'").fetchone()[0],
-              "overdue": overdue, "stalled": stalled,
+              "overdue": overdue, "stalled": stalled, "ready_design": ready_design,
               "installs_week": installs_week, "closing": closing}
 
     # Leads worklist (Piece 20.8): active leads (not yet converted) with their

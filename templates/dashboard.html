@@ -84,6 +84,30 @@
     {% endif %}
   </section>
 
+  {# Ready for design — Proposal jobs whose loads are in, awaiting design #}
+  <section style="{{ panel }}">
+    <div style="{{ panelh }}">📐 Ready for design <span class="muted" style="font-weight:400; font-size:0.8rem;">— loads captured, awaiting design</span></div>
+    {% if gm.ready_design %}
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Job</th><th>Client</th><th>Loads</th><th></th></tr></thead>
+      <tbody>
+        {% for j in gm.ready_design %}
+        <tr>
+          <td><a href="{{ url_for('job_detail', job_id=j['id']) }}">{{ j["job_name"] or "Job #" ~ j["id"] }}</a></td>
+          <td class="muted" style="font-size:0.82rem;">{{ j["client_name"] }}</td>
+          <td><span class="badge">✅ on file</span></td>
+          <td><a href="{{ url_for('job_loads', job_id=j['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.6rem; font-size:0.8rem;">Loads &amp; Sizing →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty" style="margin:0;">No jobs waiting on design right now.</p>
+    {% endif %}
+  </section>
+
   {# This week's installs #}
   <section style="{{ panel }}">
     <div style="{{ panelh }}">🔨 This week's installs <span class="muted" style="font-weight:400; font-size:0.8rem;">— next 7 days</span></div>

@@ -2,7 +2,13 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 22.5** (footer shows it plainly as "Version 22.5" — the "did my pull work?" check)
+**Current build:** **Piece 22.6** (footer shows it plainly as "Version 22.6" — the "did my pull work?" check)
+
+**Piece 22.6 — "Ready for design" panel.** New Company-overview panel (under
+Needs attention) listing the Sales→Designer hand-off queue: `gm["ready_design"]`
+= Proposal jobs where `_loads_recorded()` is true (load survey captured — the
+step before design) AND no Done task matching `LIKE '%finalize%design%'` (design
+not finalized). Each row links to the job and to its Loads & Sizing page.
 
 **Piece 22.5 — separate the Company-overview sub-sections.** Each of the five
 sub-sections (Pipeline, Money in flight, Needs attention, This week's installs,
