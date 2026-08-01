@@ -775,13 +775,23 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 21.6"
+VERSION = "Piece 21.7"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
     "pdf", "png", "jpg", "jpeg", "heic", "gif", "doc", "docx", "xls", "xlsx",
     "csv", "txt", "kmz", "kml", "zip", "bpmn",
 }
+# Piece 21.7: field crews snap job photos from the Work Bag. Photos are stored
+# as job_files tagged with FIELD_PHOTO_LABEL and the originating task, and any
+# task whose title mentions photos/pictures grows a camera button.
+PHOTO_EXTENSIONS = {"png", "jpg", "jpeg", "heic", "gif"}
+FIELD_PHOTO_LABEL = "Field Photo"
+
+
+def _is_photo_step(title):
+    t = (title or "").lower()
+    return "photo" in t or "picture" in t
 MATERIAL_STATUSES = ["Needed", "Quoted", "Ordered", "Backordered",
                      "Received", "On hand", "Installed"]
 # Piece 12: categories for client-level documents (distinct from a job's
@@ -1677,6 +1687,8 @@ def init_db():
     ensure_columns(db, "jobs", ["contract_amount"])
     # Piece 21.5: source-document type (Receipt / Invoice / Bill) on ledger rows.
     ensure_columns(db, "job_transactions", ["doc_type"])
+    # Piece 21.7: tie crew-captured field photos back to the task they document.
+    ensure_columns(db, "job_files", ["task_id"])
     # Piece 16: migrate Piece 12.1 statuses to the new phases, and default blanks.
     for old, new in OLD_TO_NEW_STATUS.items():
         db.execute("UPDATE jobs SET status = ? WHERE status = ?", (new, old))
@@ -4551,10 +4563,30 @@ def api_my_tasks():
         "SELECT id, work_date, reported_hours, approved_hours, status, submitted_at,"
         " reviewed_at FROM field_submissions WHERE employee_id = ?"
         " ORDER BY id DESC LIMIT 8", (user["id"],)).fetchall()
+    # Piece 21.7: attach any field photos already on file for photo-steps, plus
+    # the link to each photo step's capture page.
+    photo_task_ids = [r["id"] for r in rows if _is_photo_step(r["title"])]
+    photos_by_task = {}
+    if photo_task_ids:
+        ph = ", ".join("?" * len(photo_task_ids))
+        for f in db.execute(
+                f"SELECT id, job_id, task_id FROM job_files WHERE rule_label = ?"
+                f" AND task_id IN ({ph}) ORDER BY id DESC",
+                (FIELD_PHOTO_LABEL, *[str(t) for t in photo_task_ids])).fetchall():
+            photos_by_task.setdefault(str(f["task_id"]), []).append(
+                {"id": f["id"],
+                 "url": url_for("view_file", job_id=f["job_id"], file_id=f["id"])})
+    tasks_out = []
+    for r in rows:
+        d = dict(r)
+        d["is_photo_step"] = _is_photo_step(r["title"])
+        d["photos_url"] = url_for("task_photos", task_id=r["id"])
+        d["photos"] = photos_by_task.get(str(r["id"]), [])
+        tasks_out.append(d)
     return jsonify({
         "server_time": datetime.now().isoformat(timespec="seconds"),
         "user": user["name"],
-        "tasks": [dict(r) for r in rows],
+        "tasks": tasks_out,
         "pending_items": [dict(r) for r in pend],
         "submissions": [dict(r) for r in subs],
     })
@@ -4733,6 +4765,82 @@ def delete_file(job_id, file_id):
     ok, msg = trash_item("job_file", file_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
+
+
+@app.route("/jobs/<int:job_id>/files/<int:file_id>/view")
+def view_file(job_id, file_id):
+    """Serve a stored file inline (not as an attachment) — used for photo
+    thumbnails and lightbox previews."""
+    record = get_db().execute(
+        "SELECT * FROM job_files WHERE id = ? AND job_id = ?",
+        (file_id, job_id)).fetchone()
+    if record is None:
+        abort(404)
+    return send_from_directory(
+        job_upload_dir(job_id), record["stored_name"], as_attachment=False,
+        download_name=record["original_name"])
+
+
+@app.route("/work-bag/tasks/<int:task_id>/photos", methods=["GET", "POST"])
+def task_photos(task_id):
+    """Piece 21.7: the Work Bag's photo page for a single task — take/upload
+    job photos from a phone and see the ones already on file. Photos are stored
+    as job_files (tagged FIELD_PHOTO_LABEL + this task) so they also surface on
+    the job record."""
+    db = get_db()
+    task = db.execute(
+        "SELECT t.id, t.title, j.id AS job_id, j.job_name, j.install_date,"
+        " c.name AS client_name FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+        " JOIN clients c ON c.id = j.client_id WHERE t.id = ?", (task_id,)).fetchone()
+    if task is None:
+        abort(404)
+    job_id = task["job_id"]
+    if request.method == "POST":
+        saved = 0
+        for up in request.files.getlist("photos"):
+            if not up or not up.filename:
+                continue
+            ext = up.filename.rsplit(".", 1)[-1].lower() if "." in up.filename else ""
+            if ext not in PHOTO_EXTENSIONS:
+                continue
+            original = up.filename
+            stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
+            up.save(job_upload_dir(job_id) / stored)
+            db.execute(
+                "INSERT INTO job_files"
+                " (job_id, rule_label, stored_name, original_name, task_id)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (job_id, FIELD_PHOTO_LABEL, stored, original, str(task_id)))
+            saved += 1
+        db.commit()
+        flash(f"Added {saved} photo(s)." if saved
+              else "No photos added — choose image files.", "" if saved else "error")
+        return redirect(url_for("task_photos", task_id=task_id))
+    photos = db.execute(
+        "SELECT * FROM job_files WHERE job_id = ? AND rule_label = ? AND task_id = ?"
+        " ORDER BY id DESC", (job_id, FIELD_PHOTO_LABEL, str(task_id))).fetchall()
+    return render_template("work_bag_photos.html", task=task, photos=photos)
+
+
+@app.route("/work-bag/photos/<int:file_id>/delete", methods=["POST"])
+def delete_task_photo(file_id):
+    """Remove a field photo the crew took (scoped to FIELD_PHOTO_LABEL, so this
+    can't touch requirement documents — those stay GM-only via delete_file)."""
+    db = get_db()
+    rec = db.execute("SELECT * FROM job_files WHERE id = ? AND rule_label = ?",
+                     (file_id, FIELD_PHOTO_LABEL)).fetchone()
+    if rec is None:
+        abort(404)
+    try:
+        (job_upload_dir(rec["job_id"]) / rec["stored_name"]).unlink()
+    except OSError:
+        pass
+    db.execute("DELETE FROM job_files WHERE id = ?", (file_id,))
+    db.commit()
+    flash("Photo removed.")
+    back = int(rec["task_id"]) if str(rec["task_id"]).isdigit() else 0
+    return redirect(url_for("task_photos", task_id=back) if back
+                    else url_for("work_bag"))
 
 
 @app.route("/jobs/<int:job_id>/report")

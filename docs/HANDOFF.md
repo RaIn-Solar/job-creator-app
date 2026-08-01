@@ -2,7 +2,20 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 21.6** (footer shows it plainly as "Version 21.6" — the "did my pull work?" check)
+**Current build:** **Piece 21.7** (footer shows it plainly as "Version 21.7" — the "did my pull work?" check)
+
+**Piece 21.7 — Work Bag photo capture.** Any task whose title matches
+`_is_photo_step()` ("photo"/"picture") grows a 📷 button in the Work Bag that
+opens `work_bag_photos.html` (`GET/POST /work-bag/tasks/<id>/photos`) — a
+phone-camera page (`<input accept="image/*" capture="environment" multiple>`,
+auto-submits on pick). Uploads are stored as `job_files` tagged
+`rule_label = FIELD_PHOTO_LABEL` ("Field Photo") + `task_id` (new TEXT column;
+schema.sql + `ensure_columns`), image extensions only (`PHOTO_EXTENSIONS`).
+New inline server route `GET /jobs/<job>/files/<id>/view` (as_attachment=False)
+backs thumbnails; `/api/my-tasks` attaches `is_photo_step`, `photos_url` and a
+`photos` list per task so the bag shows a live thumbnail strip. Field crews can
+delete their own shots via `POST /work-bag/photos/<id>/delete` (scoped to
+FIELD_PHOTO_LABEL, so it can't touch requirement docs — those stay GM-only).
 
 **Piece 21.6 — Foreman / Installation viewport (Screen 5).** `FIELD_STAGES =
 {"Installation", "Inspections"}`. Dashboard route: when `mode == "Installation"`

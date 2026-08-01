@@ -116,6 +116,10 @@ can confirm a pull/update took effect.
   shows **only on-site field work** (install & inspection), **grouped by job**
   with each job's install date as the header — office/scheduling steps stay on
   the dashboards.
+- **Job photos from the field**: any step that mentions photos/pictures gets a
+  **📷 button** that opens a phone-camera capture/upload page; the photos save to
+  the job and **load back into the Work Bag** as thumbnails (and appear on the
+  job record). Crews can remove their own shots.
 
 ### People, roles & permissions
 - **Employees** matched to the org chart, with first / last / optional nickname
@@ -199,6 +203,7 @@ can confirm a pull/update took effect.
   QuickBooks CSV; payroll (self-logged hours, approvals, configurable pay types,
   auto-overtime); permits/warehouse tuning; **receipts/invoices/bills** tagging
   feeding the QuickBooks reports; **Foreman/Installation viewport** (installs
-  bucketed by date) + a field-focused, job-grouped Work Bag.
+  bucketed by date) + a field-focused, job-grouped Work Bag with **on-site photo
+  capture** on photo steps.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

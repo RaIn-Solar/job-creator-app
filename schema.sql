@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS job_files (
     rule_label    TEXT DEFAULT '',   -- requirement this document satisfies
     stored_name   TEXT NOT NULL,     -- name on disk (uploads/job_<id>/)
     original_name TEXT NOT NULL,
+    task_id       TEXT DEFAULT '',   -- Piece 21.7: field photos tie back to a task
     uploaded_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

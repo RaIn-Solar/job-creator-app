@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Photos — {{ task["title"] }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>📷 Photos</h1>
+  <a href="{{ url_for('work_bag') }}" class="btn btn-secondary">← Back to Work Bag</a>
+</div>
+
+{# Job context, styled like the Work Bag's job banner so it reads as the same place. #}
+<div style="padding:0.55rem 0.75rem; background:#e7f4ec; border-left:4px solid var(--brand); border-radius:6px; margin-bottom:0.8rem;">
+  <div style="font-weight:800; font-size:1.05rem; color:var(--brand-dark);">🏠 {{ task["job_name"] or "Job #" ~ task["job_id"] }}</div>
+  <div class="muted" style="font-size:0.85rem;">{{ task["client_name"] }}{% if task["install_date"] %} · 🔧 install {{ task["install_date"] }}{% endif %}</div>
+  <div style="margin-top:0.2rem; font-weight:600;">Step: {{ task["title"] }}</div>
+</div>
+
+<div id="status" class="flash" style="display:none;"></div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.05rem;">Take or upload photos</h2>
+  <p class="muted" style="margin-top:0;">On a phone this opens the camera. You can pick several at once. They're saved to this job.</p>
+  <form method="post" action="{{ url_for('task_photos', task_id=task['id']) }}"
+        enctype="multipart/form-data" id="photoform">
+    <input type="file" name="photos" accept="image/*" capture="environment" multiple
+           id="photoinput" style="display:block; margin-bottom:0.7rem;">
+    <div class="actions"><button type="submit" class="btn">⬆ Upload photos</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="toolbar" style="margin-bottom:0.6rem;">
+    <h2 style="margin:0; font-size:1.05rem;">On file <span class="badge">{{ photos|length }}</span></h2>
+  </div>
+  {% if photos %}
+  <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:0.6rem;">
+    {% for p in photos %}
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <a href="{{ url_for('view_file', job_id=task['job_id'], file_id=p['id']) }}" target="_blank" rel="noopener">
+        <img src="{{ url_for('view_file', job_id=task['job_id'], file_id=p['id']) }}" loading="lazy"
+             alt="{{ p['original_name'] }}"
+             style="width:100%; height:130px; object-fit:cover; display:block;">
+      </a>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:0.3rem 0.45rem; gap:0.3rem;">
+        <span class="muted" style="font-size:0.72rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ p["original_name"] }}</span>
+        <form method="post" action="{{ url_for('delete_task_photo', file_id=p['id']) }}"
+              onsubmit="return confirm('Remove this photo?');" style="margin:0;">
+          <button type="submit" class="btn btn-secondary" style="padding:0 0.4rem; font-size:0.72rem;" title="Remove">✕</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">No photos yet — take some above.</p>
+  {% endif %}
+</div>
+
+<script>
+  // Surface flashed messages inline (base.html renders them at the top already,
+  // but keep the status hook for parity with the Work Bag).
+  (function () {
+    var input = document.getElementById("photoinput");
+    var form = document.getElementById("photoform");
+    if (input && form) {
+      input.addEventListener("change", function () {
+        if (input.files && input.files.length) form.submit();
+      });
+    }
+  })();
+</script>
+{% endblock %}
