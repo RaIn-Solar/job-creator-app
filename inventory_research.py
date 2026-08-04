@@ -14,7 +14,7 @@ Ground rules honored here:
 Key format: "Category||Make||Model" (exactly as seeded).
 """
 
-RESEARCH_VERSION = 1
+RESEARCH_VERSION = 2
 
 RESEARCH = {
     # --- PV sheet — calibration batch -------------------------------------
@@ -60,4 +60,23 @@ RESEARCH = {
                  "US-made (San Antonio, TX). Price on request — retail sites block "
                  "automated price fetch.",
     },
+    'Battery||Absolyte||100G17': {"specs": {"Voltage": 2.0}, "flags": 'Capacity incomplete — Voltage and/or Ah missing; needs a datasheet lookup.'},
+    'Battery||BYD||BYD-HVL-3': {"specs": {"Capacity": 12.0, "Voltage": 350.0, "AH Rating": 80.0}, "flags": 'CAPACITY set to 12.0 kWh (manufacturer rating from description). NOTE: Voltage x Ah = 28.0 kWh differs >20% — check the 350.0V/80.0Ah entries.'},
+    'Battery||C&D Technologies||AES 100LC17 - 48V 4 per cell': {"specs": {"Voltage": 48.0}, "flags": 'Capacity incomplete — Voltage and/or Ah missing; needs a datasheet lookup.'},
+    'Battery||C&D Technologies||AES 100LC33 - 24volt-3 cell per module': {"specs": {"Capacity": 44.0, "Voltage": 24.0, "AH Rating": 1834.0}, "flags": 'CAPACITY CORRECTED to 44.0 kWh (manufacturer rating; sheet had 0.8).'},
+    'Battery||C&D Technologies||AES 100LC33 - 48volt-4 cell per module': {"specs": {"Capacity": 88.032, "Voltage": 48.0, "AH Rating": 1834.0}, "flags": 'CAPACITY CORRECTED to 88.032 kWh (nameplate = 48.0V x 1834.0Ah / 1000; sheet had 70.43).'},
+    'Battery||Calb||CA180FI Lithium LifePO4': {"specs": {"Capacity": 0.576, "Voltage": 3.2, "AH Rating": 180.0}, "flags": 'CAPACITY CORRECTED to 0.576 kWh (nameplate = 3.2V x 180.0Ah / 1000; sheet had 0.52).'},
+    'Battery||Continental||CBEV-24-DT': {"specs": {"AH Rating": 85.0}, "flags": 'Capacity incomplete — Voltage and/or Ah missing; needs a datasheet lookup.'},
+    'Battery||Continental||CBEV-L16-903-DT': {"specs": {"Capacity": 2.34, "Voltage": 6.0, "AH Rating": 390.0}, "flags": 'CAPACITY CORRECTED to 2.34 kWh (nameplate = 6.0V x 390.0Ah / 1000; sheet had 1.87).'},
+    'Battery||Continental||Golf Cart CBEV-GC2-DT': {"specs": {"Capacity": 0.44, "Voltage": 2.0, "AH Rating": 220.0}, "flags": 'CAPACITY CORRECTED to 0.44 kWh (nameplate = 2.0V x 220.0Ah / 1000; sheet had 1.3).'},
+    'Battery||Full River||DC250-6 6v 250 AH, GC-2, AGM': {"specs": {"Capacity": 1.5, "Voltage": 6.0, "AH Rating": 250.0}, "flags": 'CAPACITY CORRECTED to 1.5 kWh (nameplate = 6.0V x 250.0Ah / 1000; sheet had 0.8).'},
+    'Battery||Home Grid||Compact Series': {"specs": {"Capacity": 5.12, "Voltage": 48.0, "AH Rating": 106.0}, "flags": 'CAPACITY CORRECTED to 5.12 kWh (manufacturer rating; sheet had 0.8).'},
+    'Battery||Home Grid||HG-FS48100-15OSJ1': {"specs": {"Capacity": 4.3, "Voltage": 48.0, "AH Rating": 100.0}, "flags": 'CAPACITY CORRECTED to 4.3 kWh (manufacturer rating; sheet had 0.8).'},
+    "Battery||O'Reilly's or equivalent||Battery": {"flags": 'Capacity incomplete — Voltage and/or Ah missing; needs a datasheet lookup.'},
+    'Battery||Precision||PR110-DC+HT': {"specs": {"Capacity": 1.32, "Voltage": 12.0, "AH Rating": 110.0}, "flags": 'CAPACITY CORRECTED to 1.32 kWh (nameplate = 12.0V x 110.0Ah / 1000; sheet had None).'},
+    'Battery||SimpliPhi||Ampliphi-3.8-48': {"specs": {"Capacity": 3.8, "Voltage": 48.0, "AH Rating": 75.0}, "flags": 'CAPACITY CORRECTED to 3.8 kWh (manufacturer rating; sheet had 3.0).'},
+    'Battery||SOK Battery||S24V100': {"specs": {"Capacity": 2.4, "Voltage": 24.0, "AH Rating": 100.0}, "flags": 'CAPACITY CORRECTED to 2.4 kWh (nameplate = 24.0V x 100.0Ah / 1000; sheet had 2400.0).'},
+    'Battery||Trojan||L16RE-2V': {"specs": {"Capacity": 2.22, "Voltage": 2.0, "AH Rating": 1110.0}, "flags": 'CAPACITY CORRECTED to 2.22 kWh (nameplate = 2.0V x 1110.0Ah / 1000; sheet had 2220.0).'},
+    'Battery||US Battery||USL16, 12V 385ah': {"specs": {"Capacity": 4.62, "Voltage": 12.0, "AH Rating": 385.0}, "flags": 'CAPACITY CORRECTED to 4.62 kWh (nameplate = 12.0V x 385.0Ah / 1000; sheet had None).'},
+    'Battery||US Battery||USL16HCL, 6V, 420ah': {"specs": {"Capacity": 2.52, "Voltage": 6.0, "AH Rating": 420.0}, "flags": 'CAPACITY CORRECTED to 2.52 kWh (nameplate = 6.0V x 420.0Ah / 1000; sheet had None).'},
 }

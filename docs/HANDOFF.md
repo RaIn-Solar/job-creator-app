@@ -2,7 +2,18 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.4** (footer shows it plainly as "Version 23.4" — the "did my pull work?" check)
+**Current build:** **Piece 23.5** (footer shows it plainly as "Version 23.5" — the "did my pull work?" check)
+
+**Piece 23.5 — Battery research (calculator capacities).** `inventory_research.py`
+→ RESEARCH_VERSION 2, +19 Battery entries. The Battery **Capacity** column was
+badly broken (Wh-vs-kWh unit errors like SOK 2400, Trojan 2220; 0.8 placeholders
+where the description said 5.12 kWh). Fixed **deterministically, no web guessing**:
+Capacity = the manufacturer kWh stated in the description when present, else
+Voltage × Ah ÷ 1000 (nameplate) — this is the value the sizing calculator reads.
+BYD-HVL-3 flagged (350V×80Ah=28 vs stated 12 kWh — V/Ah suspect). Rows missing
+V/Ah (Absolyte 100G17, C&D AES-100LC17, Continental CBEV-24, generic O'Reilly)
+flagged "needs datasheet". Updated workbook now carries PV + Battery changes +
+the Standardization Flags sheet. **Next calculator sheet: Inverter.**
 
 **Piece 23.4 — Inventory table redesign + in-app management + inverter FCC ID#.**
 Table: Stock leads, Description second; a top **Stock = Available/Needed/On PO**
