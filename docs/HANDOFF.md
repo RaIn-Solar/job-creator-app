@@ -2,7 +2,24 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.1** (footer shows it plainly as "Version 23.1" — the "did my pull work?" check)
+**Current build:** **Piece 23.2** (footer shows it plainly as "Version 23.2" — the "did my pull work?" check)
+
+**Piece 23.2 — Inventory database, Phase A (structural import).** New tables
+`inventory_vendors` / `inventory_items` (core fields + specs JSON + web_price/
+purchase_url/manual_url) / `inventory_tools` / `inventory_vehicles` (with
+`nickname`). `inventory_seed.py` (generated from `Inventory_respec.xlsx`) holds
+54 vendors, 439 items, a 49-tool kit, and 11 vehicles; `seed_inventory()` loads
+them once (meta flag `inventory_seeded`). Vendor names in the workbook's free-text
+`VendorId` were normalized to canonical vendors via a typo map (e.g. "northern
+Arizona Wind and Sun"→"Northern Arizona Wind and Sun", "BayWare…"→"BayWa r.e.…",
+"Gnerac"→"Generac"). `/inventory` now renders the real data grouped by category
+(collapsible, per-category spec columns) + Tools + Vehicles. **Phase B (per-sheet
+web research: purchase/manual URLs, price verification, spec completion, and
+wiring specs into the calculator) is still to do — starting with PV.**
+Standardization flags captured in-session: Make-field typos (Vicrton→Victron,
+MidNite/Midnite), model/desc text in the Make column (Wire, Racking), header
+typos (Min Inpute, Battery Volatge), and the Summit/Graybar/Summit-Graybar and
+Megavero/Megarevo/Magerevo naming questions.
 
 **Piece 23.1 — nav order + stacked account.** Header order is now (left→right)
 My Dashboard · Tasks · Work Bag · Approvals · Team · Databases · Admin. The

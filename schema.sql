@@ -502,3 +502,73 @@ CREATE TABLE IF NOT EXISTS time_entries (
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     created_by  TEXT DEFAULT ''
 );
+
+-- Piece 23.2: Inventory database (seeded from ECC's Inventory_respec workbook).
+-- Vendors are the canonical supplier list; items carry the shared core fields
+-- plus per-category specs as JSON. web_price/price_checked_on hold web-verified
+-- pricing alongside (not replacing) the quoted Cost.
+CREATE TABLE IF NOT EXISTS inventory_vendors (
+    id   INTEGER PRIMARY KEY,      -- canonical vendor id from the workbook
+    name TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS inventory_items (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    category         TEXT NOT NULL DEFAULT '',
+    make             TEXT DEFAULT '',
+    model            TEXT DEFAULT '',
+    description      TEXT DEFAULT '',
+    vendor_id        INTEGER REFERENCES inventory_vendors(id),
+    vendor_number    TEXT DEFAULT '',
+    cost             REAL,                    -- ECC's quoted/paid price
+    web_price        REAL,                    -- web-verified price (Phase B)
+    price_checked_on TEXT DEFAULT '',         -- YYYY-MM-DD of the web check
+    purchase_url     TEXT DEFAULT '',         -- where to buy (from research)
+    manual_url       TEXT DEFAULT '',         -- datasheet / user manual
+    needed           INTEGER NOT NULL DEFAULT 0,
+    available        INTEGER NOT NULL DEFAULT 0,
+    on_po            INTEGER NOT NULL DEFAULT 0,
+    active           INTEGER NOT NULL DEFAULT 1,
+    specs            TEXT NOT NULL DEFAULT '{}',   -- JSON of category-specific specs
+    flags            TEXT DEFAULT '',              -- standardization notes
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Piece 23.2: hand/install tools (multimeter, pipe cutter, drill, ...).
+CREATE TABLE IF NOT EXISTS inventory_tools (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL DEFAULT '',
+    category     TEXT DEFAULT '',
+    make         TEXT DEFAULT '',
+    model        TEXT DEFAULT '',
+    description  TEXT DEFAULT '',
+    vendor_id    INTEGER REFERENCES inventory_vendors(id),
+    cost         REAL,
+    purchase_url TEXT DEFAULT '',
+    manual_url   TEXT DEFAULT '',
+    needed       INTEGER NOT NULL DEFAULT 0,
+    available    INTEGER NOT NULL DEFAULT 0,
+    notes        TEXT DEFAULT '',
+    active       INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Piece 23.2: heavy equipment & vehicles (lift truck, ditch witch, ...), each
+-- with a shop nickname.
+CREATE TABLE IF NOT EXISTS inventory_vehicles (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL DEFAULT '',
+    nickname     TEXT DEFAULT '',
+    category     TEXT DEFAULT '',
+    make         TEXT DEFAULT '',
+    model        TEXT DEFAULT '',
+    year         TEXT DEFAULT '',
+    description  TEXT DEFAULT '',
+    vendor_id    INTEGER REFERENCES inventory_vendors(id),
+    cost         REAL,
+    purchase_url TEXT DEFAULT '',
+    manual_url   TEXT DEFAULT '',
+    notes        TEXT DEFAULT '',
+    active       INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);

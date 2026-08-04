@@ -36,6 +36,10 @@ from nm_directory import (
     NEW_RULES_V10, UTILITIES_ALL,
 )
 from loads_seed import APPLIANCE_SEED, COMPONENT_SEED
+from inventory_seed import (
+    INVENTORY_VENDORS, INVENTORY_CATEGORY_SPECS, INVENTORY_ITEMS,
+    INVENTORY_TOOLS, INVENTORY_VEHICLES,
+)
 
 # Code assets (schema.sql, templates) sit next to this file — except under
 # a PyInstaller desktop build, where they're unpacked into sys._MEIPASS.
@@ -775,7 +779,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 23.1"
+VERSION = "Piece 23.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1679,6 +1683,34 @@ def seed_org_team(db):
     db.commit()
 
 
+def seed_inventory(db):
+    """Piece 23.2: load ECC's seed inventory (vendors, 439 items, a standard
+    tool kit, and the vehicle/heavy-equipment list) once per database. Guarded
+    by a meta flag so it never duplicates or resurrects deleted rows."""
+    if db.execute("SELECT 1 FROM meta WHERE key = 'inventory_seeded'").fetchone():
+        return
+    for vid, name in INVENTORY_VENDORS:
+        db.execute("INSERT OR IGNORE INTO inventory_vendors (id, name) VALUES (?, ?)",
+                   (vid, name))
+    for it in INVENTORY_ITEMS:
+        db.execute(
+            "INSERT INTO inventory_items"
+            " (category, make, model, description, vendor_id, vendor_number,"
+            "  cost, specs) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (it["category"], it["make"], it["model"], it["description"],
+             it["vendor_id"], it["vendor_number"], it["cost"],
+             json.dumps(it["specs"], default=str)))
+    for name, cat in INVENTORY_TOOLS:
+        db.execute("INSERT INTO inventory_tools (name, category) VALUES (?, ?)",
+                   (name, cat))
+    for name, cat, nick in INVENTORY_VEHICLES:
+        db.execute("INSERT INTO inventory_vehicles (name, category, nickname)"
+                   " VALUES (?, ?, ?)", (name, cat, nick))
+    db.execute("INSERT INTO meta (key, value) VALUES ('inventory_seeded', '1')"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    db.commit()
+
+
 def init_db():
     """Create tables if missing, upgrade older databases, and add three
     sample clients (one job each) the first time so the app isn't empty."""
@@ -1873,6 +1905,7 @@ def init_db():
         )
         db.commit()
     seed_org_team(db)
+    seed_inventory(db)
     assign_tasks_by_role(db)
     tag_tasks_by_stage(db)
     db.close()
@@ -3840,13 +3873,56 @@ def catalog_page():
     )
 
 
+INVENTORY_CAT_ORDER = [
+    "PV Module", "Inverter", "Battery", "Charge Controller", "Optimizer",
+    "Generator", "Breaker", "Breaker Panel", "Controls", "Electrical", "Wire",
+    "Monitoring", "Enclosure", "Pumping", "Racking",
+]
+
+
 @app.route("/inventory")
 def inventory_page():
-    """Piece 22.8: placeholder for the inventory database. The seed inventory DB
-    is still being built; once it lands this becomes the module/component stock
-    list that will feed the designer → procurement auto-fill. Lives under the
-    Databases nav group alongside the catalog, rules, directory, and clients."""
-    return render_template("inventory.html")
+    """Piece 23.2: the inventory database — ECC's seeded stock of PV/electrical
+    components (grouped by category, with per-category specs), plus the tool kit
+    and the vehicle/heavy-equipment list. Feeds the Loads & Sizing calculator
+    and (later) the designer → procurement auto-fill."""
+    db = get_db()
+    vendors = {v["id"]: v["name"]
+               for v in db.execute("SELECT id, name FROM inventory_vendors").fetchall()}
+    items = db.execute(
+        "SELECT * FROM inventory_items WHERE active = 1"
+        " ORDER BY category, make, model").fetchall()
+    by_cat = {}
+    for it in items:
+        by_cat.setdefault(it["category"], []).append(it)
+    sections = []
+    for cat in sorted(by_cat, key=lambda c: (INVENTORY_CAT_ORDER.index(c)
+                      if c in INVENTORY_CAT_ORDER else 99, c)):
+        rows = []
+        spec_order = []
+        for it in by_cat[cat]:
+            try:
+                sp = json.loads(it["specs"] or "{}")
+            except (ValueError, TypeError):
+                sp = {}
+            for k in sp:
+                if k not in spec_order:
+                    spec_order.append(k)
+            d = dict(it)
+            d["specs"] = sp
+            d["vendor_name"] = vendors.get(it["vendor_id"], "")
+            rows.append(d)
+        sections.append({"category": cat, "specs": spec_order, "items": rows,
+                         "count": len(rows)})
+    tools = db.execute("SELECT t.*, v.name AS vendor_name FROM inventory_tools t"
+                       " LEFT JOIN inventory_vendors v ON v.id = t.vendor_id"
+                       " WHERE t.active = 1 ORDER BY t.category, t.name").fetchall()
+    vehicles = db.execute("SELECT v.*, ve.name AS vendor_name FROM inventory_vehicles v"
+                          " LEFT JOIN inventory_vendors ve ON ve.id = v.vendor_id"
+                          " WHERE v.active = 1 ORDER BY v.category, v.name").fetchall()
+    return render_template(
+        "inventory.html", sections=sections, tools=tools, vehicles=vehicles,
+        item_total=len(items), vendor_count=len(vendors))
 
 
 @app.route("/catalog/appliances/add", methods=["POST"])

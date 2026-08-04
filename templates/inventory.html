@@ -3,16 +3,93 @@
 {% block content %}
 <div class="toolbar">
   <h1>📦 Inventory</h1>
+  <span class="muted" style="font-size:0.9rem;">{{ item_total }} items · {{ vendor_count }} vendors</span>
 </div>
+<p class="muted" style="margin-top:0;">ECC's stock of components by category, plus the
+tool kit and vehicles. Specs feed the Loads &amp; Sizing calculator; prices show
+your quoted <strong>Cost</strong> (a web-verified price is added during pricing
+review, never overwriting yours).</p>
 
-<div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">Inventory database — coming soon</h2>
-  <p class="muted">The seed inventory database is being built. When it's ready,
-  this page will hold ECC's on-hand stock of modules, inverters, racking, and
-  balance-of-system components.</p>
-  <p class="muted" style="margin-bottom:0;">The goal: a designer submits a system
-  and the inventory sheet automatically tells Purchasing which parts each job
-  needs — feeding the <strong>Packing list</strong> in the Work Bag and the
-  <strong>Procurement</strong> rollup on the Purchasing dashboard.</p>
-</div>
+{% for s in sections %}
+<details class="card sect"{% if loop.first %} open{% endif %}>
+  <summary>{{ s.category }} <span class="sect-count">{{ s.count }}</span></summary>
+  <div style="overflow-x:auto;">
+  <table style="font-size:0.85rem;">
+    <thead><tr>
+      <th>Make</th><th>Model</th><th>Description</th><th>Vendor</th>
+      <th style="text-align:right;">Cost</th><th>Stock</th><th>Links</th>
+      {% for sp in s.specs %}<th style="white-space:nowrap;">{{ sp }}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+      {% for it in s['items'] %}
+      <tr>
+        <td style="white-space:nowrap;">{{ it["make"] or "—" }}</td>
+        <td style="white-space:nowrap;">{{ it["model"] or "—" }}</td>
+        <td>{{ it["description"] or "—" }}</td>
+        <td class="muted" style="white-space:nowrap;">{{ it["vendor_name"] or "—" }}{% if it["vendor_number"] %}<br><span style="font-size:0.75rem;">#{{ it["vendor_number"] }}</span>{% endif %}</td>
+        <td style="text-align:right; white-space:nowrap;">
+          {% if it["cost"] is not none %}${{ "%.2f"|format(it["cost"]) }}{% else %}<span class="muted">—</span>{% endif %}
+          {% if it["web_price"] is not none %}<br><span class="muted" style="font-size:0.72rem;" title="web-verified {{ it['price_checked_on'] }}">web ${{ "%.2f"|format(it["web_price"]) }}</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap; font-size:0.78rem;" title="Available / Needed / On PO">{{ it["available"] }}/{{ it["needed"] }}/{{ it["on_po"] }}</td>
+        <td style="white-space:nowrap;">
+          {% if it["purchase_url"] %}<a href="{{ it['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase">🛒</a>{% endif %}
+          {% if it["manual_url"] %}<a href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Manual / datasheet">📄</a>{% endif %}
+          {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
+        </td>
+        {% for sp in s.specs %}<td style="white-space:nowrap;">{{ it["specs"].get(sp, "") }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if s.specs %}<p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Stock column is Available / Needed / On PO.</p>{% endif %}
+</details>
+{% endfor %}
+
+<details class="card sect">
+  <summary>🧰 Tools <span class="sect-count">{{ tools|length }}</span></summary>
+  <div style="overflow-x:auto;">
+  <table style="font-size:0.85rem;">
+    <thead><tr><th>Tool</th><th>Category</th><th>Make</th><th>Model</th><th>Vendor</th><th style="text-align:right;">Cost</th><th>Stock</th></tr></thead>
+    <tbody>
+      {% for t in tools %}
+      <tr>
+        <td>{{ t["name"] }}</td>
+        <td class="muted">{{ t["category"] or "—" }}</td>
+        <td>{{ t["make"] or "—" }}</td>
+        <td>{{ t["model"] or "—" }}</td>
+        <td class="muted">{{ t["vendor_name"] or "—" }}</td>
+        <td style="text-align:right;">{% if t["cost"] is not none %}${{ "%.2f"|format(t["cost"]) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td style="font-size:0.78rem;">{{ t["available"] }}/{{ t["needed"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">A standard install-work tool kit — fill in makes/models/vendors as you standardize.</p>
+</details>
+
+<details class="card sect">
+  <summary>🚚 Vehicles &amp; heavy equipment <span class="sect-count">{{ vehicles|length }}</span></summary>
+  <div style="overflow-x:auto;">
+  <table style="font-size:0.85rem;">
+    <thead><tr><th>Unit</th><th>Nickname</th><th>Category</th><th>Make</th><th>Model</th><th>Year</th><th>Vendor</th></tr></thead>
+    <tbody>
+      {% for v in vehicles %}
+      <tr>
+        <td>{{ v["name"] }}</td>
+        <td>{% if v["nickname"] %}<span class="badge">{{ v["nickname"] }}</span>{% else %}<span class="muted">— add —</span>{% endif %}</td>
+        <td class="muted">{{ v["category"] or "—" }}</td>
+        <td>{{ v["make"] or "—" }}</td>
+        <td>{{ v["model"] or "—" }}</td>
+        <td>{{ v["year"] or "—" }}</td>
+        <td class="muted">{{ v["vendor_name"] or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Each unit has a shop <strong>nickname</strong> field.</p>
+</details>
 {% endblock %}

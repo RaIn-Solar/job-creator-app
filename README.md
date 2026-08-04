@@ -157,6 +157,14 @@ can confirm a pull/update took effect.
   survey is captured but design isn't finalized — the Sales→Designer hand-off),
   this week's installs, and a **Closing worklist** (each job's balance due and
   remaining close-out steps). Each sub-section sits in its own panel.
+- **Inventory database** (🗄 Databases → Inventory): ECC's stock of components
+  seeded from the inventory workbook — **439 items across 15 categories** (PV,
+  inverters, batteries, charge controllers, racking, …) with per-category specs,
+  a **54-vendor** canonical supplier list (names normalized from the workbook's
+  typo'd entries), plus a standard **tool kit** and a **vehicles / heavy-equipment**
+  list (each vehicle has a shop **nickname**). Item specs are meant to feed the
+  Loads & Sizing calculator; a `web_price` sits alongside the quoted `Cost` so a
+  price check never overwrites your number.
 - **Nav grouping**: the reference/data pages — **Client Profiles, Rules,
   Directory, Inventory, Catalog** — are consolidated under a single **🗄
   Databases** dropdown in the header; **Employees + Payroll** sit under a **👥
