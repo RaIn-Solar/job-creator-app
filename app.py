@@ -780,7 +780,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 23.3"
+VERSION = "Piece 23.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1469,6 +1469,10 @@ TRASH_REGISTRY = {
     "employee": {"table": "employees", "label": lambda r: r["name"],
                  "found_in": lambda db, r: "Employees",
                  "in_use": lambda db, r: _employee_uses(db, r["id"])},
+    "inventory_item": {"table": "inventory_items",
+                       "label": lambda r: f"{r['make']} {r['model']}".strip() or r["category"],
+                       "found_in": lambda db, r: f"Inventory — {r['category']}",
+                       "in_use": lambda db, r: []},
 }
 
 
@@ -1944,11 +1948,31 @@ def init_db():
         )
         db.commit()
     seed_org_team(db)
-    ensure_columns(db, "inventory_items", ["status"])
+    ensure_columns(db, "inventory_items", ["status", "last_used"])
     db.execute("UPDATE inventory_items SET status = 'Active'"
                " WHERE COALESCE(status, '') = ''")
     seed_inventory(db)
     apply_inventory_research(db)
+    # Piece 23.4: inverters get an (empty) FCC ID# spec + a flag, once. Values
+    # are researched in a later phase; blank ones stay flagged.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'inv_fcc_flagged'").fetchone():
+        for rid, raw in db.execute(
+                "SELECT id, specs FROM inventory_items"
+                " WHERE category = 'Inverter'").fetchall():
+            try:
+                sp = json.loads(raw or "{}")
+            except (ValueError, TypeError):
+                sp = {}
+            if not sp.get("FCC ID#"):
+                sp["FCC ID#"] = ""
+                db.execute(
+                    "UPDATE inventory_items SET specs = ?,"
+                    " flags = CASE WHEN COALESCE(flags,'') = '' THEN"
+                    " 'FCC ID# pending (later phase)' ELSE flags END WHERE id = ?",
+                    (json.dumps(sp, default=str), rid))
+        db.execute("INSERT INTO meta (key, value) VALUES ('inv_fcc_flagged', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        db.commit()
     assign_tasks_by_role(db)
     tag_tasks_by_stage(db)
     db.close()
@@ -3921,6 +3945,26 @@ INVENTORY_CAT_ORDER = [
     "Generator", "Breaker", "Breaker Panel", "Controls", "Electrical", "Wire",
     "Monitoring", "Enclosure", "Pumping", "Racking",
 ]
+# Piece 23.4: category -> spec fields that should always exist even when no
+# seeded item carries them yet. FCC ID# is inverter-only and brand-new (blank
+# for now, researched later), so it shows as a column and gets flagged.
+INVENTORY_EXTRA_SPECS = {"Inverter": ["FCC ID#"]}
+
+
+def inventory_category_specs():
+    """Ordered spec-field names per category, unioned from the seed's category
+    map (keyed by sheet) plus the always-present extras. Sheet 'PV' maps to the
+    'PV Module' category value; others match their sheet name."""
+    out = {}
+    for sheet, fields in INVENTORY_CATEGORY_SPECS.items():
+        cat = "PV Module" if sheet == "PV" else sheet
+        out[cat] = list(fields)
+    for cat, extra in INVENTORY_EXTRA_SPECS.items():
+        out.setdefault(cat, [])
+        for f in extra:
+            if f not in out[cat]:
+                out[cat].append(f)
+    return out
 
 
 @app.route("/inventory")
@@ -3938,11 +3982,15 @@ def inventory_page():
     by_cat = {}
     for it in items:
         by_cat.setdefault(it["category"], []).append(it)
+    cat_specs = inventory_category_specs()
     sections = []
     for cat in sorted(by_cat, key=lambda c: (INVENTORY_CAT_ORDER.index(c)
                       if c in INVENTORY_CAT_ORDER else 99, c)):
         rows = []
-        spec_order = []
+        # Start with the category's canonical spec order (so blank-but-expected
+        # fields like the inverter FCC ID# still appear), then add any extras
+        # seen on actual items.
+        spec_order = list(cat_specs.get(cat, []))
         for it in by_cat[cat]:
             try:
                 sp = json.loads(it["specs"] or "{}")
@@ -3963,9 +4011,117 @@ def inventory_page():
     vehicles = db.execute("SELECT v.*, ve.name AS vendor_name FROM inventory_vehicles v"
                           " LEFT JOIN inventory_vendors ve ON ve.id = v.vendor_id"
                           " WHERE v.active = 1 ORDER BY v.category, v.name").fetchall()
+    vendor_list = db.execute(
+        "SELECT id, name FROM inventory_vendors ORDER BY name").fetchall()
     return render_template(
         "inventory.html", sections=sections, tools=tools, vehicles=vehicles,
-        item_total=len(items), vendor_count=len(vendors))
+        item_total=len(items), vendor_count=len(vendors),
+        vendor_list=vendor_list, cat_specs=inventory_category_specs())
+
+
+def _inventory_form_values():
+    """Pull an inventory item's core fields + specs out of the POSTed form."""
+    cat = request.form.get("category", "").strip()
+    spec_fields = inventory_category_specs().get(cat, [])
+    specs = {}
+    for name in spec_fields:
+        val = request.form.get(f"spec__{name}", "").strip()
+        if val:
+            num = _to_float(val)
+            specs[name] = num if num is not None else val
+    vid = request.form.get("vendor_id", "")
+    return {
+        "category": cat,
+        "make": request.form.get("make", "").strip(),
+        "model": request.form.get("model", "").strip(),
+        "description": request.form.get("description", "").strip(),
+        "vendor_id": int(vid) if vid.isdigit() else None,
+        "vendor_number": request.form.get("vendor_number", "").strip(),
+        "cost": _to_float(request.form.get("cost")),
+        "purchase_url": request.form.get("purchase_url", "").strip(),
+        "manual_url": request.form.get("manual_url", "").strip(),
+        "needed": int(_to_float(request.form.get("needed")) or 0),
+        "available": int(_to_float(request.form.get("available")) or 0),
+        "on_po": int(_to_float(request.form.get("on_po")) or 0),
+        "status": request.form.get("status", "Active").strip() or "Active",
+        "flags": request.form.get("flags", "").strip(),
+        "specs": json.dumps(specs, default=str),
+    }
+
+
+@app.route("/inventory/items/new", methods=["GET", "POST"])
+def inventory_item_new():
+    """Piece 23.4: add a new inventory item from inside the app (the per-category
+    'New product' button preselects the category)."""
+    db = get_db()
+    if request.method == "POST":
+        v = _inventory_form_values()
+        if not v["category"] or not (v["make"] or v["model"]):
+            flash("Category and a make or model are required.", "error")
+            return redirect(url_for("inventory_item_new", category=v["category"]))
+        db.execute(
+            "INSERT INTO inventory_items (category, make, model, description,"
+            " vendor_id, vendor_number, cost, purchase_url, manual_url, needed,"
+            " available, on_po, status, flags, specs)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (v["category"], v["make"], v["model"], v["description"],
+             v["vendor_id"], v["vendor_number"], v["cost"], v["purchase_url"],
+             v["manual_url"], v["needed"], v["available"], v["on_po"],
+             v["status"], v["flags"], v["specs"]))
+        db.commit()
+        flash(f"Added {v['make']} {v['model']}.".strip())
+        return redirect(url_for("inventory_page", _anchor=v["category"]))
+    category = request.args.get("category", "")
+    return render_template(
+        "inventory_item_form.html", item=None, category=category,
+        spec_fields=inventory_category_specs().get(category, []),
+        categories=INVENTORY_CAT_ORDER,
+        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
+                               " ORDER BY name").fetchall())
+
+
+@app.route("/inventory/items/<int:item_id>/edit", methods=["GET", "POST"])
+def inventory_item_edit(item_id):
+    """Piece 23.4: update an existing inventory item in place."""
+    db = get_db()
+    row = db.execute("SELECT * FROM inventory_items WHERE id = ?",
+                     (item_id,)).fetchone()
+    if row is None:
+        abort(404)
+    if request.method == "POST":
+        v = _inventory_form_values()
+        db.execute(
+            "UPDATE inventory_items SET category = ?, make = ?, model = ?,"
+            " description = ?, vendor_id = ?, vendor_number = ?, cost = ?,"
+            " purchase_url = ?, manual_url = ?, needed = ?, available = ?,"
+            " on_po = ?, status = ?, flags = ?, specs = ? WHERE id = ?",
+            (v["category"], v["make"], v["model"], v["description"],
+             v["vendor_id"], v["vendor_number"], v["cost"], v["purchase_url"],
+             v["manual_url"], v["needed"], v["available"], v["on_po"],
+             v["status"], v["flags"], v["specs"], item_id))
+        db.commit()
+        flash("Item updated.")
+        return redirect(url_for("inventory_page", _anchor=v["category"]))
+    item = dict(row)
+    try:
+        item["specs"] = json.loads(row["specs"] or "{}")
+    except (ValueError, TypeError):
+        item["specs"] = {}
+    return render_template(
+        "inventory_item_form.html", item=item, category=item["category"],
+        spec_fields=inventory_category_specs().get(item["category"], []),
+        categories=INVENTORY_CAT_ORDER,
+        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
+                               " ORDER BY name").fetchall())
+
+
+@app.route("/inventory/items/<int:item_id>/delete", methods=["POST"])
+@delete_required
+def inventory_item_delete(item_id):
+    """Send an inventory item to the trash (restorable, GM-only)."""
+    ok, msg = trash_item("inventory_item", item_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("inventory_page"))
 
 
 @app.route("/catalog/appliances/add", methods=["POST"])

@@ -1,69 +1,99 @@
 {% extends "base.html" %}
 {% block title %}Inventory{% endblock %}
 {% block content %}
+<style>
+  .inv-table { font-size: 0.85rem; }
+  .inv-table.specs-hidden .spec-col { display: none; }
+  .inv-toolbar { display: flex; justify-content: space-between; align-items: center;
+    gap: 0.6rem; flex-wrap: wrap; margin: 0.2rem 0 0.5rem; }
+  .inv-legend { font-size: 0.8rem; color: var(--muted); }
+  /* Purchase / datasheet chips — bordered so they read against the row. */
+  .inv-ico { display: inline-block; border: 1px solid var(--brand); border-radius: 6px;
+    padding: 0.05rem 0.4rem; margin-right: 0.25rem; font-size: 1.05rem; line-height: 1.3;
+    text-decoration: none; background: #fff; }
+  .inv-ico:hover { background: #e7f4ec; }
+  .inv-edit { text-decoration: none; font-size: 1rem; }
+  /* Top-mounted horizontal scrollbar that mirrors the table's width. */
+  .inv-scrolltop { overflow-x: auto; overflow-y: hidden; }
+  .inv-scrolltop > div { height: 1px; }
+</style>
+
 <div class="toolbar">
   <h1>📦 Inventory</h1>
   <span class="muted" style="font-size:0.9rem;">{{ item_total }} items · {{ vendor_count }} vendors</span>
 </div>
-<p class="muted" style="margin-top:0;">ECC's stock of components by category, plus the
-tool kit and vehicles. Specs feed the Loads &amp; Sizing calculator; prices show
-your quoted <strong>Cost</strong> (a web-verified price is added during pricing
-review, never overwriting yours).</p>
+<p class="muted" style="margin-top:0;">Stock, then description, lead each table.
+Specs are hidden by default — <strong>Show specs</strong> reveals the calculator
+data. Prices show your quoted <strong>Cost</strong> (a web-verified price never
+overwrites it). Use <strong>＋ New product</strong> to add items.</p>
 
 {% for s in sections %}
 <details class="card sect"{% if loop.first %} open{% endif %}>
   <summary>{{ s.category }} <span class="sect-count">{{ s.count }}</span></summary>
-  <div style="overflow-x:auto;">
-  <table style="font-size:0.85rem;">
+
+  <div class="inv-toolbar">
+    <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+      <span class="inv-legend"><strong>Stock</strong> = Available / Needed / On PO</span>
+      {% if s.specs %}<button type="button" class="btn btn-secondary specs-toggle" data-target="tbl-{{ loop.index }}" style="padding:0.2rem 0.6rem; font-size:0.8rem;">⚙ Show specs</button>{% endif %}
+    </div>
+    <a href="{{ url_for('inventory_item_new', category=s.category) }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New product</a>
+  </div>
+
+  {# Top horizontal scrollbar, synced with the table below. #}
+  <div class="inv-scrolltop" data-scrollfor="tbl-{{ loop.index }}"><div></div></div>
+  <div class="inv-scroll" style="overflow-x:auto;">
+  <table class="inv-table specs-hidden" id="tbl-{{ loop.index }}">
     <thead><tr>
-      <th>Make</th><th>Model</th><th>Description</th><th>Vendor</th>
-      <th style="text-align:right;">Cost</th><th>Stock</th><th>Links</th>
-      {% for sp in s.specs %}<th style="white-space:nowrap;">{{ sp }}</th>{% endfor %}
+      <th title="Available / Needed / On PO">Stock</th>
+      <th>Description</th>
+      <th>Make</th><th>Model</th><th>Vendor</th>
+      <th style="text-align:right;">Cost</th><th>Docs</th><th></th>
+      {% for sp in s.specs %}<th class="spec-col" style="white-space:nowrap;">{{ sp }}</th>{% endfor %}
     </tr></thead>
     <tbody>
       {% for it in s['items'] %}
       <tr>
+        <td style="white-space:nowrap; font-size:0.82rem;">{{ it["available"] }}/{{ it["needed"] }}/{{ it["on_po"] }}</td>
+        <td>{{ it["description"] or "—" }}</td>
         <td style="white-space:nowrap;">{{ it["make"] or "—" }}
           {% if it["status"] == "Discontinued" %}<span class="badge neutral" style="font-size:0.66rem;">Discontinued</span>{% endif %}
           {% if it["flags"] %}<span title="{{ it['flags'] }}" style="cursor:help;">⚠️</span>{% endif %}</td>
         <td style="white-space:nowrap;">{{ it["model"] or "—" }}</td>
-        <td>{{ it["description"] or "—" }}</td>
         <td class="muted" style="white-space:nowrap;">{{ it["vendor_name"] or "—" }}{% if it["vendor_number"] %}<br><span style="font-size:0.75rem;">#{{ it["vendor_number"] }}</span>{% endif %}</td>
         <td style="text-align:right; white-space:nowrap;">
           {% if it["cost"] is not none %}${{ "%.2f"|format(it["cost"]) }}{% else %}<span class="muted">—</span>{% endif %}
           {% if it["web_price"] is not none %}<br><span class="muted" style="font-size:0.72rem;" title="web-verified {{ it['price_checked_on'] }}">web ${{ "%.2f"|format(it["web_price"]) }}</span>{% endif %}
         </td>
-        <td style="white-space:nowrap; font-size:0.78rem;" title="Available / Needed / On PO">{{ it["available"] }}/{{ it["needed"] }}/{{ it["on_po"] }}</td>
         <td style="white-space:nowrap;">
-          {% if it["purchase_url"] %}<a href="{{ it['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase">🛒</a>{% endif %}
-          {% if it["manual_url"] %}<a href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Manual / datasheet">📄</a>{% endif %}
+          {% if it["purchase_url"] %}<a class="inv-ico" href="{{ it['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / buy">🛒</a>{% endif %}
+          {% if it["manual_url"] %}<a class="inv-ico" href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Datasheet / manual">📄</a>{% endif %}
           {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
         </td>
-        {% for sp in s.specs %}<td style="white-space:nowrap;">{{ it["specs"].get(sp, "") }}</td>{% endfor %}
+        <td><a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a></td>
+        {% for sp in s.specs %}<td class="spec-col" style="white-space:nowrap;">{{ it["specs"].get(sp, "") }}</td>{% endfor %}
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
-  {% if s.specs %}<p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Stock column is Available / Needed / On PO.</p>{% endif %}
 </details>
 {% endfor %}
 
 <details class="card sect">
   <summary>🧰 Tools <span class="sect-count">{{ tools|length }}</span></summary>
-  <div style="overflow-x:auto;">
-  <table style="font-size:0.85rem;">
-    <thead><tr><th>Tool</th><th>Category</th><th>Make</th><th>Model</th><th>Vendor</th><th style="text-align:right;">Cost</th><th>Stock</th></tr></thead>
+  <div class="inv-scroll" style="overflow-x:auto;">
+  <table class="inv-table">
+    <thead><tr><th>Stock</th><th>Tool</th><th>Category</th><th>Make</th><th>Model</th><th>Vendor</th><th style="text-align:right;">Cost</th></tr></thead>
     <tbody>
       {% for t in tools %}
       <tr>
+        <td style="font-size:0.82rem;">{{ t["available"] }}/{{ t["needed"] }}</td>
         <td>{{ t["name"] }}</td>
         <td class="muted">{{ t["category"] or "—" }}</td>
         <td>{{ t["make"] or "—" }}</td>
         <td>{{ t["model"] or "—" }}</td>
         <td class="muted">{{ t["vendor_name"] or "—" }}</td>
         <td style="text-align:right;">{% if t["cost"] is not none %}${{ "%.2f"|format(t["cost"]) }}{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td style="font-size:0.78rem;">{{ t["available"] }}/{{ t["needed"] }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -74,8 +104,8 @@ review, never overwriting yours).</p>
 
 <details class="card sect">
   <summary>🚚 Vehicles &amp; heavy equipment <span class="sect-count">{{ vehicles|length }}</span></summary>
-  <div style="overflow-x:auto;">
-  <table style="font-size:0.85rem;">
+  <div class="inv-scroll" style="overflow-x:auto;">
+  <table class="inv-table">
     <thead><tr><th>Unit</th><th>Nickname</th><th>Category</th><th>Make</th><th>Model</th><th>Year</th><th>Vendor</th></tr></thead>
     <tbody>
       {% for v in vehicles %}
@@ -94,4 +124,36 @@ review, never overwriting yours).</p>
   </div>
   <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Each unit has a shop <strong>nickname</strong> field.</p>
 </details>
+
+<script>
+  // Show/hide the spec columns per category.
+  document.querySelectorAll(".specs-toggle").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var tbl = document.getElementById(btn.dataset.target);
+      var hidden = tbl.classList.toggle("specs-hidden");
+      btn.textContent = hidden ? "⚙ Show specs" : "⚙ Hide specs";
+      syncTop(btn.dataset.target);
+    });
+  });
+  // Mirror each table's horizontal scroll to a scrollbar mounted at the top.
+  function syncTop(id) {
+    var tbl = document.getElementById(id);
+    var top = document.querySelector('.inv-scrolltop[data-scrollfor="' + id + '"]');
+    if (!tbl || !top) return;
+    top.firstElementChild.style.width = tbl.scrollWidth + "px";
+  }
+  document.querySelectorAll(".inv-scrolltop").forEach(function (top) {
+    var id = top.dataset.scrollfor;
+    var wrap = document.getElementById(id).parentElement; // .inv-scroll
+    syncTop(id);
+    top.addEventListener("scroll", function () { wrap.scrollLeft = top.scrollLeft; });
+    wrap.addEventListener("scroll", function () { top.scrollLeft = wrap.scrollLeft; });
+  });
+  // Recompute widths when a section is first opened (details toggle).
+  document.querySelectorAll("details.sect").forEach(function (d) {
+    d.addEventListener("toggle", function () {
+      d.querySelectorAll(".inv-scrolltop").forEach(function (t) { syncTop(t.dataset.scrollfor); });
+    });
+  });
+</script>
 {% endblock %}

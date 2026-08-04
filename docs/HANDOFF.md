@@ -2,7 +2,22 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.3** (footer shows it plainly as "Version 23.3" — the "did my pull work?" check)
+**Current build:** **Piece 23.4** (footer shows it plainly as "Version 23.4" — the "did my pull work?" check)
+
+**Piece 23.4 — Inventory table redesign + in-app management + inverter FCC ID#.**
+Table: Stock leads, Description second; a top **Stock = Available/Needed/On PO**
+legend; **⚙ Show specs** toggle (spec columns hidden by default — Trish's view;
+Cary reveals them); a **top-mounted horizontal scrollbar** synced to the table
+(JS); bordered/larger 🛒/📄 **Docs** chips; a **＋ New product** button per
+category. New routes `inventory_item_new` / `inventory_item_edit` (shared
+`inventory_item_form.html`, dynamic per-category spec inputs) and
+`inventory_item_delete` → trash (new `inventory_item` TRASH_REGISTRY entry).
+Inverters get an (empty) **FCC ID#** spec column + a "FCC ID# pending" flag,
+seeded once (meta `inv_fcc_flagged`); researched later. `last_used` column added
+as groundwork for the stale-stock notice. **DEFERRED (need usage tracking):** the
+"zero stock + unused 6 mo → notify Designer → trash" rule and the barcode
+registration are next-phase — they light up once inventory is linked to job
+material usage. **Research still to do: Inverter + Battery next (calculator).**
 
 **Piece 23.3 — Inventory Phase B, PV calibration.** `inventory_research.py`
 (`RESEARCH` keyed "Category||Make||Model", `RESEARCH_VERSION`) holds web-research

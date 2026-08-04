@@ -530,6 +530,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
     on_po            INTEGER NOT NULL DEFAULT 0,
     active           INTEGER NOT NULL DEFAULT 1,
     status           TEXT NOT NULL DEFAULT 'Active',  -- Active / Discontinued (Piece 23.3)
+    last_used        TEXT DEFAULT '',              -- Piece 23.4: last time used on a job (for the stale-stock notice)
     specs            TEXT NOT NULL DEFAULT '{}',   -- JSON of category-specific specs
     flags            TEXT DEFAULT '',              -- standardization / research notes
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
