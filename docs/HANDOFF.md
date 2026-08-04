@@ -2,7 +2,22 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.2** (footer shows it plainly as "Version 23.2" — the "did my pull work?" check)
+**Current build:** **Piece 23.3** (footer shows it plainly as "Version 23.3" — the "did my pull work?" check)
+
+**Piece 23.3 — Inventory Phase B, PV calibration.** `inventory_research.py`
+(`RESEARCH` keyed "Category||Make||Model", `RESEARCH_VERSION`) holds web-research
+overrides; `apply_inventory_research()` folds them into `inventory_items` on
+launch (re-applies when the version bumps; never touches Cost). New `status`
+column (Active/Discontinued) + a `⚠️` flag tooltip + Discontinued badge in the
+inventory table. Calibration batch = 4 PV rows proving every case: CS6P-260 spec
+CORRECTION (Vmp17/Voc20→30.4/37.5), ET-250 spec COMPLETION, CS7N-710 "verify
+Voc" flag (bifacial STC vs sheet), Mission MSE410 wholesale-vendor→retail-listing.
+Confirmed constraints from the pass: most PV items are DISCONTINUED (datasheets
+verifiable, no live price), listed vendors are largely WHOLESALE (no public
+per-item URL), and retail sites BLOCK automated price fetch (403) — so web_price
+is often left blank + flagged rather than fabricated. Updated workbook
+(`Inventory_respec_UPDATED.xlsx`) carries the PV changes + a Standardization
+Flags sheet. **Remaining PV rows + the other 14 sheets pending user OK on format.**
 
 **Piece 23.2 — Inventory database, Phase A (structural import).** New tables
 `inventory_vendors` / `inventory_items` (core fields + specs JSON + web_price/

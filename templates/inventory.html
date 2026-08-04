@@ -23,7 +23,9 @@ review, never overwriting yours).</p>
     <tbody>
       {% for it in s['items'] %}
       <tr>
-        <td style="white-space:nowrap;">{{ it["make"] or "—" }}</td>
+        <td style="white-space:nowrap;">{{ it["make"] or "—" }}
+          {% if it["status"] == "Discontinued" %}<span class="badge neutral" style="font-size:0.66rem;">Discontinued</span>{% endif %}
+          {% if it["flags"] %}<span title="{{ it['flags'] }}" style="cursor:help;">⚠️</span>{% endif %}</td>
         <td style="white-space:nowrap;">{{ it["model"] or "—" }}</td>
         <td>{{ it["description"] or "—" }}</td>
         <td class="muted" style="white-space:nowrap;">{{ it["vendor_name"] or "—" }}{% if it["vendor_number"] %}<br><span style="font-size:0.75rem;">#{{ it["vendor_number"] }}</span>{% endif %}</td>

@@ -40,6 +40,7 @@ from inventory_seed import (
     INVENTORY_VENDORS, INVENTORY_CATEGORY_SPECS, INVENTORY_ITEMS,
     INVENTORY_TOOLS, INVENTORY_VEHICLES,
 )
+from inventory_research import RESEARCH, RESEARCH_VERSION
 
 # Code assets (schema.sql, templates) sit next to this file — except under
 # a PyInstaller desktop build, where they're unpacked into sys._MEIPASS.
@@ -779,7 +780,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 23.2"
+VERSION = "Piece 23.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1711,6 +1712,44 @@ def seed_inventory(db):
     db.commit()
 
 
+def apply_inventory_research(db):
+    """Piece 23.3: fold web-research overrides (inventory_research.py) into the
+    seeded items — corrected/completed specs, datasheet + purchase URLs, web
+    price, Active/Discontinued, and flags. Never touches Cost. Re-applies whenever
+    RESEARCH_VERSION increases (so each research batch flows into existing DBs),
+    matched by category+make+model."""
+    _rv = db.execute("SELECT value FROM meta WHERE key = 'inventory_research_v'").fetchone()
+    if _rv and int(_rv[0] or 0) >= RESEARCH_VERSION:
+        return
+    for key, upd in RESEARCH.items():
+        cat, make, model = key.split("||")
+        for rid, raw_specs in db.execute(
+                "SELECT id, specs FROM inventory_items"
+                " WHERE category = ? AND make = ? AND model = ?",
+                (cat, make, model)).fetchall():
+            try:
+                specs = json.loads(raw_specs or "{}")
+            except (ValueError, TypeError):
+                specs = {}
+            specs.update(upd.get("specs", {}))
+            db.execute(
+                "UPDATE inventory_items SET specs = ?,"
+                " manual_url = COALESCE(NULLIF(?, ''), manual_url),"
+                " purchase_url = COALESCE(NULLIF(?, ''), purchase_url),"
+                " web_price = COALESCE(?, web_price),"
+                " price_checked_on = COALESCE(NULLIF(?, ''), price_checked_on),"
+                " status = COALESCE(NULLIF(?, ''), status),"
+                " flags = ? WHERE id = ?",
+                (json.dumps(specs, default=str), upd.get("manual_url", ""),
+                 upd.get("purchase_url", ""), upd.get("web_price"),
+                 upd.get("price_checked_on", ""), upd.get("status", ""),
+                 upd.get("flags", ""), rid))
+    db.execute("INSERT INTO meta (key, value) VALUES ('inventory_research_v', ?)"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+               (str(RESEARCH_VERSION),))
+    db.commit()
+
+
 def init_db():
     """Create tables if missing, upgrade older databases, and add three
     sample clients (one job each) the first time so the app isn't empty."""
@@ -1905,7 +1944,11 @@ def init_db():
         )
         db.commit()
     seed_org_team(db)
+    ensure_columns(db, "inventory_items", ["status"])
+    db.execute("UPDATE inventory_items SET status = 'Active'"
+               " WHERE COALESCE(status, '') = ''")
     seed_inventory(db)
+    apply_inventory_research(db)
     assign_tasks_by_role(db)
     tag_tasks_by_stage(db)
     db.close()
