@@ -574,3 +574,19 @@ CREATE TABLE IF NOT EXISTS inventory_vehicles (
     active       INTEGER NOT NULL DEFAULT 1,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Piece 24.4: stock ledger — every inventory movement (received / used / count
+-- correction / adjust) writes a dated, signed row here. `inventory_items.available`
+-- stays a cached running balance the ledger updates; `last_used` is the date of
+-- the most recent 'used' row, which drives the stale-stock notice.
+CREATE TABLE IF NOT EXISTS inventory_txns (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id     INTEGER NOT NULL REFERENCES inventory_items(id),
+    kind        TEXT NOT NULL DEFAULT 'used',   -- received | used | count | adjust
+    qty         INTEGER NOT NULL DEFAULT 0,      -- signed delta applied to available
+    job_id      INTEGER REFERENCES jobs(id),     -- optional, for 'used' on a job
+    note        TEXT DEFAULT '',
+    created_by  TEXT DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_txns_item ON inventory_txns(item_id);

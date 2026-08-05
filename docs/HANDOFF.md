@@ -2,7 +2,24 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.3** (footer shows it plainly as "Version 24.3" — the "did my pull work?" check)
+**Current build:** **Piece 24.4** (footer shows it plainly as "Version 24.4" — the "did my pull work?" check)
+
+**Piece 24.4 — Inventory usage tracking + stale-stock notice.** New stock ledger
+`inventory_txns` (item_id, kind = received/used/count/adjust, signed qty, optional
+job_id, note, who, when). `apply_stock_txn()` is the single choke-point every
+movement flows through — it writes a ledger row, updates the cached
+`inventory_items.available`, and (for 'used') stamps `last_used = today`; the
+future **BOM auto-deduct** will just call this same function (manual-now,
+auto-later per direction). The item **edit page** gains a "Stock movement" panel
+(Received + / Used − with an optional job link / Count correction) and a recent-
+activity table. The **stale-stock rule** (`stale_stock_items`, STALE_MONTHS = 6):
+Active items at zero on hand whose last *actual use* was 6+ months ago (never-used
+items aren't flagged until the ledger has runway). It surfaces two ways per
+direction: a **review queue** at `/inventory/stale` (Keep active → re-check in 6
+mo / Discontinue / Move to trash) linked with a count badge from the Inventory
+header, and a **card on the Designer dashboard** (mode "Design"). New column
+`stock_reviewed_on` records a "keep" dismissal. This closes the deferred
+stale-stock notice; **barcode registration is still the open inventory item.**
 
 **Piece 24.3 — Inventory cleanup + Tools/Vehicles edit UI.** Two parts.
 (a) `cleanup_inventory()` (meta `inv_cleanup_v`, INV_CLEANUP_VERSION; runs after

@@ -782,7 +782,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 24.3"
+VERSION = "Piece 24.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2116,7 +2116,7 @@ def init_db():
         )
         db.commit()
     seed_org_team(db)
-    ensure_columns(db, "inventory_items", ["status", "last_used"])
+    ensure_columns(db, "inventory_items", ["status", "last_used", "stock_reviewed_on"])
     db.execute("UPDATE inventory_items SET status = 'Active'"
                " WHERE COALESCE(status, '') = ''")
     seed_inventory(db)
@@ -2628,8 +2628,11 @@ def dashboard():
     pending_subs = (db.execute("SELECT COUNT(*) FROM field_submissions"
                                " WHERE status = 'Pending'").fetchone()[0]
                     if "Executive" in shown else 0)
+    # Piece 24.4: the stale-stock notice lands on the Designer's dashboard.
+    stale_stock = len(stale_stock_items(db)) if "Design" in shown else 0
     return render_template(
         "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
+        stale_stock=stale_stock,
         sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
         payments=payments, pay_totals=pay_totals, show_payments=show_payments,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
@@ -4139,6 +4142,44 @@ def inventory_category_specs():
     return out
 
 
+# --- Stock ledger + stale-stock rule (Piece 24.4) ----------------------------
+STALE_MONTHS = 6
+
+
+def apply_stock_txn(db, item_id, kind, delta, job_id=None, note="", user_name=""):
+    """Write one stock-ledger row and update the item's cached balance. `delta`
+    is the signed change to `available` (received > 0, used < 0, count = target −
+    current). A 'used' movement stamps last_used = today, which the stale-stock
+    notice keys off. This is the single choke-point every stock change flows
+    through — the later BOM auto-deduct will call it too."""
+    db.execute(
+        "INSERT INTO inventory_txns (item_id, kind, qty, job_id, note, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (item_id, kind, delta, job_id, note, user_name))
+    db.execute("UPDATE inventory_items SET available = MAX(0, COALESCE(available, 0) + ?)"
+               " WHERE id = ?", (delta, item_id))
+    if kind == "used":
+        db.execute("UPDATE inventory_items SET last_used = date('now') WHERE id = ?",
+                   (item_id,))
+    db.commit()
+
+
+def stale_stock_items(db):
+    """Items the stale-stock rule flags for the Designer: Active, zero on hand,
+    and last actually used more than STALE_MONTHS ago — excluding any dismissed
+    ('kept') within that window. Items never used aren't flagged yet (no usage
+    history to judge; they surface once the ledger has real runway)."""
+    win = f"-{STALE_MONTHS} months"
+    return db.execute(
+        "SELECT i.*, v.name AS vendor_name FROM inventory_items i"
+        " LEFT JOIN inventory_vendors v ON v.id = i.vendor_id"
+        " WHERE i.active = 1 AND i.status = 'Active' AND COALESCE(i.available, 0) <= 0"
+        "   AND COALESCE(i.last_used, '') != '' AND date(i.last_used) <= date('now', ?)"
+        "   AND (COALESCE(i.stock_reviewed_on, '') = ''"
+        "        OR date(i.stock_reviewed_on) <= date('now', ?))"
+        " ORDER BY i.last_used", (win, win)).fetchall()
+
+
 @app.route("/inventory")
 def inventory_page():
     """Piece 23.2: the inventory database — ECC's seeded stock of PV/electrical
@@ -4188,6 +4229,7 @@ def inventory_page():
     return render_template(
         "inventory.html", sections=sections, tools=tools, vehicles=vehicles,
         item_total=len(items), vendor_count=len(vendors),
+        stale_count=len(stale_stock_items(db)),
         vendor_list=vendor_list, cat_specs=inventory_category_specs())
 
 
@@ -4279,10 +4321,18 @@ def inventory_item_edit(item_id):
         item["specs"] = json.loads(row["specs"] or "{}")
     except (ValueError, TypeError):
         item["specs"] = {}
+    txns = db.execute(
+        "SELECT t.kind, t.qty, t.note, t.created_by, t.created_at, j.job_name"
+        " FROM inventory_txns t LEFT JOIN jobs j ON j.id = t.job_id"
+        " WHERE t.item_id = ? ORDER BY t.id DESC LIMIT 10", (item_id,)).fetchall()
+    jobs = db.execute(
+        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id WHERE j.status != 'Lost'"
+        " ORDER BY j.id DESC").fetchall()
     return render_template(
         "inventory_item_form.html", item=item, category=item["category"],
         spec_fields=inventory_category_specs().get(item["category"], []),
-        categories=INVENTORY_CAT_ORDER,
+        categories=INVENTORY_CAT_ORDER, txns=txns, jobs=jobs,
         vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
                                " ORDER BY name").fetchall())
 
@@ -4294,6 +4344,80 @@ def inventory_item_delete(item_id):
     ok, msg = trash_item("inventory_item", item_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page"))
+
+
+@app.route("/inventory/items/<int:item_id>/adjust", methods=["POST"])
+def inventory_item_adjust(item_id):
+    """Piece 24.4: record a stock movement (received / used / count correction)
+    through the ledger. 'Used' can be tied to a job and stamps last_used."""
+    db = get_db()
+    row = db.execute("SELECT available FROM inventory_items WHERE id = ?",
+                     (item_id,)).fetchone()
+    if row is None:
+        abort(404)
+    kind = request.form.get("kind", "used")
+    qty = int(_to_float(request.form.get("qty")) or 0)
+    job_raw = request.form.get("job_id", "")
+    job_id = int(job_raw) if job_raw.isdigit() else None
+    note = request.form.get("note", "").strip()
+    cur = row["available"] or 0
+    if kind == "received":
+        delta = abs(qty)
+    elif kind == "used":
+        delta = -abs(qty)
+    elif kind == "count":
+        delta = qty - cur          # qty is the counted on-hand total
+    else:
+        delta = qty
+    if delta == 0 and kind != "count":
+        flash("Enter a quantity to record.", "error")
+        return redirect(url_for("inventory_item_edit", item_id=item_id))
+    user = current_user()
+    apply_stock_txn(db, item_id, kind, delta, job_id, note,
+                    user["name"] if user else "")
+    flash({"received": "Stock received.", "used": "Usage recorded.",
+           "count": "Count updated."}.get(kind, "Stock adjusted."))
+    return redirect(url_for("inventory_item_edit", item_id=item_id))
+
+
+@app.route("/inventory/stale")
+def inventory_stale():
+    """Piece 24.4: the Designer's stale-stock review queue — zero on hand and
+    unused for 6+ months. Keep active / Discontinue / Move to trash."""
+    db = get_db()
+    items = [dict(r) for r in stale_stock_items(db)]
+    return render_template("inventory_stale.html", items=items, months=STALE_MONTHS)
+
+
+@app.route("/inventory/stale/<int:item_id>/keep", methods=["POST"])
+def inventory_stale_keep(item_id):
+    """Dismiss a stale-stock flag: mark reviewed today (re-checks in 6 months)."""
+    db = get_db()
+    db.execute("UPDATE inventory_items SET stock_reviewed_on = date('now')"
+               " WHERE id = ?", (item_id,))
+    db.commit()
+    flash("Kept active — will re-check in 6 months.")
+    return redirect(url_for("inventory_stale"))
+
+
+@app.route("/inventory/stale/<int:item_id>/discontinue", methods=["POST"])
+def inventory_stale_discontinue(item_id):
+    """Soft-retire a stale item: mark Discontinued (keeps the record)."""
+    db = get_db()
+    db.execute("UPDATE inventory_items SET status = 'Discontinued',"
+               " stock_reviewed_on = date('now') WHERE id = ?", (item_id,))
+    db.commit()
+    flash("Marked Discontinued.")
+    return redirect(url_for("inventory_stale"))
+
+
+@app.route("/inventory/stale/<int:item_id>/trash", methods=["POST"])
+@delete_required
+def inventory_stale_trash(item_id):
+    """Retire a stale item to the trash (restorable, GM-only)."""
+    ok, msg = trash_item("inventory_item", item_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("inventory_stale"))
 
 
 # --- Tools CRUD (Piece 24.3) -------------------------------------------------
