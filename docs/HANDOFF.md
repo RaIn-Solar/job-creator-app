@@ -2,7 +2,25 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.0** (footer shows it plainly as "Version 24.0" — the "did my pull work?" check)
+**Current build:** **Piece 24.1** (footer shows it plainly as "Version 24.1" — the "did my pull work?" check)
+
+**Piece 24.1 — Remaining spec-gap completions (Generator / Charge Controller /
+Optimizer / Breaker).** RESEARCH_VERSION 6. Closed every genuine spec gap on the
+four spec-bearing sheets that still had blanks: Generator ratings (Briggs PP18+
+= 18kW/80A from its siblings; the two 200A ATS units = 200A); Charge Controller
+**Max Solar (Watts)** at 48V from each datasheet (Morningstar TS-MPPT-60/60M =
+3200W, Outback FlexMax 80 = 4000W, Victron SmartSolar 150/70 = 4000W); Optimizer
+electricals for SolarEdge S440/S500B (rated power, 60V max input, 15A, plus
+SolarEdge NA single-phase string-design constants — datasheet PDF fetch was
+policy-blocked, so Isc/output detail is flagged to confirm) and the AP Smart
+RSD-S single (mirrored from its RSD-S-PLC sibling, variant flagged); Breaker
+ratings decoded from the model number (MNEPV20-600RT = 20A, Square D HOM280 =
+80A). Nine non-rated items (maintenance kits, gaskets, control/AVR boards,
+disconnect kit, PLC/RSS transmitters) are **flagged as accessories** rather than
+given invented specs — all four sheets are now gap-free (every remaining blank
+is a flagged accessory). Workbook: those 21 rows highlighted with specs + Flags.
+**Next: tool + standard-hardware listings (big-box: Home Depot / Lowe's /
+Harbor Freight) — brand tier TBD.**
 
 **Piece 24.0 — Current-PV purchase URLs (final purchase-URL pass).**
 RESEARCH_VERSION 5. Added product-page purchase links for the seven high-use

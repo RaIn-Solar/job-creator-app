@@ -14,7 +14,7 @@ Ground rules honored here:
 Key format: "Category||Make||Model" (exactly as seeded).
 """
 
-RESEARCH_VERSION = 5
+RESEARCH_VERSION = 6
 
 RESEARCH = {
     # --- PV sheet — calibration batch -------------------------------------
@@ -170,4 +170,30 @@ RESEARCH = {
     "Inverter||Sol-Ark||18K-2P": {"purchase_url": "https://www.solarelectricsupply.com/sol-ark", "flags": "Sol-Ark brand retailer (Solar Electric Supply) — select the 18K model. FCC ID# pending. Price on request."},
     "Inverter||SolarEdge||SE 7600H-US000BNU4 (240V)": {"purchase_url": "https://www.solarelectricsupply.com/solaredge-se7600h-us-home-hub-hdwave", "flags": "Reference retail (Solar Electric Supply), SolarEdge Home Hub 7.6kW. FCC ID# pending. Price on request."},
     "Inverter||Solis||S6-EH1P10K-H-US-RSS": {"purchase_url": "https://www.solar-electric.com/solis-s6-eh1p10k-h-us-rss-hybrid-single-phase-inverter.html", "flags": "Purchase page at NAWS (solar-electric.com), Solis S6 hybrid 10kW. FCC ID# pending. Price on request."},
+
+    # === Piece 24.1 — remaining spec-gap completions on the spec-bearing sheets ===
+    # --- Generator sheet: real ratings for the gensets/ATS; accessories flagged. ---
+    "Generator||Briggs & Stratton||18/18kW (LP/NG) - PP18+": {"specs": {"Rating": 18.0, "Output Breaker (A)": 80.0}, "flags": "Rating filled from Briggs PowerProtect 18kW (matches PP18 / PPDX18+ siblings): 18kW, 80A main breaker."},
+    "Generator||Briggs & Stratton||200A ATS old style #071068": {"specs": {"Rating": 200.0, "Output Breaker (A)": 200.0}, "flags": "200A automatic transfer switch — rated 200A (matches the 200A SED transfer-switch rows)."},
+    "Generator||Generac||200 A Auto Transfer Switch": {"specs": {"Rating": 200.0, "Output Breaker (A)": 200.0}, "flags": "200A automatic transfer switch — rated 200A."},
+    "Generator||Briggs & Stratton||Briggs & Stratton - 809732": {"flags": "Briggs service/replacement part #809732 — not a rated generator or transfer switch; no kW / breaker rating. Recategorize as generator accessory."},
+    "Generator||Briggs & Stratton||Voltage Regulator AVR Board for 10k": {"flags": "AVR voltage-regulator control board (10kW gensets) — accessory; no standalone kW / breaker rating."},
+    "Generator||EXCELFU||Disconnect Kit": {"flags": "Generator disconnect kit — accessory; no kW / breaker rating."},
+    "Generator||Generac||0C3150A": {"flags": "Generac part #0C3150A (control/PCB assembly) — accessory; no kW / breaker rating."},
+    "Generator||Generac||6485 maintenance kit": {"flags": "Generac maintenance kit — consumable; no kW / breaker rating."},
+    "Generator||Generac||Universal Valve Gaskets": {"flags": "Service gasket set — consumable; no kW / breaker rating."},
+    # --- Charge Controller sheet: Max Solar (Watts) at 48V from each datasheet. ---
+    "Charge Controller||Morningstar||TS-MPPT-60": {"specs": {"Max Solar (Watts)": 3200.0}, "flags": "Max nominal solar input 3200W @ 48V (TriStar MPPT 60 datasheet; 800/1600/3200W at 12/24/48V)."},
+    "Charge Controller||Morningstar||TS-MPPT-60M": {"specs": {"Max Solar (Watts)": 3200.0}, "flags": "Max nominal solar input 3200W @ 48V (TriStar MPPT 60, -M meter variant; same power stage)."},
+    "Charge Controller||Outback Power||FlexMax 80": {"specs": {"Max Solar (Watts)": 4000.0}, "flags": "Max PV array 4000W @ 48V (FLEXmax 80 / FM80-150VDC datasheet)."},
+    "Charge Controller||Victron||SmartSolar MPPT 150-70-Tr": {"specs": {"Max Solar (Watts)": 4000.0}, "flags": "Max PV power 4000W @ 48V battery (SmartSolar MPPT 150/70 datasheet; 1000/2000/3000/4000W at 12/24/36/48V)."},
+    # --- Optimizer sheet: SolarEdge S-series fills; transmitters flagged. ---
+    "Optimizer||SolarEdge||S440": {"specs": {"Rating": 440.0, "Vin Max": 60.0, "Isc max": 15.0, "Iin max": 15.0, "Iout max": 15.0, "Vout max": 60.0, "Vout off": 1.0, "Minimum String Length": 8.0, "Maximum String Length": 25.0, "Maximum Power Per String": 5700.0}, "flags": "SolarEdge S-series: rated 440W (relabeled 490W after 09/2025), abs max input 60V, MPPT 8-60V, 15A device rating. String design = SolarEdge NA single-phase constants (min 8 / max 25 / 5700W per string, matching this sheet's P-series). Datasheet PDF fetch was policy-blocked — confirm Isc/output-voltage detail against the installed rev."},
+    "Optimizer||SolarEdge||S500B": {"specs": {"Rating": 500.0, "Vin Max": 60.0, "Isc max": 15.0, "Iin max": 15.0, "Iout max": 15.0, "Vout max": 60.0, "Vout off": 1.0, "Minimum String Length": 8.0, "Maximum String Length": 25.0, "Maximum Power Per String": 5700.0}, "flags": "SolarEdge S500B (bifacial-optimized), nameplate 500W, abs max input 60V, MPPT 8-60V, 15A device rating. String design = SolarEdge NA single-phase constants (min 8 / max 25 / 5700W per string). Datasheet PDF fetch was policy-blocked — confirm Isc/output-voltage detail against the installed rev."},
+    "Optimizer||AP Smart||RSD-S(single) PLC": {"specs": {"Rating": 1200.0, "Vin Max": 80.0, "Isc max": 15.0, "Iin max": 15.0, "Iout max": 15.0, "Vout max": 1000.0, "Vout off": 0.0, "Minimum String Length": 1.0, "Maximum String Length": 12.0, "Maximum Power Per String": 5000.0}, "flags": "Single-module rapid-shutdown device (RSD-S-PLC family), not a power-producing optimizer. Specs mirrored from the RSD-S-PLC (MC4) sibling; base RSD-S-PLC is 1000V UL / 8-80VDC / device Isc 25A. Confirm 1000V vs 1500V (415002) variant."},
+    "Optimizer||AP Smart||APsmart transmitter APS 406001 Single Core": {"flags": "PLC signal transmitter (single-core), not a per-module optimizer — no optimizer electrical specs. One transmitter per array. (Two identical rows on the sheet — dedupe candidate.)"},
+    "Optimizer||Tigo||Transmitter Stand Alone (no ps or encl) 490-00000-51": {"flags": "Tigo RSS/Cloud Connect transmitter — accessory, not a per-module optimizer; no optimizer electrical specs."},
+    # --- Breaker sheet: Rating decoded from the model number. ---
+    "Breaker||MidNite Solar||MNEPV20-600RT": {"specs": {"Rating": 20.0}, "flags": "20A DIN-rail PV breaker, 600VDC rated (MNEPV-20-600RT)."},
+    "Breaker||Square D||HOM280": {"specs": {"Rating": 80.0}, "flags": "Square D Homeline HOM280 = 2-pole, 80A (HOM 2 80)."},
 }
