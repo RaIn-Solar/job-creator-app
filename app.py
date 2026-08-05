@@ -18,6 +18,7 @@ import os
 import re
 import sqlite3
 import sys
+import threading
 import uuid
 from datetime import datetime, timedelta, date
 from pathlib import Path
@@ -859,7 +860,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 25.2"
+VERSION = "Piece 25.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -7036,6 +7037,61 @@ def audit_log_page():
     total = db.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
     return render_template("audit.html", entries=entries, actions=actions,
                            action=action, total=total)
+
+
+# ---------------------- Piece 25.3: background scheduler ----------------------
+# Time-based generation (lead follow-ups) used to run only when someone opened
+# the home / dashboard / task pages. This daemon timer runs the same maintenance
+# every SCHEDULER_INTERVAL regardless, so nothing stalls while the app sits
+# unattended. The on-page-load calls stay as a cheap immediacy fallback — every
+# step here is idempotent, so running it both ways is harmless.
+SCHEDULER_INTERVAL_SECONDS = 15 * 60
+_scheduler_started = False
+_scheduler_lock = threading.Lock()
+
+
+def run_maintenance():
+    """One maintenance pass, off the request path. Uses its own connection with
+    a Row factory (the request-scoped get_db isn't available in a bare thread)."""
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_lead_followups(conn)
+    finally:
+        conn.close()
+
+
+def _scheduler_tick():
+    try:
+        run_maintenance()
+    except Exception as exc:            # never let a bad pass kill the timer
+        app.logger.warning("scheduler maintenance failed: %s", exc)
+    finally:
+        _arm_timer()
+
+
+def _arm_timer():
+    timer = threading.Timer(SCHEDULER_INTERVAL_SECONDS, _scheduler_tick)
+    timer.daemon = True                # dies with the process; never blocks exit
+    timer.start()
+
+
+def start_scheduler():
+    """Start the background maintenance timer once per process (idempotent)."""
+    global _scheduler_started
+    with _scheduler_lock:
+        if _scheduler_started:
+            return
+        _scheduler_started = True
+    _arm_timer()
+
+
+@app.before_request
+def _lazy_start_scheduler():
+    # Start on first request so it works under `python app.py` (incl. the debug
+    # reloader — only the serving child gets requests) and any WSGI server.
+    if not _scheduler_started:
+        start_scheduler()
 
 
 if __name__ == "__main__":

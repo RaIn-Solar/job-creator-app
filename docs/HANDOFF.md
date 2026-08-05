@@ -2,7 +2,20 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 25.2** (footer shows it plainly as "Version 25.2" — the "did my pull work?" check)
+**Current build:** **Piece 25.3** (footer shows it plainly as "Version 25.3" — the "did my pull work?" check)
+
+**Piece 25.3 — background scheduler for follow-up generation.** Lead follow-ups
+used to be generated only when someone loaded the home / dashboard / task pages.
+A daemon-thread timer (`start_scheduler`, `run_maintenance`, every 15 min via
+`SCHEDULER_INTERVAL_SECONDS`) now runs that generation off the request path, so
+it keeps up even when the app sits unattended. It's lazy-started on the first
+request (a `before_request` hook — works under `python app.py`, the debug
+reloader, and any WSGI server; only the serving process ever starts it) and
+guarded to start once per process. `run_maintenance` opens its own Row-factory
+connection since the request-scoped `get_db` isn't available in a bare thread,
+and any error is logged without killing the timer. The existing on-page-load
+`ensure_lead_followups` calls remain as a cheap, idempotent immediacy fallback.
+Future periodic jobs just extend `run_maintenance`.
 
 **Piece 25.2 — per-slot document format restrictions.** Each document upload
 slot can now require specific file formats (was: one global allow-list for
@@ -1019,8 +1032,15 @@ link and **Change password** (submits for admin approval).
   lead lifecycle, but **editing the BPMN step contents and reassigning role lanes
   by department is deferred** — the agreed next workflow task. Roles/permissions
   overhaul is also still pending.
-- **Follow-ups generate on page load** (home + task board), not via a background
-  scheduler — fine for an always-someone's-logged-in tool; revisit if that changes.
-- Suggested next: a background scheduler for follow-up generation. (Done since:
-  BPMN/role restructure 24.5–24.6, service worker 24.9, rule + record edit 25.0,
-  timesheet 25.1, per-slot document formats 25.2.)
+- **Background scheduler (Piece 25.3)** — a daemon-thread timer
+  (`start_scheduler` / `run_maintenance`, every `SCHEDULER_INTERVAL_SECONDS` = 15
+  min) now runs lead-follow-up generation off the request path, so it keeps
+  working while the app sits unattended. Lazy-started on the first request (works
+  under `python app.py` incl. the debug reloader, and any WSGI server) and
+  idempotent; the on-page-load `ensure_lead_followups` calls stay as an immediacy
+  fallback. `run_maintenance` uses its own Row-factory connection. Add future
+  periodic jobs by extending `run_maintenance`.
+- All previously-suggested app-wide items are now done (BPMN/role restructure
+  24.5–24.6, service worker 24.9, rule + record edit 25.0, timesheet 25.1,
+  per-slot document formats 25.2, background scheduler 25.3). Remaining wishlist
+  lives above (e.g. the deferred **auto-rename uploads** placeholder).
