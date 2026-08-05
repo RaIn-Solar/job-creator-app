@@ -95,10 +95,14 @@
         <td><span class="badge {{ state_class[c.state] }}">{{ c.status_text }}</span></td>
         <td class="muted">{{ r["rule_label"] or "—" }}</td>
         <td>{% if c.documented %}📎 yes{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td>
+        <td style="white-space:nowrap;">
+          {% if can('employees.manage') %}
+          <a href="{{ url_for('employee_detail', employee_id=employee['id'], edit_credential=r['id'], _anchor='licenses') }}#credential-form"
+             class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
+          {% endif %}
           {% if can('delete') %}
           <form method="post" action="{{ url_for('delete_credential', employee_id=employee['id'], credential_id=r['id']) }}"
-                onsubmit="return confirm('Send this license/certification to the trash?');" style="margin:0;">
+                onsubmit="return confirm('Send this license/certification to the trash?');" style="margin:0; display:inline;">
             <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
           </form>
           {% endif %}
@@ -113,39 +117,43 @@
   {% endif %}
 
   {% if can('employees.manage') %}
-  <form method="post" action="{{ url_for('add_credential', employee_id=employee['id']) }}" style="margin-top:0.9rem;">
+  {% set ecr = edit_credential %}
+  <form method="post" id="credential-form" style="margin-top:0.9rem;"
+        action="{{ url_for('update_credential', employee_id=employee['id'], credential_id=ecr['id']) if ecr else url_for('add_credential', employee_id=employee['id']) }}">
+    <h3 style="margin:0 0 0.5rem; font-size:0.95rem;">{{ "Edit license / certification" if ecr else "Add a license / certification" }}</h3>
     <div class="form-grid">
       <div class="field wide">
         <label for="cname">License / Certification *</label>
-        <input id="cname" name="name" required placeholder="e.g. EE-98J Journeyman, EPA 608 Universal, NABCEP PV">
+        <input id="cname" name="name" required value="{{ ecr['name'] if ecr else '' }}" placeholder="e.g. EE-98J Journeyman, EPA 608 Universal, NABCEP PV">
       </div>
       <div class="field">
         <label for="number">Number</label>
-        <input id="number" name="number" placeholder="license / cert #">
+        <input id="number" name="number" value="{{ ecr['number'] if ecr else '' }}" placeholder="license / cert #">
       </div>
       <div class="field">
         <label for="issued">Issued</label>
-        <input id="issued" name="issued" type="date">
+        <input id="issued" name="issued" type="date" value="{{ ecr['issued'] if ecr else '' }}">
       </div>
       <div class="field">
         <label for="expires">Expires <span class="muted">(leave blank if none)</span></label>
-        <input id="expires" name="expires" type="date">
+        <input id="expires" name="expires" type="date" value="{{ ecr['expires'] if ecr else '' }}">
       </div>
       <div class="field">
         <label for="rule_label">Satisfies job requirement (optional)</label>
         <select id="rule_label" name="rule_label">
           <option value="">— not tied to a requirement —</option>
           {% for label in license_labels %}
-          <option value="{{ label }}">{{ label }}</option>
+          <option value="{{ label }}" {% if ecr and ecr['rule_label'] == label %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="field wide">
         <label for="notes">Notes</label>
-        <input id="notes" name="notes" placeholder="e.g. per tech on site">
+        <input id="notes" name="notes" value="{{ ecr['notes'] if ecr else '' }}" placeholder="e.g. per tech on site">
       </div>
     </div>
-    <div class="actions"><button type="submit" class="btn">＋ Add license / certification</button></div>
+    <div class="actions"><button type="submit" class="btn">{{ "Save changes" if ecr else "＋ Add license / certification" }}</button>
+      {% if ecr %}<a href="{{ url_for('employee_detail', employee_id=employee['id'], _anchor='licenses') }}" class="btn btn-secondary">Cancel</a>{% endif %}</div>
   </form>
   <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Tying a license
   to a job requirement lets each job page show whether someone on staff holds

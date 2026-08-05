@@ -2,7 +2,19 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.9** (footer shows it plainly as "Version 24.9" — the "did my pull work?" check)
+**Current build:** **Piece 25.0** (footer shows it plainly as "Version 25.0" — the "did my pull work?" check)
+
+**Piece 25.0 — in-place edit for the add/delete-only records.** The six record
+families that were previously add-then-delete-to-change now have an **✎ edit**:
+rules, appliance catalog, component catalog, credentials, load items, rooms, and
+BOM lines. Pattern: reference records (rules/catalog/credentials) use a JS-free
+`?edit=<id>` query that pre-fills their existing add form (heading → "Edit …",
+Save/Cancel), matched by a new `update_*` POST route under the same permission
+gate as the add (catalog.manage / rules.manage / employees.manage). The
+job-scoped loads records (items/rooms/BOM) edit **inline on the loads page** via
+`?edit_item` / `?edit_room` / `?edit_bom`, honoring `@loads_unlocked` so a signed
+contract still locks them. Delete-to-trash is unchanged. Verified end-to-end for
+all seven via the test client.
 
 **Piece 24.9 — service worker for offline cold-start.** The app now installs a
 service worker (`/sw.js`, served at root with `Service-Worker-Allowed: /`) so
@@ -959,8 +971,10 @@ link and **Change password** (submits for admin approval).
   note it caches whole pages per device (cleared on logout via `clear-pages`).
 - **"Manager" = Admin** for approvals; a specific manager→worker relationship is a
   future add.
-- **Add/delete-only records** (rules, catalog, credentials, load items, BOM, rooms) have
-  no in-place edit — re-add loses nothing there, but edit can be added on request.
+- **In-place edit (Piece 25.0)** — rules, appliance & component catalog, credentials,
+  load items, rooms, and BOM lines now all have an ✎ edit that pre-fills the record
+  for saving back over the original (was add/delete-only). Same permission gates as
+  their add actions; the loads records edit inline on the page.
 - **No client/job delete** (intentional — would cascade). Cold leads (job-less)
   *can* be deleted from the admin cold-leads page.
 - **BPMN process is still hard-coded** in `bpmn_export.py`. Piece 16 redefined the

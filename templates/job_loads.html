@@ -42,11 +42,45 @@
       {{ room["name"] }}
       {% if room["room_type"] == "scenario" %}<span class="badge warn">custom use-case</span>{% endif %}
       {% if not room["enabled"] %}<span class="badge neutral">excluded from totals</span>{% endif %}
+      {% if not locked and edit_room != room["id"] %}
+      <a href="{{ url_for('job_loads', job_id=job['id'], edit_room=room['id']) }}"
+         class="btn btn-secondary" style="padding:0.1rem 0.4rem; font-size:0.72rem;" title="Rename / retype room">✎</a>
+      {% endif %}
     </legend>
+    {% if edit_room == room["id"] and not locked %}
+    <form method="post" action="{{ url_for('update_load_room', job_id=job['id'], room_id=room['id']) }}" class="form-grid" style="margin-bottom:0.7rem;">
+      <div class="field"><label>Room name</label><input name="name" required value="{{ room['name'] }}"></div>
+      <div class="field">
+        <label>Room type</label>
+        <select name="room_type">
+          <option value="standard" {% if room['room_type'] != 'scenario' %}selected{% endif %}>Standard room</option>
+          <option value="scenario" {% if room['room_type'] == 'scenario' %}selected{% endif %}>Custom use-case (seasonal / unusual load)</option>
+        </select>
+      </div>
+      <div class="field" style="align-self:end;"><button type="submit" class="btn">Save</button>
+        <a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn btn-secondary">Cancel</a></div>
+    </form>
+    {% endif %}
     <table>
       <thead><tr><th>Appliance</th><th>W</th><th>Qty</th><th>Hrs/day</th><th>Usage</th><th>kWh/day</th><th></th></tr></thead>
       <tbody>
         {% for it in items_by_room.get(room["id"], []) %}
+        {% if edit_item == it["id"] and not locked %}
+        <tr><td colspan="7">
+          <form method="post" action="{{ url_for('update_load_item', job_id=job['id'], item_id=it['id']) }}">
+            <div class="form-grid">
+              <div class="field"><label>Appliance</label><input name="appliance" required value="{{ it['appliance'] }}"></div>
+              <div class="field"><label>Watts</label><input type="number" step="any" name="watts" value="{{ it['watts'] }}"></div>
+              <div class="field"><label>Qty</label><input type="number" step="any" name="qty" value="{{ it['qty'] }}"></div>
+              <div class="field"><label>Hrs/day</label><input type="number" step="any" name="hrs" value="{{ it['hrs'] }}"></div>
+              <div class="field"><label>Usage</label>
+                <select name="usage_type">{% for u in load_usage_types %}<option value="{{ u }}" {% if it['usage_type'] == u %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></div>
+            </div>
+            <div class="actions"><button type="submit" class="btn">Save</button>
+              <a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn btn-secondary">Cancel</a></div>
+          </form>
+        </td></tr>
+        {% else %}
         <tr>
           <td>{{ it["appliance"] }}</td>
           <td>{{ it["watts"]|int }}</td>
@@ -54,14 +88,19 @@
           <td>{{ it["hrs"] }}</td>
           <td class="muted">{{ it["usage_type"] }}</td>
           <td>{{ "%.2f"|format((it["watts"] or 0) * (it["qty"] or 0) * (it["hrs"] or 0) / 1000) }}</td>
-          <td>
+          <td style="white-space:nowrap;">
+            {% if not locked %}
+            <a href="{{ url_for('job_loads', job_id=job['id'], edit_item=it['id']) }}"
+               class="btn btn-secondary" style="padding:0.15rem 0.45rem; font-size:0.75rem;" title="Edit">✎</a>
+            {% endif %}
             {% if can('delete') and not locked %}
-            <form method="post" action="{{ url_for('delete_load_item', job_id=job['id'], item_id=it['id']) }}" style="margin:0;">
+            <form method="post" action="{{ url_for('delete_load_item', job_id=job['id'], item_id=it['id']) }}" style="margin:0; display:inline;">
               <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">✕</button>
             </form>
             {% endif %}
           </td>
         </tr>
+        {% endif %}
         {% else %}
         <tr><td colspan="7" class="muted">No appliances added to this room yet.</td></tr>
         {% endfor %}
@@ -209,6 +248,27 @@
     <thead><tr><th>Component</th><th>Category</th><th>Qty</th><th>Unit cost</th><th>Line total</th><th>Notes</th><th></th></tr></thead>
     <tbody>
       {% for b in bom %}
+      {% if edit_bom == b["id"] and not locked %}
+      <tr><td colspan="7">
+        <form method="post" action="{{ url_for('update_bom_item', job_id=job['id'], bom_id=b['id']) }}">
+          <div class="form-grid">
+            <div class="field"><label>Component</label><input name="component_name" required value="{{ b['component_name'] }}"></div>
+            <div class="field">
+              <label>Category</label>
+              <select name="category">
+                <option value="">—</option>
+                {% for cat in component_categories %}<option value="{{ cat }}" {% if b['category'] == cat %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="field"><label>Qty</label><input type="number" step="any" name="qty" value="{{ b['qty'] }}"></div>
+            <div class="field"><label>Unit cost ($)</label><input type="number" step="any" name="unit_cost" value="{{ b['unit_cost'] if b['unit_cost'] is not none else '' }}"></div>
+            <div class="field wide"><label>Notes</label><input name="notes" value="{{ b['notes'] or '' }}"></div>
+          </div>
+          <div class="actions"><button type="submit" class="btn">Save</button>
+            <a href="{{ url_for('job_loads', job_id=job['id']) }}" class="btn btn-secondary">Cancel</a></div>
+        </form>
+      </td></tr>
+      {% else %}
       <tr>
         <td>{{ b["component_name"] }}</td>
         <td class="muted">{{ b["category"] }}</td>
@@ -216,14 +276,19 @@
         <td>{% if b["unit_cost"] %}${{ "%.0f"|format(b["unit_cost"]) }}{% endif %}</td>
         <td>{% if b["unit_cost"] %}${{ "%.0f"|format((b["qty"] or 0) * (b["unit_cost"] or 0)) }}{% endif %}</td>
         <td class="muted">{{ b["notes"] }}</td>
-        <td>
+        <td style="white-space:nowrap;">
+          {% if not locked %}
+          <a href="{{ url_for('job_loads', job_id=job['id'], edit_bom=b['id']) }}"
+             class="btn btn-secondary" style="padding:0.15rem 0.45rem; font-size:0.75rem;" title="Edit">✎</a>
+          {% endif %}
           {% if can('delete') and not locked %}
-          <form method="post" action="{{ url_for('delete_bom_item', job_id=job['id'], bom_id=b['id']) }}" style="margin:0;">
+          <form method="post" action="{{ url_for('delete_bom_item', job_id=job['id'], bom_id=b['id']) }}" style="margin:0; display:inline;">
             <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.75rem;">✕</button>
           </form>
           {% endif %}
         </td>
       </tr>
+      {% endif %}
       {% endfor %}
     </tbody>
     <tfoot><tr><td colspan="4" style="text-align:right; font-weight:600;">Total</td><td style="font-weight:600;">${{ "%.0f"|format(bom_total) }}</td><td colspan="2"></td></tr></tfoot>

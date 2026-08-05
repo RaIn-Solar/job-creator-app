@@ -821,7 +821,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 24.9"
+VERSION = "Piece 25.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1275,6 +1275,7 @@ VIEW_PERMISSION = {
     "edit_employee": "employees.manage",
     "delete_employee": "employees.manage",
     "add_credential": "employees.manage",
+    "update_credential": "employees.manage",
     "delete_credential": "employees.manage",
     "upload_employee_file": "employees.manage",
     "delete_employee_file": "employees.manage",
@@ -3951,6 +3952,10 @@ def job_loads(job_id):
         bom_total=bom_total, appliances_by_category=appliances_by_category,
         components_by_category=components_by_category,
         component_categories=COMPONENT_CATEGORIES,
+        # Piece 25.0: which room / load-item / BOM row is being edited in place.
+        edit_room=request.args.get("edit_room", type=int),
+        edit_item=request.args.get("edit_item", type=int),
+        edit_bom=request.args.get("edit_bom", type=int),
         load_usage_types=LOAD_USAGE_TYPES, load_eras=LOAD_ERAS,
         daily_kwh=daily_kwh, peak_w=peak_w, array_kw=array_kw,
         panel_count=panel_count, battery_kwh_needed=battery_kwh_needed,
@@ -4031,6 +4036,26 @@ def toggle_load_room(job_id, room_id):
     return redirect(url_for("job_loads", job_id=job_id))
 
 
+@app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/edit", methods=["POST"])
+@loads_unlocked
+def update_load_room(job_id, room_id):
+    fetch_job(job_id)
+    db = get_db()
+    if db.execute("SELECT 1 FROM job_load_rooms WHERE id = ? AND job_id = ?",
+                  (room_id, job_id)).fetchone() is None:
+        abort(404)
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("The room needs a name.", "error")
+        return redirect(url_for("job_loads", job_id=job_id, edit_room=room_id))
+    room_type = request.form.get("room_type", "standard").strip() or "standard"
+    db.execute("UPDATE job_load_rooms SET name = ?, room_type = ? WHERE id = ?",
+               (name, room_type, room_id))
+    db.commit()
+    flash("Room updated.")
+    return redirect(url_for("job_loads", job_id=job_id))
+
+
 @app.route("/jobs/<int:job_id>/loads/rooms/<int:room_id>/delete", methods=["POST"])
 @delete_required
 @loads_unlocked
@@ -4087,6 +4112,29 @@ def add_load_item(job_id):
         (job_id, room_id, name, watts, qty, hrs, usage_type),
     )
     db.commit()
+    return redirect(url_for("job_loads", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/loads/items/<int:item_id>/edit", methods=["POST"])
+@loads_unlocked
+def update_load_item(job_id, item_id):
+    fetch_job(job_id)
+    db = get_db()
+    if db.execute("SELECT 1 FROM job_load_items WHERE id = ? AND job_id = ?",
+                  (item_id, job_id)).fetchone() is None:
+        abort(404)
+    name = request.form.get("appliance", "").strip()
+    if not name:
+        flash("The appliance needs a name.", "error")
+        return redirect(url_for("job_loads", job_id=job_id, edit_item=item_id))
+    db.execute(
+        "UPDATE job_load_items SET appliance = ?, watts = ?, qty = ?, hrs = ?,"
+        " usage_type = ? WHERE id = ?",
+        (name, _float(request.form.get("watts")),
+         _float(request.form.get("qty"), 1) or 1, _float(request.form.get("hrs")),
+         request.form.get("usage_type", "").strip(), item_id))
+    db.commit()
+    flash("Appliance updated.")
     return redirect(url_for("job_loads", job_id=job_id))
 
 
@@ -4147,6 +4195,31 @@ def add_bom_item(job_id):
             (job_id, name, category, qty, _float(cost, None) if cost else None, notes),
         )
     db.commit()
+    return redirect(url_for("job_loads", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/loads/bom/<int:bom_id>/edit", methods=["POST"])
+@loads_unlocked
+def update_bom_item(job_id, bom_id):
+    fetch_job(job_id)
+    db = get_db()
+    if db.execute("SELECT 1 FROM job_bom WHERE id = ? AND job_id = ?",
+                  (bom_id, job_id)).fetchone() is None:
+        abort(404)
+    name = request.form.get("component_name", "").strip()
+    if not name:
+        flash("The component needs a name.", "error")
+        return redirect(url_for("job_loads", job_id=job_id, edit_bom=bom_id))
+    cost = request.form.get("unit_cost")
+    db.execute(
+        "UPDATE job_bom SET component_name = ?, category = ?, qty = ?,"
+        " unit_cost = ?, notes = ? WHERE id = ?",
+        (name, request.form.get("category", "").strip(),
+         _float(request.form.get("qty"), 1) or 1,
+         _float(cost, None) if cost not in (None, "") else None,
+         request.form.get("notes", "").strip(), bom_id))
+    db.commit()
+    flash("Component updated.")
     return redirect(url_for("job_loads", job_id=job_id))
 
 
@@ -4237,11 +4310,23 @@ def catalog_page():
         "SELECT * FROM component_catalog ORDER BY category, name"
     ).fetchall()
     appliance_categories = sorted({a["category"] for a in appliances if a["category"]})
+    # Piece 25.0: in-place edit — ?edit_appliance / ?edit_component pre-fills the
+    # add form with that row so it can be saved back over the original.
+    edit_appliance = edit_component = None
+    if request.args.get("edit_appliance", type=int):
+        edit_appliance = db.execute(
+            "SELECT * FROM appliance_catalog WHERE id = ?",
+            (request.args.get("edit_appliance", type=int),)).fetchone()
+    if request.args.get("edit_component", type=int):
+        edit_component = db.execute(
+            "SELECT * FROM component_catalog WHERE id = ?",
+            (request.args.get("edit_component", type=int),)).fetchone()
     return render_template(
         "catalog.html", appliances=appliances, components=components,
         appliance_categories=appliance_categories,
         component_categories=COMPONENT_CATEGORIES, load_eras=LOAD_ERAS,
         load_usage_types=LOAD_USAGE_TYPES,
+        edit_appliance=edit_appliance, edit_component=edit_component,
     )
 
 
@@ -4747,6 +4832,34 @@ def add_appliance_catalog():
     return redirect(url_for("catalog_page"))
 
 
+@app.route("/catalog/appliances/<int:appliance_id>/edit", methods=["POST"])
+@admin_required
+def update_appliance_catalog(appliance_id):
+    name = request.form.get("name", "").strip()
+    db = get_db()
+    if db.execute("SELECT 1 FROM appliance_catalog WHERE id = ?",
+                  (appliance_id,)).fetchone() is None:
+        abort(404)
+    if not name:
+        flash("Appliance name is required.", "error")
+        return redirect(url_for("catalog_page", edit_appliance=appliance_id,
+                                _anchor="appliances"))
+    db.execute(
+        "UPDATE appliance_catalog SET name = ?, category = ?, era = ?, low_w = ?,"
+        " high_w = ?, avg_w = ?, hrs_per_day = ?, usage_type = ?, notes = ?"
+        " WHERE id = ?",
+        (name, request.form.get("category", "").strip(),
+         request.form.get("era", "").strip(),
+         _float(request.form.get("low_w"), 0), _float(request.form.get("high_w"), 0),
+         _float(request.form.get("avg_w"), 0),
+         _float(request.form.get("hrs_per_day"), 0),
+         request.form.get("usage_type", "").strip(),
+         request.form.get("notes", "").strip(), appliance_id))
+    db.commit()
+    flash(f"Updated {name}.")
+    return redirect(url_for("catalog_page", _anchor="appliances"))
+
+
 @app.route("/catalog/appliances/<int:appliance_id>/delete", methods=["POST"])
 @delete_required
 def delete_appliance_catalog(appliance_id):
@@ -4789,6 +4902,42 @@ def add_component_catalog():
     db.commit()
     flash(f"Added {name} to the component catalog.")
     return redirect(url_for("catalog_page"))
+
+
+@app.route("/catalog/components/<int:component_id>/edit", methods=["POST"])
+@admin_required
+def update_component_catalog(component_id):
+    name = request.form.get("name", "").strip()
+    db = get_db()
+    if db.execute("SELECT 1 FROM component_catalog WHERE id = ?",
+                  (component_id,)).fetchone() is None:
+        abort(404)
+    if not name:
+        flash("Component name is required.", "error")
+        return redirect(url_for("catalog_page", edit_component=component_id,
+                                _anchor="components"))
+
+    def opt_float(field):
+        val = request.form.get(field)
+        return _float(val, None) if val not in (None, "") else None
+
+    db.execute(
+        "UPDATE component_catalog SET name = ?, category = ?, manufacturer = ?,"
+        " model = ?, specs = ?, watts = ?, voc = ?, vmp = ?, temp_coef_voc = ?,"
+        " capacity_kwh_nameplate = ?, dod = ?, max_input_v = ?, continuous_w = ?,"
+        " inverter_eff = ?, cost = ?, notes = ? WHERE id = ?",
+        (name, request.form.get("category", "").strip(),
+         request.form.get("manufacturer", "").strip(),
+         request.form.get("model", "").strip(),
+         request.form.get("specs", "").strip(),
+         opt_float("watts"), opt_float("voc"), opt_float("vmp"),
+         opt_float("temp_coef_voc"), opt_float("capacity_kwh_nameplate"),
+         opt_float("dod"), opt_float("max_input_v"), opt_float("continuous_w"),
+         opt_float("inverter_eff"), opt_float("cost"),
+         request.form.get("notes", "").strip(), component_id))
+    db.commit()
+    flash(f"Updated {name}.")
+    return redirect(url_for("catalog_page", _anchor="components"))
 
 
 @app.route("/catalog/components/<int:component_id>/delete", methods=["POST"])
@@ -6056,8 +6205,13 @@ def rules_page():
         from_job = db.execute(
             "SELECT id, job_name FROM jobs WHERE id = ?", (from_job_id,)
         ).fetchone()
+    # Piece 25.0: in-place edit — ?edit pre-fills the add form with that rule.
+    edit_rule = None
+    if request.args.get("edit", type=int):
+        edit_rule = db.execute("SELECT * FROM resource_rules WHERE id = ?",
+                               (request.args.get("edit", type=int),)).fetchone()
     return render_template(
-        "rules.html", rules=rules, from_job=from_job,
+        "rules.html", rules=rules, from_job=from_job, edit_rule=edit_rule,
         job_fields=[f for f in JOB_FIELDS if f != "job_name"],
         field_labels=JOB_FIELD_LABELS, categories=RULE_CATEGORIES,
     )
@@ -6097,6 +6251,43 @@ def add_rule():
     )
     db.commit()
     flash(f"Rule added: {label}")
+    return redirect(url_for("rules_page", from_job=from_job))
+
+
+@app.route("/rules/<int:rule_id>/edit", methods=["POST"])
+@admin_required
+def update_rule(rule_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM resource_rules WHERE id = ?",
+                  (rule_id,)).fetchone() is None:
+        abort(404)
+    field_name = request.form.get("field_name", "").strip()
+    field_value = request.form.get("field_value", "").strip()
+    label = request.form.get("label", "").strip()
+    from_job = request.form.get("from_job") or None
+    field_name2 = request.form.get("field_name2", "").strip()
+    field_value2 = request.form.get("field_value2", "").strip()
+    if field_name not in JOB_FIELDS or not field_value or not label:
+        flash("A rule needs a job field, a value to match, and a label.", "error")
+        return redirect(url_for("rules_page", from_job=from_job, edit=rule_id))
+    if field_name2 and (field_name2 not in JOB_FIELDS or not field_value2):
+        flash("The second condition needs both a field and a value.", "error")
+        return redirect(url_for("rules_page", from_job=from_job, edit=rule_id))
+    db.execute(
+        "UPDATE resource_rules SET field_name = ?, field_value = ?, match_type = ?,"
+        " category = ?, label = ?, url = ?, phone = ?, notes = ?, field_name2 = ?,"
+        " field_value2 = ?, match_type2 = ?, link_text = ? WHERE id = ?",
+        (field_name, field_value,
+         "contains" if field_name == "products" else "equals",
+         request.form.get("category", "Compliance"), label,
+         request.form.get("url", "").strip(),
+         request.form.get("phone", "").strip(),
+         request.form.get("notes", "").strip(),
+         field_name2, field_value2,
+         "contains" if field_name2 == "products" else "equals",
+         request.form.get("link_text", "").strip(), rule_id))
+    db.commit()
+    flash(f"Rule updated: {label}")
     return redirect(url_for("rules_page", from_job=from_job))
 
 
@@ -6422,11 +6613,18 @@ def employee_detail(employee_id):
         " WHERE t.employee_id = ?"
         " ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date, t.id",
         (employee_id,)).fetchall()
+    # Piece 25.0: in-place edit — ?edit_credential pre-fills the add form.
+    edit_credential = None
+    if request.args.get("edit_credential", type=int):
+        edit_credential = db.execute(
+            "SELECT * FROM employee_credentials WHERE id = ? AND employee_id = ?",
+            (request.args.get("edit_credential", type=int), employee_id)).fetchone()
     return render_template(
         "employee_detail.html", employee=employee, roles=roles,
         credentials=credentials, files=files, license_labels=license_labels,
         cred_names=[c["row"]["name"] for c in credentials],
         assigned_tasks=assigned_tasks, task_statuses=TASK_STATUSES,
+        edit_credential=edit_credential,
         today=datetime.now().strftime("%Y-%m-%d"),
     )
 
@@ -6539,6 +6737,32 @@ def add_credential(employee_id):
     )
     db.commit()
     flash(f"Added license/certification: {name}")
+    return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
+
+
+@app.route("/employees/<int:employee_id>/credentials/<int:credential_id>/edit",
+           methods=["POST"])
+@admin_required
+def update_credential(employee_id, credential_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM employee_credentials WHERE id = ?"
+                  " AND employee_id = ?", (credential_id, employee_id)).fetchone() is None:
+        abort(404)
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("A license/certification needs a name.", "error")
+        return redirect(url_for("employee_detail", employee_id=employee_id,
+                                edit_credential=credential_id, _anchor="licenses"))
+    db.execute(
+        "UPDATE employee_credentials SET name = ?, rule_label = ?, number = ?,"
+        " issued = ?, expires = ?, notes = ? WHERE id = ?",
+        (name, request.form.get("rule_label", "").strip(),
+         request.form.get("number", "").strip(),
+         request.form.get("issued", "").strip(),
+         request.form.get("expires", "").strip(),
+         request.form.get("notes", "").strip(), credential_id))
+    db.commit()
+    flash(f"Updated license/certification: {name}")
     return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="licenses"))
 
 
