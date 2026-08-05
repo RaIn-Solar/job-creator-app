@@ -14,7 +14,7 @@ Ground rules honored here:
 Key format: "Category||Make||Model" (exactly as seeded).
 """
 
-RESEARCH_VERSION = 3
+RESEARCH_VERSION = 4
 
 RESEARCH = {
     # --- PV sheet — calibration batch -------------------------------------
@@ -75,12 +75,12 @@ RESEARCH = {
     "Battery||O'Reilly's or equivalent||Battery": {"flags": 'Capacity incomplete — Voltage and/or Ah missing; needs a datasheet lookup.'},
     'Battery||Precision||PR110-DC+HT': {"specs": {"Capacity": 1.32, "Voltage": 12.0, "AH Rating": 110.0}, "flags": 'CAPACITY CORRECTED to 1.32 kWh (nameplate = 12.0V x 110.0Ah / 1000; sheet had None).'},
     'Battery||SimpliPhi||Ampliphi-3.8-48': {"specs": {"Capacity": 3.8, "Voltage": 48.0, "AH Rating": 75.0}, "flags": 'CAPACITY CORRECTED to 3.8 kWh (manufacturer rating; sheet had 3.0).'},
-    'Battery||SOK Battery||S24V100': {"specs": {"Capacity": 2.4, "Voltage": 24.0, "AH Rating": 100.0}, "flags": 'CAPACITY CORRECTED to 2.4 kWh (nameplate = 24.0V x 100.0Ah / 1000; sheet had 2400.0).'},
+    'Battery||SOK Battery||S24V100': {"specs": {"Capacity": 2.4, "Voltage": 24.0, "AH Rating": 100.0}, "purchase_url": "https://signaturesolar.com/?s=sok+s24v100", "flags": 'CAPACITY CORRECTED to 2.4 kWh (24V x 100Ah). Reference retail: Signature Solar / SOK direct. Price on request.'},
     'Battery||Trojan||L16RE-2V': {"specs": {"Capacity": 2.22, "Voltage": 2.0, "AH Rating": 1110.0}, "flags": 'CAPACITY CORRECTED to 2.22 kWh (nameplate = 2.0V x 1110.0Ah / 1000; sheet had 2220.0).'},
     'Battery||US Battery||USL16, 12V 385ah': {"specs": {"Capacity": 4.62, "Voltage": 12.0, "AH Rating": 385.0}, "flags": 'CAPACITY CORRECTED to 4.62 kWh (nameplate = 12.0V x 385.0Ah / 1000; sheet had None).'},
     'Battery||US Battery||USL16HCL, 6V, 420ah': {"specs": {"Capacity": 2.52, "Voltage": 6.0, "AH Rating": 420.0}, "flags": 'CAPACITY CORRECTED to 2.52 kWh (nameplate = 6.0V x 420.0Ah / 1000; sheet had None).'},
     # --- Inverter sheet — string-inverter specs + battery/accessory flags ---
-    'Inverter||Sol-Ark||Sol-Ark SA-15k-P, HARDENED': {"specs": {"Pout Rated (kW)": 15, "Vin Max": 500, "Vin Min": 175}, "manual_url": 'https://www.sol-ark.com/wp-content/uploads/2024/06/SK150-0001-002-15K-2P-N-EN-Datasheet.pdf', "flags": 'Verified: 15kW out, 19.5kW PV max, 3 MPPT 175-425V, Voc max 500V. Datasheet-cited.'},
+    'Inverter||Sol-Ark||Sol-Ark SA-15k-P, HARDENED': {"specs": {"Pout Rated (kW)": 15, "Vin Max": 500, "Vin Min": 175}, "manual_url": 'https://www.sol-ark.com/wp-content/uploads/2024/06/SK150-0001-002-15K-2P-N-EN-Datasheet.pdf', "purchase_url": "https://www.currentconnected.com/product/sol-ark-15k-all-in-one-hybrid-inverter/", "flags": 'Verified: 15kW out, 19.5kW PV max, 3 MPPT 175-425V, Voc max 500V. Reference retail: Current Connected. FCC ID# pending. Price on request.'},
     'Inverter||SMA||SB7.0-1SP-US-41': {"specs": {"Pout Rated (kW)": 7, "Vin Max": 600, "Vin Min": 100}, "manual_url": 'https://s3.amazonaws.com/ecodirect_docs/SMA/Sunny-Boy-US-series/SB3.0-7.7-US-DUS163317W.pdf', "flags": 'Verified: SMA Sunny Boy US, max DC 600V.'},
     'Inverter||SMA||SB7.001SP-US-40': {"specs": {"Pout Rated (kW)": 7, "Vin Max": 600, "Vin Min": 100}, "manual_url": 'https://s3.amazonaws.com/ecodirect_docs/SMA/Sunny-Boy-US-series/SB3.0-7.7-US-DUS163317W.pdf', "flags": 'Verified: SMA Sunny Boy US, max DC 600V (older -40 rev).'},
     'Inverter||SMA||SBSE3.8-US-50 - Hybrid': {"specs": {"Pout Rated (kW)": 3.8, "Vin Max": 600}, "manual_url": 'https://s3.amazonaws.com/ecodirect_docs/SMA/Sunny-Boy-US-series/SB3.0-7.7-US-DUS163317W.pdf', "flags": 'SB Smart Energy hybrid; 600V max DC (US standard) - verify against SBSE datasheet.'},
@@ -104,4 +104,14 @@ RESEARCH = {
     'Inverter||Schneider Electric||XW+ mini Power Distribution Panel RNW865101301': {"flags": 'NOT AN INVERTER — accessory (PDP / connection kit / breaker kit). Recategorize to Electrical.'},
     'Inverter||Schneider Electric||XW+ POWER DISTIBUTION PANEL (RNW865101501)': {"flags": 'NOT AN INVERTER — accessory (PDP / connection kit / breaker kit). Recategorize to Electrical.'},
     'Inverter||Victron||MultiPlus 12V/2000/80A/120V': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    # --- Purchase URLs for current-install gear (Piece 23.9) ---
+    "Battery||Pytes||V5": {"purchase_url": "https://signaturesolar.com/pytes-v5-lifepo4-battery/", "flags": "Reference retail (Signature Solar); listed vendor NAWS also stocks it. Price on request."},
+    "Battery||Pytes||V10": {"purchase_url": "https://www.solar-electric.com/pytes-energy-v10-wall-mount-48v-200-ah-lifepo4-battery-pack.html", "flags": "Purchase page at NAWS (solar-electric.com) — the listed vendor. Price on request."},
+    "Battery||Pytes||V16": {"purchase_url": "https://www.self2solar.com/products/pytes-v16-16kwh-51-2v-lfp-battery-10-years-warranty-ul-9540-certificated-with-sol-ark-and-cec-listed", "flags": "Reference retail (Self2Solar); mfr page pytesess.com/Low-Voltage-Battery/V16.html. Price on request."},
+    "Inverter||Sol-Ark||SA-15K-2P": {"purchase_url": "https://www.currentconnected.com/product/sol-ark-15k-all-in-one-hybrid-inverter/", "flags": "Reference retail (Current Connected). FCC ID# pending. Price on request."},
+    "Inverter||Sol-Ark||SA 8k-P": {"purchase_url": "https://www.solarelectricsupply.com/sol-ark", "flags": "Sol-Ark brand retailer (Solar Electric Supply) — select the 8K model. FCC ID# pending. Price on request."},
+    "Inverter||Sol-Ark||SA-12k-P, HARDENED, EMP": {"purchase_url": "https://www.solarelectricsupply.com/sol-ark", "flags": "Sol-Ark brand retailer (Solar Electric Supply) — select the 12K model. FCC ID# pending. Price on request."},
+    "Inverter||Sol-Ark||18K-2P": {"purchase_url": "https://www.solarelectricsupply.com/sol-ark", "flags": "Sol-Ark brand retailer (Solar Electric Supply) — select the 18K model. FCC ID# pending. Price on request."},
+    "Inverter||SolarEdge||SE 7600H-US000BNU4 (240V)": {"purchase_url": "https://www.solarelectricsupply.com/solaredge-se7600h-us-home-hub-hdwave", "flags": "Reference retail (Solar Electric Supply), SolarEdge Home Hub 7.6kW. FCC ID# pending. Price on request."},
+    "Inverter||Solis||S6-EH1P10K-H-US-RSS": {"purchase_url": "https://www.solar-electric.com/solis-s6-eh1p10k-h-us-rss-hybrid-single-phase-inverter.html", "flags": "Purchase page at NAWS (solar-electric.com), Solis S6 hybrid 10kW. FCC ID# pending. Price on request."},
 }
