@@ -14,7 +14,7 @@ Ground rules honored here:
 Key format: "Category||Make||Model" (exactly as seeded).
 """
 
-RESEARCH_VERSION = 2
+RESEARCH_VERSION = 3
 
 RESEARCH = {
     # --- PV sheet — calibration batch -------------------------------------
@@ -79,4 +79,29 @@ RESEARCH = {
     'Battery||Trojan||L16RE-2V': {"specs": {"Capacity": 2.22, "Voltage": 2.0, "AH Rating": 1110.0}, "flags": 'CAPACITY CORRECTED to 2.22 kWh (nameplate = 2.0V x 1110.0Ah / 1000; sheet had 2220.0).'},
     'Battery||US Battery||USL16, 12V 385ah': {"specs": {"Capacity": 4.62, "Voltage": 12.0, "AH Rating": 385.0}, "flags": 'CAPACITY CORRECTED to 4.62 kWh (nameplate = 12.0V x 385.0Ah / 1000; sheet had None).'},
     'Battery||US Battery||USL16HCL, 6V, 420ah': {"specs": {"Capacity": 2.52, "Voltage": 6.0, "AH Rating": 420.0}, "flags": 'CAPACITY CORRECTED to 2.52 kWh (nameplate = 6.0V x 420.0Ah / 1000; sheet had None).'},
+    # --- Inverter sheet — string-inverter specs + battery/accessory flags ---
+    'Inverter||Sol-Ark||Sol-Ark SA-15k-P, HARDENED': {"specs": {"Pout Rated (kW)": 15, "Vin Max": 500, "Vin Min": 175}, "manual_url": 'https://www.sol-ark.com/wp-content/uploads/2024/06/SK150-0001-002-15K-2P-N-EN-Datasheet.pdf', "flags": 'Verified: 15kW out, 19.5kW PV max, 3 MPPT 175-425V, Voc max 500V. Datasheet-cited.'},
+    'Inverter||SMA||SB7.0-1SP-US-41': {"specs": {"Pout Rated (kW)": 7, "Vin Max": 600, "Vin Min": 100}, "manual_url": 'https://s3.amazonaws.com/ecodirect_docs/SMA/Sunny-Boy-US-series/SB3.0-7.7-US-DUS163317W.pdf', "flags": 'Verified: SMA Sunny Boy US, max DC 600V.'},
+    'Inverter||SMA||SB7.001SP-US-40': {"specs": {"Pout Rated (kW)": 7, "Vin Max": 600, "Vin Min": 100}, "manual_url": 'https://s3.amazonaws.com/ecodirect_docs/SMA/Sunny-Boy-US-series/SB3.0-7.7-US-DUS163317W.pdf', "flags": 'Verified: SMA Sunny Boy US, max DC 600V (older -40 rev).'},
+    'Inverter||SMA||SBSE3.8-US-50 - Hybrid': {"specs": {"Pout Rated (kW)": 3.8, "Vin Max": 600}, "manual_url": 'https://s3.amazonaws.com/ecodirect_docs/SMA/Sunny-Boy-US-series/SB3.0-7.7-US-DUS163317W.pdf', "flags": 'SB Smart Energy hybrid; 600V max DC (US standard) - verify against SBSE datasheet.'},
+    'Inverter||SMA||SBSE4.8-US-50 - Hybrid': {"specs": {"Pout Rated (kW)": 4.8, "Vin Max": 600}, "manual_url": 'https://s3.amazonaws.com/ecodirect_docs/SMA/Sunny-Boy-US-series/SB3.0-7.7-US-DUS163317W.pdf', "flags": 'SB Smart Energy hybrid; 600V max DC (US standard) - verify against SBSE datasheet.'},
+    'Inverter||SMA||SBSE5.8-US-50 - Hybrid': {"specs": {"Pout Rated (kW)": 5.8, "Vin Max": 600}, "manual_url": 'https://s3.amazonaws.com/ecodirect_docs/SMA/Sunny-Boy-US-series/SB3.0-7.7-US-DUS163317W.pdf', "flags": 'SB Smart Energy hybrid; 600V max DC (US standard) - verify against SBSE datasheet.'},
+    'Inverter||GoodWe||GoodWGW5000-MS-US30 - Tigo': {"specs": {"Pout Rated (kW)": 5.0, "Vin Max": 600, "Vin Min": 165}, "manual_url": 'https://en.goodwe.com/Ftp/EN/Downloads/Datasheet/GW_MS-US_Datasheet-EN.pdf', "flags": 'Verified: GoodWe MS-US, max PV 600V.'},
+    'Inverter||GoodWe||GoodWGW6000-MS-US30 - Tigo': {"specs": {"Pout Rated (kW)": 6.0, "Vin Max": 600, "Vin Min": 165}, "manual_url": 'https://en.goodwe.com/Ftp/EN/Downloads/Datasheet/GW_MS-US_Datasheet-EN.pdf', "flags": 'Verified: GoodWe MS-US, max PV 600V.'},
+    'Inverter||GoodWe||GoodWGW7700-MS-US30 - Tigo': {"specs": {"Pout Rated (kW)": 7.7, "Vin Max": 600, "Vin Min": 165}, "manual_url": 'https://en.goodwe.com/Ftp/EN/Downloads/Datasheet/GW_MS-US_Datasheet-EN.pdf', "flags": 'Verified: GoodWe MS-US, max PV 600V.'},
+    'Inverter||GoodWe||GoodWGW9600-MS-US30 - Tigo': {"specs": {"Pout Rated (kW)": 9.6, "Vin Max": 600, "Vin Min": 165}, "manual_url": 'https://en.goodwe.com/Ftp/EN/Downloads/Datasheet/GW_MS-US_Datasheet-EN.pdf', "flags": 'Verified: GoodWe MS-US, max PV 600V.'},
+    'Inverter||Solis||1P9K-4G-US': {"specs": {"Pout Rated (kW)": 9, "Vin Max": 600, "Vin Min": 100}, "manual_url": 'https://www.invertersupply.com/media/data/Datasheet_Solis-1P9K-4G-US.pdf', "flags": 'Verified: Solis 1P9K-4G-US, max DC 600V, 4 MPPT.'},
+    'Inverter||Magnum||MPSL175-30D': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    'Inverter||Outback||GS4048A-01': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    'Inverter||Samlex||EVO-1212F': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    'Inverter||Samlex||EVO-1224F': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    'Inverter||Samlex||EVO-1224F-HW': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    'Inverter||Samlex||EVO-2212': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    'Inverter||Samlex||EVO-2224': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    'Inverter||Samlex||PST-2000-12': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
+    'Inverter||Schneider Electric||Breaker Kit for Conext XW+PDP #RNW865121501': {"flags": 'NOT AN INVERTER — accessory (PDP / connection kit / breaker kit). Recategorize to Electrical.'},
+    'Inverter||Schneider Electric||XW Connection kit for Inverter 2 (RNW865102002': {"flags": 'NOT AN INVERTER — accessory (PDP / connection kit / breaker kit). Recategorize to Electrical.'},
+    'Inverter||Schneider Electric||XW+ mini Power Distribution Panel RNW865101301': {"flags": 'NOT AN INVERTER — accessory (PDP / connection kit / breaker kit). Recategorize to Electrical.'},
+    'Inverter||Schneider Electric||XW+ POWER DISTIBUTION PANEL (RNW865101501)': {"flags": 'NOT AN INVERTER — accessory (PDP / connection kit / breaker kit). Recategorize to Electrical.'},
+    'Inverter||Victron||MultiPlus 12V/2000/80A/120V': {"flags": 'Battery-based inverter/charger — no PV MPPT; PV Vin Max n/a (DC input = battery voltage).'},
 }

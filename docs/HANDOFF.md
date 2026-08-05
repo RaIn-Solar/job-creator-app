@@ -2,7 +2,18 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.5** (footer shows it plainly as "Version 23.5" — the "did my pull work?" check)
+**Current build:** **Piece 23.6** (footer shows it plainly as "Version 23.6" — the "did my pull work?" check)
+
+**Piece 23.6 — Inverter research.** RESEARCH_VERSION 3, +24 Inverter entries.
+Verified the current **string/hybrid** inverters' **Vin Max** (the calculator's
+cold-temp string-sizing input) + Pout from datasheets: Sol-Ark 15K (500V/15kW),
+SMA Sunny Boy US (600V), GoodWe MS-US (600V), Solis 1P9K (600V); SMA SBSE hybrids
+set to 600V "verify". Deterministic flags: 4 Schneider rows are **NOT inverters**
+(PDP/connection/breaker kits → recategorize to Electrical); 9 **battery-based
+inverter/chargers** (Magnum, Outback Radian, Samlex, Victron) flagged "no PV MPPT
+— PV Vin Max n/a". Workbook now covers PV + Battery + Inverter. **Remaining
+inverters (SolarEdge, Schneider XW battery, Solis/Victron variants, Megarevo,
+Emporia) + the other sheets still pending; FCC IDs are a later phase.**
 
 **Piece 23.5 — Battery research (calculator capacities).** `inventory_research.py`
 → RESEARCH_VERSION 2, +19 Battery entries. The Battery **Capacity** column was
