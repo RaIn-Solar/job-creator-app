@@ -2,7 +2,16 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.7** (footer shows it plainly as "Version 24.7" — the "did my pull work?" check)
+**Current build:** **Piece 24.8** (footer shows it plainly as "Version 24.8" — the "did my pull work?" check)
+
+**Piece 24.8 — auto-logout is now a 12-hour *inactivity* window.** Changed the
+24.7 absolute-from-login limit to a sliding idle window: `require_login` refreshes
+`session["last_active"]` on every authenticated request, and `_session_expired()`
+drops a session only when its last activity was 12+ hours ago. Active users stay
+signed in indefinitely; an idle session (or a left-open tab — the Work Bag /
+search only hit the server on user action, not a background timer) is dropped 12h
+after the last action. Cookie slides with it; server stamp is authoritative;
+unstamped/tampered sessions still count as expired.
 
 **Piece 24.7 — 12-hour auto-logout.** A sign-in now lasts at most
 `SESSION_MAX_HOURS = 12`, measured **absolutely from login** (not from last

@@ -821,7 +821,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 24.7"
+VERSION = "Piece 24.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1068,10 +1068,11 @@ app = Flask(__name__, template_folder=str(BASE_DIR / "templates"))
 # Needed for flash messages; fine as a constant for an internal single-box tool.
 app.secret_key = "ecc-solar-job-creator"
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB per upload
-# Piece 24.7: a sign-in lasts at most this many hours (absolute — measured from
-# login, not from last activity). After that the session is dropped and the user
-# must sign in again. The cookie is also capped to the same window as a second
-# layer, but the server-side stamp (session["auth_at"]) is the authority.
+# Piece 24.7 / 24.8: a sign-in lasts at most this many hours of INACTIVITY — the
+# window slides forward on every request, so an active user stays signed in and
+# an idle one is dropped 12 hours after their last activity. The cookie also
+# slides with the same window as a second layer, but the server-side stamp
+# (session["last_active"]) is the authority.
 SESSION_MAX_HOURS = 12
 app.permanent_session_lifetime = timedelta(hours=SESSION_MAX_HOURS)
 
@@ -1640,19 +1641,19 @@ def purge_trash(trash_id):
 
 
 def _session_expired():
-    """True when the current sign-in is older than SESSION_MAX_HOURS (absolute,
-    measured from login). A session with no stamp (pre-24.7, or tampered) counts
-    as expired so it can't outlive the policy."""
+    """True when the last activity on this sign-in was more than
+    SESSION_MAX_HOURS ago (a sliding idle window). A session with no stamp
+    (pre-24.7, or tampered) counts as expired so it can't outlive the policy."""
     if "user_id" not in session:
         return False
-    ts = session.get("auth_at")
+    ts = session.get("last_active")
     if not ts:
         return True
     try:
-        started = datetime.fromisoformat(ts)
+        seen = datetime.fromisoformat(ts)
     except (ValueError, TypeError):
         return True
-    return datetime.now() - started >= timedelta(hours=SESSION_MAX_HOURS)
+    return datetime.now() - seen >= timedelta(hours=SESSION_MAX_HOURS)
 
 
 @app.before_request
@@ -1663,15 +1664,18 @@ def require_login():
         return
     if request.endpoint in ("login", "static", None):
         return
-    # Piece 24.7: drop a sign-in that has passed the 12-hour limit.
-    if _session_expired():
-        session.clear()
-        if request.path.startswith("/api/"):
-            return jsonify({"error": "session expired"}), 401
-        flash(f"Signed out automatically after {SESSION_MAX_HOURS} hours for "
-              "security. Please sign in again.")
-        nxt = request.path if request.method == "GET" else None
-        return redirect(url_for("login", next=nxt))
+    # Piece 24.8: drop a sign-in idle past the limit; otherwise slide the
+    # inactivity window forward so active users stay signed in.
+    if "user_id" in session:
+        if _session_expired():
+            session.clear()
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "session expired"}), 401
+            flash(f"Signed out after {SESSION_MAX_HOURS} hours of inactivity for "
+                  "security. Please sign in again.")
+            nxt = request.path if request.method == "GET" else None
+            return redirect(url_for("login", next=nxt))
+        session["last_active"] = datetime.now().isoformat(timespec="seconds")
     if current_user() is None:
         if request.path.startswith("/api/"):
             return jsonify({"error": "not signed in"}), 401
@@ -1694,10 +1698,10 @@ def login():
         if user and user["password_hash"] and check_password_hash(
                 user["password_hash"], password):
             session["user_id"] = user["id"]
-            # Piece 24.7: stamp the sign-in time so the session self-expires
-            # 12 hours from now (absolute), and cap the cookie to match.
+            # Piece 24.8: stamp last activity so the session self-expires after
+            # 12 hours of inactivity (the window slides on each request).
             session.permanent = True
-            session["auth_at"] = datetime.now().isoformat(timespec="seconds")
+            session["last_active"] = datetime.now().isoformat(timespec="seconds")
             flash(f"Signed in as {user['name']}.")
             session.pop("dash_mode", None)  # start on their saved default
             # Honor a deep link (e.g. a specific job someone opened while
