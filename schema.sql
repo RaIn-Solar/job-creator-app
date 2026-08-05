@@ -590,3 +590,25 @@ CREATE TABLE IF NOT EXISTS inventory_txns (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_inventory_txns_item ON inventory_txns(item_id);
+
+-- Piece 26.0: barcode/asset registry. Each row is a printed, scannable label
+-- (unique serial) tied to an inventory entity. Non-consumables (tools / PPE /
+-- vehicles) get one tag per physical unit and track In stock / Out; consumables
+-- (components / hardware) get a SKU label whose scan-out records a 'used' stock
+-- movement against the item + job (the inventory_txns ledger from Piece 24.4).
+CREATE TABLE IF NOT EXISTS inventory_assets (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    serial         TEXT UNIQUE NOT NULL,
+    kind           TEXT NOT NULL DEFAULT 'non_consumable',  -- consumable | non_consumable
+    entity_type    TEXT NOT NULL,        -- inventory_item | inventory_tool | inventory_vehicle
+    entity_id      INTEGER NOT NULL,
+    label          TEXT DEFAULT '',       -- cached human description for the tag
+    status         TEXT NOT NULL DEFAULT 'In stock',  -- In stock | Out | Retired
+    job_id         INTEGER REFERENCES jobs(id),        -- current checkout (non-consumables)
+    registered_by  TEXT DEFAULT '',
+    registered_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    last_action    TEXT DEFAULT '',
+    last_action_by TEXT DEFAULT '',
+    last_action_at TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_assets_serial ON inventory_assets(serial);

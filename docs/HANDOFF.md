@@ -2,7 +2,24 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 25.4** (footer shows it plainly as "Version 25.4" — the "did my pull work?" check)
+**Current build:** **Piece 26.0** (footer shows it plainly as "Version 26.0" — the "did my pull work?" check)
+
+**Piece 26.0 — barcode / asset registry (generate, print, scan).** New
+`inventory_assets` table + a dependency-free **Code 128-B** SVG encoder
+(`barcodes.py`, validated byte-for-byte against `python-barcode`; ships stdlib-
+only so it works offline). Each asset is a printed, scannable label with a
+unique serial (`ECC-000123`) tied to an inventory entity. **Register from
+scratch** on `/inventory/assets` (pick a component/tool/vehicle; non-consumables
+mint one tag per physical unit, a consumable gets one SKU label), which redirects
+to a **print sheet** (`/inventory/assets/labels`) of barcodes. **Scan**
+(`/inventory/scan`) is keyboard-wedge friendly (scanner types serial + Enter →
+auto-submit): a **consumable** scan-out records a `used` stock movement through
+the Piece 24.4 ledger (qty + optional job); a **non-consumable** toggles In
+stock ↔ Out (with the job it's out on), plus **Retire**. Helpers:
+`register_asset`, `_resolve_serial`, `_asset_entity_label`. All routes gated by
+`inventory.manage`; links (📷 Scan / 🏷 Barcodes) added to the Inventory header.
+Verified end-to-end incl. a real-browser screenshot of printed labels + scan.
+**This closes the last deferred inventory item.**
 
 **Piece 25.4 — auto-rename uploads for recordkeeping.** Every uploaded file is
 renamed on upload to a consistent, self-describing **Name_What_Date** scheme so
@@ -1001,12 +1018,14 @@ link and **Change password** (submits for admin approval).
   `loads_seed.py` (379 appliances + 62 components); `bpmn_export.py`;
   `templates/` (Jinja; `base.html` holds styling + tab CSS + nav);
   `docs/reference/00–04*.md` (verified July-2026 NM permit/AHJ/utility source set).
-- **Tables (27):** clients, client_versions, lead_followups, cold_leads, permission_grants, trash, jobs,
-  job_versions, job_materials, job_files, job_tasks, resource_rules, meta,
+- **Tables (35+):** clients, client_versions, lead_followups, cold_leads, permission_grants, trash, jobs,
+  job_versions, job_materials, job_files, job_tasks, job_notes, resource_rules, meta,
   employees, employee_credentials, employee_files, client_files,
   appliance_catalog, component_catalog, job_load_rooms, job_load_items, job_bom,
   job_sizing, password_requests, field_submissions, field_submission_items,
-  audit_log.
+  audit_log, time_entries, pay_types, pay_rates,
+  inventory_vendors, inventory_items, inventory_tools, inventory_vehicles,
+  inventory_txns, inventory_assets.
 
 # 4) Working conventions
 - Bump `VERSION` in `app.py` per change; verify with a running server (curl + Playwright

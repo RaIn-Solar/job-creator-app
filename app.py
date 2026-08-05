@@ -45,6 +45,7 @@ from inventory_seed import (
 from inventory_research import (
     RESEARCH, RESEARCH_VERSION, TOOLS_RESEARCH, TOOLS_RESEARCH_VERSION,
 )
+import barcodes
 
 # Code assets (schema.sql, templates) sit next to this file — except under
 # a PyInstaller desktop build, where they're unpacked into sys._MEIPASS.
@@ -895,7 +896,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 25.4"
+VERSION = "Piece 26.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1366,6 +1367,14 @@ VIEW_PERMISSION = {
     "inventory_stale": "inventory.manage",
     "inventory_stale_keep": "inventory.manage",
     "inventory_stale_discontinue": "inventory.manage",
+    # Piece 26.0: barcode / asset registry.
+    "inventory_assets": "inventory.manage",
+    "inventory_asset_register": "inventory.manage",
+    "inventory_asset_labels": "inventory.manage",
+    "inventory_scan": "inventory.manage",
+    "inventory_asset_checkout": "inventory.manage",
+    "inventory_asset_checkin": "inventory.manage",
+    "inventory_asset_retire": "inventory.manage",
 }
 
 
@@ -4999,6 +5008,249 @@ def inventory_vehicle_delete(vehicle_id):
     ok, msg = trash_item("inventory_vehicle", vehicle_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page", _anchor="vehicles"))
+
+
+# ================= Piece 26.0: barcode / asset registry ======================
+# Each asset is a printed, scannable label (unique serial) tied to an inventory
+# entity. Consumables (components) decrement stock through the ledger when
+# scanned out; non-consumables (tools / PPE / vehicles) toggle In stock ↔ Out.
+ASSET_ENTITY_TABLES = {
+    "inventory_item": ("inventory_items", "consumable"),
+    "inventory_tool": ("inventory_tools", "non_consumable"),
+    "inventory_vehicle": ("inventory_vehicles", "non_consumable"),
+}
+
+
+def _asset_entity_label(db, entity_type, entity_id):
+    """Human description for an asset's linked inventory entity."""
+    if entity_type == "inventory_item":
+        r = db.execute("SELECT make, model, category FROM inventory_items"
+                       " WHERE id = ?", (entity_id,)).fetchone()
+        if r:
+            return f"{r['make']} {r['model']}".strip() or r["category"] or "Item"
+    elif entity_type == "inventory_tool":
+        r = db.execute("SELECT name, make, model FROM inventory_tools"
+                       " WHERE id = ?", (entity_id,)).fetchone()
+        if r:
+            return r["name"] or f"{r['make']} {r['model']}".strip() or "Tool"
+    elif entity_type == "inventory_vehicle":
+        r = db.execute("SELECT name, nickname FROM inventory_vehicles"
+                       " WHERE id = ?", (entity_id,)).fetchone()
+        if r:
+            return r["name"] + (f" ({r['nickname']})" if r["nickname"] else "")
+    return ""
+
+
+def register_asset(db, entity_type, entity_id, user_name=""):
+    """Mint one asset tag (insert, then set serial ECC-<id>). Returns its id."""
+    cfg = ASSET_ENTITY_TABLES.get(entity_type)
+    if not cfg:
+        return None
+    _table, kind = cfg
+    if db.execute(f"SELECT 1 FROM {_table} WHERE id = ?", (entity_id,)).fetchone() is None:
+        return None
+    label = _asset_entity_label(db, entity_type, entity_id)
+    cur = db.execute(
+        "INSERT INTO inventory_assets (serial, kind, entity_type, entity_id,"
+        " label, registered_by, last_action, last_action_by, last_action_at)"
+        " VALUES ('', ?, ?, ?, ?, ?, 'Registered', ?, datetime('now'))",
+        (kind, entity_type, entity_id, label, user_name, user_name))
+    aid = cur.lastrowid
+    db.execute("UPDATE inventory_assets SET serial = ? WHERE id = ?",
+               (f"ECC-{aid:06d}", aid))
+    return aid
+
+
+def _asset_entity_choices(db):
+    """(value, group, label) options for the register picker, value = 'type:id'."""
+    out = []
+    for it in db.execute("SELECT id, make, model, category FROM inventory_items"
+                         " WHERE active = 1 ORDER BY category, make, model"):
+        out.append((f"inventory_item:{it['id']}", "Components (consumable)",
+                    f"{it['make']} {it['model']}".strip() or it["category"]))
+    for t in db.execute("SELECT id, name FROM inventory_tools WHERE active = 1"
+                        " ORDER BY category, name"):
+        out.append((f"inventory_tool:{t['id']}", "Tools & PPE (non-consumable)",
+                    t["name"]))
+    for v in db.execute("SELECT id, name, nickname FROM inventory_vehicles"
+                        " WHERE active = 1 ORDER BY name"):
+        lbl = v["name"] + (f" ({v['nickname']})" if v["nickname"] else "")
+        out.append((f"inventory_vehicle:{v['id']}", "Vehicles (non-consumable)", lbl))
+    return out
+
+
+@app.route("/inventory/assets")
+@admin_required
+def inventory_assets():
+    """The barcode/asset registry: register tags, print labels, see what's out."""
+    db = get_db()
+    q = (request.args.get("q") or "").strip()
+    status = request.args.get("status") or ""
+    sql = ("SELECT a.*, j.job_name FROM inventory_assets a"
+           " LEFT JOIN jobs j ON j.id = a.job_id WHERE 1=1")
+    params = []
+    if q:
+        sql += " AND (a.serial LIKE ? OR a.label LIKE ?)"
+        params += [f"%{q}%", f"%{q}%"]
+    if status in ("In stock", "Out", "Retired"):
+        sql += " AND a.status = ?"
+        params.append(status)
+    sql += " ORDER BY a.id DESC"
+    assets = db.execute(sql, params).fetchall()
+    out_count = db.execute("SELECT COUNT(*) FROM inventory_assets"
+                           " WHERE status = 'Out'").fetchone()[0]
+    return render_template(
+        "inventory_assets.html", assets=assets, choices=_asset_entity_choices(db),
+        q=q, status=status, out_count=out_count, total=len(assets))
+
+
+@app.route("/inventory/assets/register", methods=["POST"])
+@admin_required
+def inventory_asset_register():
+    db = get_db()
+    entity = request.form.get("entity", "")
+    qty = int(_to_float(request.form.get("qty")) or 1)
+    qty = max(1, min(qty, 200))            # sane bound for a print run
+    if ":" not in entity:
+        flash("Pick something to tag.", "error")
+        return redirect(url_for("inventory_assets"))
+    entity_type, _, eid = entity.partition(":")
+    if not eid.isdigit() or entity_type not in ASSET_ENTITY_TABLES:
+        flash("That item can't be tagged.", "error")
+        return redirect(url_for("inventory_assets"))
+    # A consumable is one SKU label; non-consumables mint one tag per unit.
+    if ASSET_ENTITY_TABLES[entity_type][1] == "consumable":
+        qty = 1
+    user = current_user()
+    new_ids = []
+    for _ in range(qty):
+        aid = register_asset(db, entity_type, int(eid),
+                             user["name"] if user else "")
+        if aid:
+            new_ids.append(aid)
+    db.commit()
+    if not new_ids:
+        flash("Couldn't register that item.", "error")
+        return redirect(url_for("inventory_assets"))
+    flash(f"Registered {len(new_ids)} label(s). Print them below.")
+    return redirect(url_for("inventory_asset_labels",
+                            ids=",".join(str(i) for i in new_ids)))
+
+
+def _load_assets(db, ids):
+    ids = [int(i) for i in ids if str(i).isdigit()]
+    if not ids:
+        return []
+    rows = db.execute(
+        "SELECT * FROM inventory_assets WHERE id IN (%s)"
+        % ",".join("?" * len(ids)), ids).fetchall()
+    by_id = {r["id"]: r for r in rows}
+    return [by_id[i] for i in ids if i in by_id]
+
+
+@app.route("/inventory/assets/labels")
+@admin_required
+def inventory_asset_labels():
+    """A print sheet of one or more labels (each with its Code 128 barcode)."""
+    db = get_db()
+    assets = _load_assets(db, (request.args.get("ids") or "").split(","))
+    labels = [{"a": a, "svg": barcodes.code128b_svg(a["serial"])} for a in assets]
+    return render_template("asset_labels.html", labels=labels)
+
+
+def _resolve_serial(db, serial):
+    serial = (serial or "").strip().upper()
+    if not serial:
+        return None
+    return db.execute(
+        "SELECT a.*, j.job_name FROM inventory_assets a"
+        " LEFT JOIN jobs j ON j.id = a.job_id WHERE UPPER(a.serial) = ?",
+        (serial,)).fetchone()
+
+
+@app.route("/inventory/scan")
+@admin_required
+def inventory_scan():
+    """Scan (or type) a serial to check it in / out. Keyboard-wedge friendly."""
+    db = get_db()
+    code = request.args.get("code", "")
+    asset = _resolve_serial(db, code) if code else None
+    not_found = bool(code) and asset is None
+    jobs = db.execute(
+        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id"
+        " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
+    return render_template("inventory_scan.html", code=code, asset=asset,
+                           not_found=not_found, jobs=jobs)
+
+
+@app.route("/inventory/assets/<int:asset_id>/checkout", methods=["POST"])
+@admin_required
+def inventory_asset_checkout(asset_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM inventory_assets WHERE id = ?",
+                   (asset_id,)).fetchone()
+    if a is None:
+        abort(404)
+    job_raw = request.form.get("job_id", "")
+    job_id = int(job_raw) if job_raw.isdigit() else None
+    user = current_user()
+    who = user["name"] if user else ""
+    if a["kind"] == "consumable":
+        # Scanning a consumable out records a 'used' stock movement on its item.
+        qty = int(_to_float(request.form.get("qty")) or 1)
+        apply_stock_txn(db, a["entity_id"], "used", -abs(qty), job_id,
+                        f"Scanned out ({a['serial']})", who)
+        db.execute("UPDATE inventory_assets SET last_action = ?,"
+                   " last_action_by = ?, last_action_at = datetime('now') WHERE id = ?",
+                   (f"Issued {qty} to job", who, asset_id))
+        db.commit()
+        flash(f"Recorded {qty} × {a['label']} used" +
+              (" on the job." if job_id else "."))
+    else:
+        db.execute("UPDATE inventory_assets SET status = 'Out', job_id = ?,"
+                   " last_action = 'Checked out', last_action_by = ?,"
+                   " last_action_at = datetime('now') WHERE id = ?",
+                   (job_id, who, asset_id))
+        db.commit()
+        flash(f"{a['label']} checked out" + (" to the job." if job_id else "."))
+    return redirect(url_for("inventory_scan"))
+
+
+@app.route("/inventory/assets/<int:asset_id>/checkin", methods=["POST"])
+@admin_required
+def inventory_asset_checkin(asset_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM inventory_assets WHERE id = ?",
+                   (asset_id,)).fetchone()
+    if a is None:
+        abort(404)
+    user = current_user()
+    db.execute("UPDATE inventory_assets SET status = 'In stock', job_id = NULL,"
+               " last_action = 'Checked in', last_action_by = ?,"
+               " last_action_at = datetime('now') WHERE id = ?",
+               (user["name"] if user else "", asset_id))
+    db.commit()
+    flash(f"{a['label']} checked back in.")
+    return redirect(url_for("inventory_scan"))
+
+
+@app.route("/inventory/assets/<int:asset_id>/retire", methods=["POST"])
+@admin_required
+def inventory_asset_retire(asset_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM inventory_assets WHERE id = ?",
+                   (asset_id,)).fetchone()
+    if a is None:
+        abort(404)
+    user = current_user()
+    db.execute("UPDATE inventory_assets SET status = 'Retired', job_id = NULL,"
+               " last_action = 'Retired', last_action_by = ?,"
+               " last_action_at = datetime('now') WHERE id = ?",
+               (user["name"] if user else "", asset_id))
+    db.commit()
+    flash(f"Retired {a['serial']}.")
+    return redirect(url_for("inventory_assets"))
 
 
 @app.route("/catalog/appliances/add", methods=["POST"])
