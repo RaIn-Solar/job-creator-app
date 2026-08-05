@@ -12,6 +12,7 @@
 <strong>Consumables</strong> (components/hardware) get one SKU label — scanning it out records stock used on a job.
 <strong>Non-consumables</strong> (tools, PPE, vehicles) get one tag per unit that toggles In&nbsp;stock ↔ Out.</p>
 
+{% if can('inventory.register') %}
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">Register &amp; print labels</h2>
   <form method="post" action="{{ url_for('inventory_asset_register') }}" class="form-grid" style="align-items:end;">
@@ -35,6 +36,11 @@
     <div class="field"><button type="submit" class="btn">＋ Register &amp; print</button></div>
   </form>
 </div>
+{% else %}
+<div class="card"><p class="muted" style="margin:0;">🔒 Registering new tags is the
+  warehouse manager's job. You can still look up and print existing labels, and
+  <a href="{{ url_for('inventory_load') }}">load a truck</a> by scanning.</p></div>
+{% endif %}
 
 <form method="get" class="card" style="display:flex; gap:0.7rem; align-items:end; flex-wrap:wrap;">
   <div class="field" style="margin:0;"><label>Search</label><input name="q" value="{{ q }}" placeholder="serial or name"></div>
@@ -69,7 +75,7 @@
         <td class="muted" style="font-size:0.78rem;">{{ a["last_action"] }}{% if a["last_action_at"] %} · {{ a["last_action_at"][:10] }}{% endif %}</td>
         <td style="white-space:nowrap;">
           <a href="{{ url_for('inventory_asset_labels', ids=a['id']) }}" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;" title="Print label" target="_blank">🖨</a>
-          {% if a["status"] != "Retired" %}
+          {% if a["status"] != "Retired" and can('inventory.register') %}
           <form method="post" action="{{ url_for('inventory_asset_retire', asset_id=a['id']) }}" style="display:inline; margin:0;"
                 onsubmit="return confirm('Retire this tag?');">
             <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;">Retire</button>

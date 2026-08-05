@@ -220,6 +220,7 @@ PERMISSIONS = {
     "rules.manage": "Manage rules",
     "catalog.manage": "Manage catalog (appliances & components)",
     "inventory.manage": "Manage inventory (add/edit items, tools, stock)",
+    "inventory.register": "Register & print inventory tags (barcodes)",
     "employees.manage": "Manage employees & accounts",
     "approvals": "Approve field work",
     "audit.view": "View the audit log",
@@ -235,7 +236,9 @@ PERMISSIONS = {
 # GM-or-explicit-grant, preserving the soft-delete safety model).
 ROLE_PERMISSIONS = {
     "Operations Manager": {"inventory.manage", "approvals", "audit.view"},
-    "Inventory Manager": {"inventory.manage"},
+    # The warehouse manager owns tag registration/printing (Piece 26.1); the GM
+    # can also grant "inventory.register" to whoever fills that role via /access.
+    "Inventory Manager": {"inventory.manage", "inventory.register"},
     "Purchasing Agent": {"inventory.manage"},
     "Warehouse Associate": {"inventory.manage"},
     "Designer": {"inventory.manage"},          # actions the stale-stock queue
@@ -896,7 +899,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 26.0"
+VERSION = "Piece 26.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1367,14 +1370,13 @@ VIEW_PERMISSION = {
     "inventory_stale": "inventory.manage",
     "inventory_stale_keep": "inventory.manage",
     "inventory_stale_discontinue": "inventory.manage",
-    # Piece 26.0: barcode / asset registry.
+    # Piece 26.0/26.1: registering & printing tags is the warehouse manager's
+    # job; scanning to load a truck is open to any signed-in worker (Installers
+    # included) so a crew can load in parallel — those routes are NOT listed here.
     "inventory_assets": "inventory.manage",
-    "inventory_asset_register": "inventory.manage",
+    "inventory_asset_register": "inventory.register",
     "inventory_asset_labels": "inventory.manage",
-    "inventory_scan": "inventory.manage",
-    "inventory_asset_checkout": "inventory.manage",
-    "inventory_asset_checkin": "inventory.manage",
-    "inventory_asset_retire": "inventory.manage",
+    "inventory_asset_retire": "inventory.register",
 }
 
 
@@ -5169,7 +5171,6 @@ def _resolve_serial(db, serial):
 
 
 @app.route("/inventory/scan")
-@admin_required
 def inventory_scan():
     """Scan (or type) a serial to check it in / out. Keyboard-wedge friendly."""
     db = get_db()
@@ -5185,7 +5186,6 @@ def inventory_scan():
 
 
 @app.route("/inventory/assets/<int:asset_id>/checkout", methods=["POST"])
-@admin_required
 def inventory_asset_checkout(asset_id):
     db = get_db()
     a = db.execute("SELECT * FROM inventory_assets WHERE id = ?",
@@ -5218,7 +5218,6 @@ def inventory_asset_checkout(asset_id):
 
 
 @app.route("/inventory/assets/<int:asset_id>/checkin", methods=["POST"])
-@admin_required
 def inventory_asset_checkin(asset_id):
     db = get_db()
     a = db.execute("SELECT * FROM inventory_assets WHERE id = ?",
@@ -5251,6 +5250,67 @@ def inventory_asset_retire(asset_id):
     db.commit()
     flash(f"Retired {a['serial']}.")
     return redirect(url_for("inventory_assets"))
+
+
+@app.route("/inventory/load")
+def inventory_load():
+    """Piece 26.1: rapid truck-loading. A crew picks the job once, then scans
+    tags with the phone camera (or a scanner) to load them out — open to any
+    signed-in worker so two Installers can load the same job in parallel."""
+    db = get_db()
+    job_id = request.args.get("job_id", type=int)
+    jobs = db.execute(
+        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id"
+        " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
+    job = None
+    if job_id:
+        job = db.execute("SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
+                         " JOIN clients c ON c.id = j.client_id WHERE j.id = ?",
+                         (job_id,)).fetchone()
+    return render_template("inventory_load.html", jobs=jobs, job=job)
+
+
+@app.route("/api/inventory/scan-out", methods=["POST"])
+def api_scan_out():
+    """JSON check-out for the continuous-scan loading flow. Non-consumables go
+    Out (to the job); consumables record a 'used' stock movement. Open to any
+    signed-in worker (crews load their own trucks)."""
+    user = current_user()
+    if user is None:
+        return jsonify({"ok": False, "error": "Please sign in."}), 401
+    db = get_db()
+    data = request.get_json(silent=True) or request.form
+    serial = (data.get("serial") or "").strip()
+    job_raw = str(data.get("job_id") or "")
+    job_id = int(job_raw) if job_raw.isdigit() else None
+    qty = int(_to_float(data.get("qty")) or 1) or 1
+    a = _resolve_serial(db, serial)
+    if a is None:
+        return jsonify({"ok": False, "error": f"Unknown tag {serial}"})
+    if a["status"] == "Retired":
+        return jsonify({"ok": False, "label": a["label"],
+                        "error": f"{a['label']} is retired"})
+    who = user["name"]
+    if a["kind"] == "consumable":
+        apply_stock_txn(db, a["entity_id"], "used", -abs(qty), job_id,
+                        f"Loaded ({a['serial']})", who)
+        db.execute("UPDATE inventory_assets SET last_action = ?,"
+                   " last_action_by = ?, last_action_at = datetime('now') WHERE id = ?",
+                   (f"Loaded {qty} to job", who, a["id"]))
+        db.commit()
+        return jsonify({"ok": True, "label": a["label"], "serial": a["serial"],
+                        "action": f"loaded ×{qty}"})
+    if a["status"] == "Out":
+        return jsonify({"ok": True, "warn": True, "label": a["label"],
+                        "serial": a["serial"], "action": "already out"})
+    db.execute("UPDATE inventory_assets SET status = 'Out', job_id = ?,"
+               " last_action = 'Loaded', last_action_by = ?,"
+               " last_action_at = datetime('now') WHERE id = ?",
+               (job_id, who, a["id"]))
+    db.commit()
+    return jsonify({"ok": True, "label": a["label"], "serial": a["serial"],
+                    "action": "loaded"})
 
 
 @app.route("/catalog/appliances/add", methods=["POST"])

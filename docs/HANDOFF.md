@@ -2,7 +2,27 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.0** (footer shows it plainly as "Version 26.0" — the "did my pull work?" check)
+**Current build:** **Piece 26.1** (footer shows it plainly as "Version 26.1" — the "did my pull work?" check)
+
+**Piece 26.1 — phone-camera scanning + crew truck-loading + tighter tag perms.**
+Three parts. (1) **Camera scanning**: the scan page and a new **Load-a-truck**
+page (`/inventory/load`) scan with the phone camera via the browser-native
+`BarcodeDetector` API (Code 128) — feature-detected, with a graceful fallback to
+the manual/USB-scanner box where unsupported. NB: needs a supporting browser
+(Chrome/Android; not iOS Safari — no CDN access here to vendor a JS decoder) and
+the app served over **HTTPS** (camera = secure-context only); USB/Bluetooth
+wedge scanners work everywhere as the fallback. (2) **Crew loading**: `/inventory/load`
+picks a job once, then continuously scans tags out to it via a JSON endpoint
+`/api/inventory/scan-out` (consumable → 'used' stock move; non-consumable → Out),
+so **two Installers can load the same job in parallel from their own phones** —
+every scan is an independent request. Both `/inventory/load`, `/inventory/scan`,
+and the check-out/in routes are **open to any signed-in worker** (no permission).
+(3) **Tag permissions**: new **`inventory.register`** permission (registering &
+printing tags + retiring) defaults to the **Inventory Manager** role — the
+warehouse manager — and the GM can grant it to whoever fills that role via
+`/access`; the register form hides for everyone else. Verified end-to-end
+(warehouse-mgr-only register, installer-open scan/load, parallel scan-out,
+consumable decrement, auth 401).
 
 **Piece 26.0 — barcode / asset registry (generate, print, scan).** New
 `inventory_assets` table + a dependency-free **Code 128-B** SVG encoder
