@@ -901,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 26.2"
+VERSION = "Piece 26.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -6259,10 +6259,34 @@ def tasks_dashboard():
     today = datetime.now().strftime("%Y-%m-%d")
     overdue = sum(1 for t in tasks
                   if t["due_date"] and t["due_date"] < today and t["status"] != "Done")
+    # Piece 26.3: group the flat list under each job so the board reads as
+    # "everything this job needs" at a glance. Tasks arrive already sorted
+    # (open first, soonest due), so each group keeps that order.
+    grouped = {}
+    for t in tasks:
+        g = grouped.get(t["job_id"])
+        if g is None:
+            g = grouped[t["job_id"]] = {
+                "job_id": t["job_id"], "job_name": t["job_name"],
+                "client_name": t["client_name"], "tasks": [],
+                "open": 0, "overdue": 0}
+        g["tasks"].append(t)
+        if t["status"] != "Done":
+            g["open"] += 1
+            if t["due_date"] and t["due_date"] < today:
+                g["overdue"] += 1
+
+    def _group_key(g):
+        open_dues = [t["due_date"] for t in g["tasks"]
+                     if t["status"] != "Done" and t["due_date"]]
+        soonest = min(open_dues) if open_dues else "9999-99-99"
+        # Jobs with overdue work first, then by soonest due date, then name.
+        return (0 if g["overdue"] else 1, soonest, (g["job_name"] or "").lower())
+    groups = sorted(grouped.values(), key=_group_key)
     return render_template(
-        "tasks.html", tasks=tasks, employees=employees, who=who, show=show,
-        task_statuses=TASK_STATUSES, counts=counts, overdue=overdue, today=today,
-        followups=followups)
+        "tasks.html", groups=groups, task_total=len(tasks), employees=employees,
+        who=who, show=show, task_statuses=TASK_STATUSES, counts=counts,
+        overdue=overdue, today=today, followups=followups)
 
 
 # ------------------------------------------- Piece 14: Work Bag (offline sync)

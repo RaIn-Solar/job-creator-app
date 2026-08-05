@@ -2,7 +2,16 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.2** (footer shows it plainly as "Version 26.2" — the "did my pull work?" check)
+**Current build:** **Piece 26.3** (footer shows it plainly as "Version 26.3" — the "did my pull work?" check)
+
+**Piece 26.3 — Task board grouped by job.** The cross-job task board was a flat
+list; it now **groups tasks under each job** (a collapsible card per job with the
+job name + client + open count, and a red border + overdue badge when a job has
+overdue work). Group order surfaces urgency: jobs with overdue tasks first, then
+by soonest open due date, then name; within a group tasks keep the open-first /
+soonest-due order. The redundant per-row "Job" column is gone; the summary now
+reads "N tasks across M jobs". Filters (Who / Open-vs-all) and the status
+dropdowns are unchanged. Route builds the groups; `tasks.html` renders them.
 
 **Piece 26.2 — Work Bag receipt capture.** A new **🧾 Add a receipt** card on the
 Work Bag lets the crew photograph a receipt (`capture="environment"` opens the
