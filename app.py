@@ -15,6 +15,7 @@ then open http://127.0.0.1:5000 in your browser.
 import json
 import math
 import os
+import re
 import sqlite3
 import sys
 import uuid
@@ -350,6 +351,43 @@ CONNECTION_FIELDS = {
 STANDARD_JOB_DOCS = [
     "Signed Contract", "Site Photos", "Design / One-Line", "Site Plan (KMZ/KML)",
 ]
+# Piece 25.2: built-in accepted formats for the standard slots (rule-based slots
+# carry their own `allowed_formats`). A slot with no restriction accepts any of
+# the globally-allowed types.
+STANDARD_DOC_FORMATS = {
+    "Signed Contract": {"pdf", "doc", "docx"},
+    "Site Photos": {"png", "jpg", "jpeg", "heic", "gif"},
+    "Design / One-Line": {"pdf", "png", "jpg", "jpeg"},
+    "Site Plan (KMZ/KML)": {"kmz", "kml"},
+}
+
+
+def _parse_formats(raw):
+    """Normalize a comma/space-separated format string to a lowercase set of bare
+    extensions (no dots): 'PDF, .jpg png' -> {'pdf','jpg','png'}."""
+    out = set()
+    for tok in re.split(r"[,\s]+", (raw or "").strip().lower()):
+        tok = tok.lstrip(".")
+        if tok:
+            out.add(tok)
+    return out
+
+
+def allowed_formats_for_label(db, label):
+    """Accepted extension set for a document slot, or None to fall back to the
+    global ALLOWED_EXTENSIONS. Standard slots use STANDARD_DOC_FORMATS; a
+    rule-based slot uses its rule's `allowed_formats` (first non-empty match)."""
+    if not label:
+        return None
+    if label in STANDARD_DOC_FORMATS:
+        return STANDARD_DOC_FORMATS[label]
+    row = db.execute(
+        "SELECT allowed_formats FROM resource_rules"
+        " WHERE label = ? AND COALESCE(allowed_formats, '') != ''"
+        " ORDER BY id LIMIT 1", (label,)).fetchone()
+    if row:
+        return _parse_formats(row["allowed_formats"]) or None
+    return None
 
 # Piece 21: Finance ledger vocabulary. Income = money in (deposits, invoices,
 # rebates); Expense = money out (materials, permits, labor, subs). Categories
@@ -821,7 +859,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 25.1"
+VERSION = "Piece 25.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2074,6 +2112,9 @@ def init_db():
     ensure_columns(db, "job_transactions", ["doc_type"])
     # Piece 21.7: tie crew-captured field photos back to the task they document.
     ensure_columns(db, "job_files", ["task_id"])
+    # Piece 25.2: per-slot accepted file formats (comma-separated extensions) on
+    # a rule, so a document slot can require e.g. PDF only.
+    ensure_columns(db, "resource_rules", ["allowed_formats"])
     # Piece 16: migrate Piece 12.1 statuses to the new phases, and default blanks.
     for old, new in OLD_TO_NEW_STATUS.items():
         db.execute("UPDATE jobs SET status = ? WHERE status = ?", (new, old))
@@ -3475,6 +3516,17 @@ def job_detail(job_id):
         files_by_label.setdefault(f["rule_label"] or "", []).append(f)
     other_files = [f for f in files if (f["rule_label"] or "") not in needed_labels]
 
+    # Piece 25.2: accepted formats per document slot (label -> sorted ext list, or
+    # None = any allowed type). Covers standard slots and every requirement label.
+    slot_labels = set(needed_labels)
+    for _heading, items in groups:
+        for r in items:
+            slot_labels.add(r["label"])
+    formats_by_label = {}
+    for lbl in slot_labels:
+        fmts = allowed_formats_for_label(db, lbl)
+        formats_by_label[lbl] = sorted(fmts) if fmts else None
+
     billing = job_billing(
         db, job_id, job["contract_amount"] if "contract_amount" in job.keys() else 0.0)
 
@@ -3495,6 +3547,7 @@ def job_detail(job_id):
         load_daily_kwh=load_daily_kwh, load_peak_w=load_peak_w,
         load_has_survey=load_has_survey, doc_sections=doc_sections,
         files_by_label=files_by_label, other_files=other_files,
+        formats_by_label=formats_by_label,
         billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
         income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
@@ -6045,17 +6098,23 @@ def upload_file(job_id):
         flash("Choose a file to upload.", "error")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
     extension = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
-    if extension not in ALLOWED_EXTENSIONS:
-        flash(f"File type .{extension} is not allowed.", "error")
+    db = get_db()
+    label = request.form.get("rule_label", "").strip()
+    # Piece 25.2: a slot may restrict its accepted formats; otherwise the global
+    # allow-list applies.
+    allowed = allowed_formats_for_label(db, label) or ALLOWED_EXTENSIONS
+    if extension not in allowed:
+        where = f"“{label}” accepts" if label else "This upload accepts"
+        flash(f"{where} only: {', '.join('.' + e for e in sorted(allowed))}. "
+              f"You picked .{extension or '(no extension)'}.", "error")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
     original = upload.filename
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
     upload.save(job_upload_dir(job_id) / stored)
-    db = get_db()
     db.execute(
         "INSERT INTO job_files (job_id, rule_label, stored_name, original_name)"
         " VALUES (?, ?, ?, ?)",
-        (job_id, request.form.get("rule_label", "").strip(), stored, original),
+        (job_id, label, stored, original),
     )
     db.commit()
     flash(f"Uploaded: {original}")
@@ -6339,8 +6398,8 @@ def add_rule():
     db.execute(
         "INSERT INTO resource_rules"
         " (field_name, field_value, match_type, category, label, url, phone, notes,"
-        "  field_name2, field_value2, match_type2, link_text)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "  field_name2, field_value2, match_type2, link_text, allowed_formats)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (field_name, field_value,
          "contains" if field_name == "products" else "equals",
          request.form.get("category", "Compliance"),
@@ -6350,7 +6409,8 @@ def add_rule():
          request.form.get("notes", "").strip(),
          field_name2, field_value2,
          "contains" if field_name2 == "products" else "equals",
-         request.form.get("link_text", "").strip()),
+         request.form.get("link_text", "").strip(),
+         ",".join(sorted(_parse_formats(request.form.get("allowed_formats"))))),
     )
     db.commit()
     flash(f"Rule added: {label}")
@@ -6379,7 +6439,8 @@ def update_rule(rule_id):
     db.execute(
         "UPDATE resource_rules SET field_name = ?, field_value = ?, match_type = ?,"
         " category = ?, label = ?, url = ?, phone = ?, notes = ?, field_name2 = ?,"
-        " field_value2 = ?, match_type2 = ?, link_text = ? WHERE id = ?",
+        " field_value2 = ?, match_type2 = ?, link_text = ?, allowed_formats = ?"
+        " WHERE id = ?",
         (field_name, field_value,
          "contains" if field_name == "products" else "equals",
          request.form.get("category", "Compliance"), label,
@@ -6388,7 +6449,9 @@ def update_rule(rule_id):
          request.form.get("notes", "").strip(),
          field_name2, field_value2,
          "contains" if field_name2 == "products" else "equals",
-         request.form.get("link_text", "").strip(), rule_id))
+         request.form.get("link_text", "").strip(),
+         ",".join(sorted(_parse_formats(request.form.get("allowed_formats")))),
+         rule_id))
     db.commit()
     flash(f"Rule updated: {label}")
     return redirect(url_for("rules_page", from_job=from_job))

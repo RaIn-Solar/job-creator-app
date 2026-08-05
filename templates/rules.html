@@ -77,6 +77,16 @@ matching job page updates immediately. No code changes needed.</p>
       <label for="notes">Notes (optional)</label>
       <input id="notes" name="notes" value="{{ er['notes'] if er else '' }}" placeholder="e.g. per tech on site">
     </div>
+    <div class="field">
+      <label for="allowed_formats">Accepted file formats (optional)</label>
+      <input id="allowed_formats" name="allowed_formats" list="format-list"
+             value="{{ er['allowed_formats'] if er and 'allowed_formats' in er.keys() else '' }}"
+             placeholder="blank = any · e.g. pdf, jpg, png">
+      <datalist id="format-list">
+        <option value="pdf"><option value="pdf, jpg, png"><option value="jpg, png, heic">
+        <option value="kmz, kml"><option value="docx, pdf"><option value="xlsx, csv">
+      </datalist>
+    </div>
   </div>
   <div class="actions">
     <button type="submit" class="btn">{{ "Save changes" if er else "Add rule" }}</button>
@@ -102,6 +112,7 @@ matching job page updates immediately. No code changes needed.</p>
           {{ r["label"] }}
           {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
           {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+          {% if 'allowed_formats' in r.keys() and r["allowed_formats"] %}<br><span class="muted" style="font-size:0.78rem;">📎 accepts: {{ r["allowed_formats"] }}</span>{% endif %}
         </td>
         <td class="muted">{{ r["notes"] }}</td>
         <td style="white-space:nowrap;">

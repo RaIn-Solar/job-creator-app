@@ -2,7 +2,20 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 25.1** (footer shows it plainly as "Version 25.1" — the "did my pull work?" check)
+**Current build:** **Piece 25.2** (footer shows it plainly as "Version 25.2" — the "did my pull work?" check)
+
+**Piece 25.2 — per-slot document format restrictions.** Each document upload
+slot can now require specific file formats (was: one global allow-list for
+everything). Rule-based slots carry an editable **`allowed_formats`** (new column
+on `resource_rules`, comma-separated exts, blank = any) set on the Rules add/edit
+form; the standard slots use built-in defaults (`STANDARD_DOC_FORMATS`: Signed
+Contract → pdf/doc/docx, Site Photos → images, Design/One-Line → pdf/png/jpg,
+Site Plan → kmz/kml). `allowed_formats_for_label()` resolves a slot's accepted
+set (else falls back to the global `ALLOWED_EXTENSIONS`); `upload_file` enforces
+it server-side with a clear message, and the job Documents tab sets each file
+input's `accept=` and shows an "Accepts PDF, JPG only" hint. `_parse_formats()`
+normalizes input (strips dots, lowercases). Verified end-to-end (rule store/edit,
+standard + rule resolution, accept/reject on upload, hints render).
 
 **Piece 25.1 — timesheets.** A printable per-employee hours **timesheet** built
 from the logged time entries (the same ones the Work Bag submits and payroll
@@ -996,6 +1009,6 @@ link and **Change password** (submits for admin approval).
   overhaul is also still pending.
 - **Follow-ups generate on page load** (home + task board), not via a background
   scheduler — fine for an always-someone's-logged-in tool; revisit if that changes.
-- Suggested next: per-slot document format restrictions; a background scheduler for
-  follow-up generation. (Done since: BPMN/role restructure 24.5–24.6, service worker
-  24.9, rule + record edit 25.0, timesheet 25.1.)
+- Suggested next: a background scheduler for follow-up generation. (Done since:
+  BPMN/role restructure 24.5–24.6, service worker 24.9, rule + record edit 25.0,
+  timesheet 25.1, per-slot document formats 25.2.)

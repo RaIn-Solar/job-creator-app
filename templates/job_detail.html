@@ -207,11 +207,14 @@
             </form>
             {% endif %}
             {% endfor %}
+            {% set rfmts = formats_by_label.get(r["label"]) %}
             <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data"
-                  style="display:flex; gap:0.3rem; align-items:center; margin:0;">
+                  style="display:flex; gap:0.3rem; align-items:center; margin:0; flex-wrap:wrap;">
               <input type="hidden" name="rule_label" value="{{ r['label'] }}">
-              <input type="file" name="document" required style="font-size:0.78rem; max-width:12rem;">
+              <input type="file" name="document" required style="font-size:0.78rem; max-width:12rem;"
+                     {% if rfmts %}accept="{% for e in rfmts %}.{{ e }}{% if not loop.last %},{% endif %}{% endfor %}"{% endif %}>
               <button type="submit" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;" title="File the {{ r['label'] }}">⬆ File</button>
+              {% if rfmts %}<span class="muted" style="font-size:0.7rem; width:100%;">{{ rfmts | join(', ') | upper }} only</span>{% endif %}
             </form>
           </div>
           {% endif %}
@@ -325,7 +328,9 @@
   <h2 style="margin-top:0; font-size:1.1rem;">📁 Documents</h2>
   <p class="muted" style="margin-top:0; font-size:0.85rem;">Each file the job needs
   has its own upload slot — from the signed contract to permits and site photos.
-  <span class="muted">(Per-slot format checks are coming later; for now any file up to 25 MB is accepted.)</span></p>
+  Slots that require a specific format say so; set a requirement's accepted formats
+  on the <a href="{{ url_for('rules_page', from_job=job['id']) }}">rules</a> page.
+  Max 25 MB per file.</p>
 
   {% for heading, labels in doc_sections %}
   {% set filed_here = labels | select("in", files_by_label) | list %}
@@ -349,11 +354,14 @@
         </div>
         {% endfor %}
       </div>
+      {% set fmts = formats_by_label.get(label) %}
       <form method="post" action="{{ url_for('upload_file', job_id=job['id']) }}" enctype="multipart/form-data"
-            style="display:flex; gap:0.4rem; align-items:center; margin:0;">
+            style="display:flex; gap:0.4rem; align-items:center; margin:0; flex-wrap:wrap;">
         <input type="hidden" name="rule_label" value="{{ label }}">
-        <input type="file" name="document" required style="font-size:0.8rem; max-width:15rem;">
+        <input type="file" name="document" required style="font-size:0.8rem; max-width:15rem;"
+               {% if fmts %}accept="{% for e in fmts %}.{{ e }}{% if not loop.last %},{% endif %}{% endfor %}"{% endif %}>
         <button type="submit" class="btn btn-secondary" style="padding:0.25rem 0.6rem; font-size:0.8rem;" title="Upload {{ label }}">⬆</button>
+        {% if fmts %}<span class="muted" style="font-size:0.72rem; width:100%;">Accepts {{ fmts | join(', ') | upper }} only.</span>{% endif %}
       </form>
     </div>
     {% endfor %}
