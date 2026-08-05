@@ -14,7 +14,7 @@ Ground rules honored here:
 Key format: "Category||Make||Model" (exactly as seeded).
 """
 
-RESEARCH_VERSION = 4
+RESEARCH_VERSION = 5
 
 RESEARCH = {
     # --- PV sheet — calibration batch -------------------------------------
@@ -59,6 +59,62 @@ RESEARCH = {
                  "retail listing shown for reference (Solar Electric Supply). "
                  "US-made (San Antonio, TX). Price on request — retail sites block "
                  "automated price fetch.",
+    },
+    # --- Current-PV purchase URLs (Piece 24.0) — high-use modules only.
+    #     Per direction: link the current PV line at product-page depth and
+    #     stop there (inverter/battery variants stay at brand-page level).
+    "PV Module||Q-Cells||Q.Peak DUO BLK ML-G10+  410": {
+        "purchase_url": "https://www.solarelectricsupply.com/"
+                        "q-cells-q-peak-duo-blk-ml-g10-plus-410w-residential-solar-panel",
+        "status": "Active",
+        "flags": "Reference retail (Solar Electric Supply), Q.PEAK DUO BLK ML-G10+ "
+                 "410W. Listed vendor N. AZ Wind & Sun carries the ML-G10+ line. "
+                 "Price on request.",
+    },
+    "PV Module||Q-Cells||Q.Peak DUO BLK ML-G10+ 400": {
+        "purchase_url": "https://www.solarelectricsupply.com/"
+                        "q-cells-q-peak-duo-ml-blk-g10-400w-solar-panel",
+        "status": "Active",
+        "flags": "Reference retail (Solar Electric Supply), Q.PEAK DUO BLK ML-G10+ "
+                 "400W. Price on request.",
+    },
+    "PV Module||Q-Cells||Q.Peak DUO BLK ML-G10+ 405": {
+        "purchase_url": "https://www.solarelectricsupply.com/"
+                        "q-cells-q-peak-duo-ml-blk-g10-405w-solar-panel",
+        "status": "Active",
+        "flags": "Reference retail (Solar Electric Supply), Q.PEAK DUO BLK ML-G10+ "
+                 "405W. Price on request.",
+    },
+    "PV Module||Q-Cells||Q.PEAK DUO XL-G10.3/BFG 480": {
+        "purchase_url": "https://www.solarelectricsupply.com/"
+                        "q-cells-q-peak-duo-xl-g10-3-480w-solar-panel",
+        "status": "Active",
+        "flags": "Reference retail (Solar Electric Supply), Q.PEAK DUO XL-G10.3/BFG "
+                 "480W bifacial (156 half-cell). Price on request.",
+    },
+    "PV Module||Mission Solar||MSX10-435HNOB": {
+        "purchase_url": "https://ussolarsupplier.com/products/"
+                        "mission-solar-435w-n-type-i-topcon-mono-black-solar-panel-"
+                        "msx10-435hnob",
+        "status": "Active",
+        "flags": "Reference retail (US Solar Supplier), exact model MSX10-435HN0B. "
+                 "US-made N-type i-TOPCon, black. Price on request.",
+    },
+    "PV Module||Canadian Solar||CS6.2-66TB-630H": {
+        "purchase_url": "https://ussolarsupplier.com/products/"
+                        "canadian-solar-cs6-2-66tb-625h-625-watt-n-type-bifacial-topcon",
+        "status": "Active",
+        "flags": "Reference retail (US Solar Supplier) — closest listed wattage bin "
+                 "is 625H; 630H is the same TOPBiHiKu6 CS6.2-66TB family (600–630W). "
+                 "Confirm exact 630H bin with vendor. Price on request.",
+    },
+    "PV Module||Hyundai||HIS-S400YH(BK) 400W Bifacial": {
+        "purchase_url": "https://www.greentechrenewables.com/product/"
+                        "hyundai-energy-solutions-400w-132-half-cell-1500v-black-"
+                        "bifacial-solar-panel-his-s400yhbk",
+        "status": "Active",
+        "flags": "Reference retail (Greentech Renewables), exact model "
+                 "HiS-S400YH(BK), 132 half-cell black bifacial. Price on request.",
     },
     'Battery||Absolyte||100G17': {"specs": {"Voltage": 2.0}, "flags": 'Capacity incomplete — Voltage and/or Ah missing; needs a datasheet lookup.'},
     'Battery||BYD||BYD-HVL-3': {"specs": {"Capacity": 12.0, "Voltage": 350.0, "AH Rating": 80.0}, "flags": 'CAPACITY set to 12.0 kWh (manufacturer rating from description). NOTE: Voltage x Ah = 28.0 kWh differs >20% — check the 350.0V/80.0Ah entries.'},

@@ -2,7 +2,26 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.8** (footer shows it plainly as "Version 23.8" — the "did my pull work?" check)
+**Current build:** **Piece 24.0** (footer shows it plainly as "Version 24.0" — the "did my pull work?" check)
+
+**Piece 24.0 — Current-PV purchase URLs (final purchase-URL pass).**
+RESEARCH_VERSION 5. Added product-page purchase links for the seven high-use
+current PV modules — Q-Cells Q.PEAK DUO BLK ML-G10+ 400/405/410 and
+XL-G10.3/BFG 480 (Solar Electric Supply), Mission Solar MSX10-435HNOB and
+Hyundai HiS-S400YH(BK) (US Solar Supplier / Greentech Renewables), Canadian
+Solar CS6.2-66TB-630H (US Solar Supplier — closest listed bin is 625H, flagged
+to confirm). Every link is a reference-retail product page (listed vendors are
+wholesale, no public per-item pages); prices stay "on request" — retail sites
+block automated price fetch, so no price is fabricated. **This closes the
+purchase-URL work per direction ("Current PV only, then stop"): inverter/battery
+variants remain at brand-page level and are not expanded further.** Workbook
+PV sheet patched (yellow highlight, Purchase URL + Flags on those rows).
+
+**Piece 23.9 — Purchase URLs for current-install gear (batch 1).**
+RESEARCH_VERSION 4. Brand/reference-retail purchase pages for flagship live
+gear: Pytes V5/V10/V16 batteries, Sol-Ark SA-15K/8K/12K/18K (Current Connected
+/ Solar Electric Supply brand page, FCC ID# pending), SolarEdge SE7600H, Solis
+S6-EH1P10K, plus SOK S24V100. Prices on request throughout.
 
 **Piece 23.8 — Make standardization (catalog cleanup).** `standardize_makes()`
 (meta `make_std_v`, runs before research so keys stay valid) consolidates
