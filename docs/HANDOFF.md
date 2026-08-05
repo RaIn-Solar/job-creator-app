@@ -2,7 +2,17 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.6** (footer shows it plainly as "Version 24.6" — the "did my pull work?" check)
+**Current build:** **Piece 24.7** (footer shows it plainly as "Version 24.7" — the "did my pull work?" check)
+
+**Piece 24.7 — 12-hour auto-logout.** A sign-in now lasts at most
+`SESSION_MAX_HOURS = 12`, measured **absolutely from login** (not from last
+activity). Login stamps `session["auth_at"]`; the `require_login` before-request
+hook drops any session past the limit (`_session_expired()`), clears it, and
+redirects to the login page with a security notice (API paths get a 401 instead)
+— preserving the deep link so re-login lands where they were. The cookie is also
+capped to 12h (`permanent_session_lifetime`) as a second layer, but the
+server-side stamp is authoritative. Sessions with no stamp (pre-24.7 or tampered)
+count as expired. `logout` now fully clears the session. No DB change.
 
 **Piece 24.6 — Roles/permissions overhaul (part 2 of the workflow/roles
 restructure).** Access now flows from the org chart. New `ROLE_PERMISSIONS`
