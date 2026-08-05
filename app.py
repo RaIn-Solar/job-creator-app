@@ -821,7 +821,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 24.8"
+VERSION = "Piece 24.9"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1662,7 +1662,10 @@ def require_login():
     page itself and static files). In open mode this does nothing."""
     if not accounts_exist():
         return
-    if request.endpoint in ("login", "static", None):
+    # The service worker and its offline fallback must load without a session
+    # (the whole point is offline / pre-auth cold-start).
+    if request.endpoint in ("login", "static", "service_worker",
+                            "offline_page", None):
         return
     # Piece 24.8: drop a sign-in idle past the limit; otherwise slide the
     # inactivity window forward so active users stay signed in.
@@ -1720,6 +1723,23 @@ def logout():
     session.clear()
     flash("Signed out.")
     return redirect(url_for("login"))
+
+
+@app.route("/sw.js")
+def service_worker():
+    """Piece 24.9: the service worker, served from root so it controls the whole
+    app. Caches visited pages for offline cold-start (Work Bag in the field)."""
+    resp = Response(render_template("service_worker.js", version=VERSION),
+                    mimetype="application/javascript")
+    resp.headers["Service-Worker-Allowed"] = "/"
+    resp.headers["Cache-Control"] = "no-cache"   # always revalidate the SW itself
+    return resp
+
+
+@app.route("/offline")
+def offline_page():
+    """Offline fallback shown by the service worker when a page isn't cached."""
+    return render_template("offline.html")
 
 
 @app.route("/account")

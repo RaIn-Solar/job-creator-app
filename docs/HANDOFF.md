@@ -2,7 +2,22 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.8** (footer shows it plainly as "Version 24.8" — the "did my pull work?" check)
+**Current build:** **Piece 24.9** (footer shows it plainly as "Version 24.9" — the "did my pull work?" check)
+
+**Piece 24.9 — service worker for offline cold-start.** The app now installs a
+service worker (`/sw.js`, served at root with `Service-Worker-Allowed: /`) so
+field crews can open the app with no signal. Since all CSS is inlined, the "app
+shell" is just the HTML: the SW caches each page the user visits (network-first)
+and, when offline, serves the last-seen copy — falling back to a friendly
+`/offline` page (📴). Dynamic `/api/` calls and POSTs are never cached (the Work
+Bag still hydrates from its own on-device store). Cache names are stamped with
+VERSION, so a deploy's `activate` clears the old caches. Registered from
+`base.html`; when a viewer is logged out it posts `clear-pages` to the SW so a
+shared device won't serve cached authenticated pages. `require_login` exempts
+`service_worker` + `offline_page` so they load pre-auth. **Verified in a real
+headless Chromium** (Playwright): SW registers/activates/controls, an offline
+reload of the Work Bag serves from cache, and an offline hit on an unvisited page
+shows the offline fallback. This resolves the deferred "no service worker" item.
 
 **Piece 24.8 — auto-logout is now a 12-hour *inactivity* window.** Changed the
 24.7 absolute-from-login limit to a sliding idle window: `require_login` refreshes
@@ -938,9 +953,10 @@ link and **Change password** (submits for admin approval).
 - Commit + push after each feature. Kill stray servers with `fuser -k 5000/tcp`.
 
 # 5) Known limitations / deferred / next steps
-- **No service worker yet** — Work Bag survives a dropped connection while open, but
-  cold-starting the app fully offline needs a service worker (deliberately deferred as a
-  support-risk item to field-test carefully). This is the natural next offline step.
+- **Service worker (Piece 24.9)** — the app now cold-starts offline: the SW caches
+  visited pages (network-first) and serves them, or a `/offline` page, without a
+  signal. Still worth a real field test on crew devices before relying on it, and
+  note it caches whole pages per device (cleared on logout via `clear-pages`).
 - **"Manager" = Admin** for approvals; a specific manager→worker relationship is a
   future add.
 - **Add/delete-only records** (rules, catalog, credentials, load items, BOM, rooms) have

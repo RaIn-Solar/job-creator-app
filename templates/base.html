@@ -384,5 +384,20 @@
       Solbiz · <strong style="color: var(--brand-dark);">Version {{ version_number }}</strong>
     </footer>
   </main>
+  <script>
+    // Piece 24.9: register the offline service worker. When the viewer is
+    // logged out, tell it to forget cached authenticated pages on this device.
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").then(function () {
+          {% if not current_user %}
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: "clear-pages" });
+          }
+          {% endif %}
+        }).catch(function () { /* SW unsupported or blocked — app still works */ });
+      });
+    }
+  </script>
 </body>
 </html>
