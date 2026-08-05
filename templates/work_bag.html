@@ -77,6 +77,10 @@ offline.</strong></p>
     <div class="actions"><button type="submit" class="btn">＋ Submit hours</button></div>
   </form>
 
+  <div style="margin-top:0.8rem;">
+    <a href="{{ url_for('timesheet') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🕒 My full timesheet</a>
+  </div>
+
   {% if my_entries %}
   <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent hours</h3>
   <div style="overflow-x:auto;">

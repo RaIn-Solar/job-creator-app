@@ -2,7 +2,19 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 25.0** (footer shows it plainly as "Version 25.0" — the "did my pull work?" check)
+**Current build:** **Piece 25.1** (footer shows it plainly as "Version 25.1" — the "did my pull work?" check)
+
+**Piece 25.1 — timesheets.** A printable per-employee hours **timesheet** built
+from the logged time entries (the same ones the Work Bag submits and payroll
+approves). `/timesheet` groups entries by employee → work date with day
+subtotals and per-person Approved / Pending / total hours; `build_timesheet()`
+is the shared roll-up and `/timesheet.csv` exports it (payroll-ready).
+**Self-service + scoped:** any signed-in worker sees their own hours; payroll
+(GM / Admin / Finance, via `_can_payroll`) can pick any employee or "everyone" —
+non-managers are locked to themselves even if they pass `?employee=`. Date range
+defaults to the pay period (`?start`/`?end`). Linked from the Payroll header
+(🕒 Timesheet) and the Work Bag (🕒 My full timesheet); print CSS hides the
+controls. Complements the existing payroll dollar rollup, which is unchanged.
 
 **Piece 25.0 — in-place edit for the add/delete-only records.** The six record
 families that were previously add-then-delete-to-change now have an **✎ edit**:
@@ -984,5 +996,6 @@ link and **Change password** (submits for admin approval).
   overhaul is also still pending.
 - **Follow-ups generate on page load** (home + task board), not via a background
   scheduler — fine for an always-someone's-logged-in tool; revisit if that changes.
-- Suggested next: **BPMN step/role restructure**; **hours summary / timesheet** from
-  approved submissions; rule edit; the service worker.
+- Suggested next: per-slot document format restrictions; a background scheduler for
+  follow-up generation. (Done since: BPMN/role restructure 24.5–24.6, service worker
+  24.9, rule + record edit 25.0, timesheet 25.1.)

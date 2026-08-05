@@ -4,6 +4,8 @@
 <div class="toolbar">
   <h1>💵 Payroll</h1>
   <div style="display:flex; gap:0.5rem; align-items:center;">
+    <a href="{{ url_for('timesheet', start=start, end=end) }}" class="btn btn-secondary"
+       title="Per-employee hours timesheet (print / CSV)">🕒 Timesheet</a>
     <a href="{{ url_for('payroll_quickbooks_export', start=start, end=end) }}" class="btn btn-secondary"
        title="Payroll register for this period as a QuickBooks-importable CSV">⬇ Export to QuickBooks</a>
     {% if can_edit_rates %}<a href="{{ url_for('payroll_settings') }}" class="btn btn-secondary">⚙ Pay settings</a>{% endif %}

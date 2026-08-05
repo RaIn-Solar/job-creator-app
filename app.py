@@ -821,7 +821,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 25.0"
+VERSION = "Piece 25.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3744,6 +3744,109 @@ def delete_my_hours(entry_id):
                " AND status = 'Pending'", (entry_id, user["id"]))
     db.commit()
     return redirect(url_for("work_bag"))
+
+
+# ---------------------- Piece 25.1: timesheets --------------------------------
+def build_timesheet(db, start, end, employee_ids=None):
+    """A per-employee timesheet for [start, end]: every logged time entry
+    (Approved and Pending) grouped by employee, then by work date, with day
+    subtotals and per-person Approved / Pending / total hours. `employee_ids`
+    None means everyone; a list scopes it (used to lock a worker to their own)."""
+    q = ("SELECT te.*, pt.name AS type_name, j.job_name, e.name AS emp_name"
+         " FROM time_entries te JOIN employees e ON e.id = te.employee_id"
+         " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
+         " LEFT JOIN jobs j ON j.id = te.job_id"
+         " WHERE te.work_date >= ? AND te.work_date <= ?")
+    params = [start, end]
+    if employee_ids is not None:
+        if not employee_ids:
+            return [], {"approved": 0.0, "pending": 0.0, "total": 0.0}
+        q += " AND te.employee_id IN (%s)" % ",".join("?" * len(employee_ids))
+        params += list(employee_ids)
+    q += " ORDER BY e.name, te.work_date, te.id"
+    rows = db.execute(q, params).fetchall()
+
+    def weekday(d):
+        try:
+            return datetime.strptime(d, "%Y-%m-%d").strftime("%a")
+        except (ValueError, TypeError):
+            return ""
+
+    sheets = {}
+    for r in rows:
+        sh = sheets.setdefault(r["employee_id"], {
+            "employee_id": r["employee_id"], "name": r["emp_name"],
+            "days": {}, "approved": 0.0, "pending": 0.0, "total": 0.0})
+        day = sh["days"].setdefault(r["work_date"], {
+            "date": r["work_date"], "weekday": weekday(r["work_date"]),
+            "rows": [], "hours": 0.0})
+        hrs = r["hours"] or 0.0
+        day["rows"].append(r)
+        day["hours"] += hrs
+        sh["total"] += hrs
+        sh[("approved" if r["status"] == "Approved" else "pending")] += hrs
+    out = []
+    for sh in sorted(sheets.values(), key=lambda s: s["name"].lower()):
+        sh["days"] = [sh["days"][d] for d in sorted(sh["days"])]
+        out.append(sh)
+    totals = {"approved": sum(s["approved"] for s in out),
+              "pending": sum(s["pending"] for s in out),
+              "total": sum(s["total"] for s in out)}
+    return out, totals
+
+
+def _timesheet_scope():
+    """Resolve (start, end, employee_ids, manager, selected) for the timesheet
+    from the request. Managers may pick any employee or 'all'; everyone else is
+    locked to their own hours."""
+    user = current_user()
+    start, end = _pay_period()
+    manager = _can_payroll()
+    selected = request.args.get("employee", "all" if manager else "")
+    if manager:
+        emp_ids = [int(selected)] if selected.isdigit() else None
+    else:
+        emp_ids = [user["id"]] if user else []
+    return start, end, emp_ids, manager, selected
+
+
+@app.route("/timesheet")
+def timesheet():
+    """A printable hours timesheet built from logged time entries. Any signed-in
+    worker sees their own; payroll (Finance / Admin / GM) can view anyone or all."""
+    db = get_db()
+    start, end, emp_ids, manager, selected = _timesheet_scope()
+    sheets, totals = build_timesheet(db, start, end, emp_ids)
+    employees = (db.execute("SELECT id, name FROM employees WHERE COALESCE(name,'')"
+                            " != '' ORDER BY name").fetchall() if manager else [])
+    user = current_user()
+    return render_template(
+        "timesheet.html", sheets=sheets, totals=totals, start=start, end=end,
+        manager=manager, employees=employees, selected=selected,
+        self_name=user["name"] if user else "")
+
+
+@app.route("/timesheet.csv")
+def timesheet_csv():
+    """CSV export of the same timesheet (payroll-ready)."""
+    db = get_db()
+    start, end, emp_ids, _manager, _sel = _timesheet_scope()
+    sheets, _totals = build_timesheet(db, start, end, emp_ids)
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Employee", "Date", "Weekday", "Job", "Pay type", "Hours",
+                "Status", "Note"])
+    for sh in sheets:
+        for day in sh["days"]:
+            for r in day["rows"]:
+                w.writerow([sh["name"], r["work_date"], day["weekday"],
+                            r["job_name"] or "", r["type_name"] or "",
+                            r["hours"] or 0, r["status"], r["note"] or ""])
+    fname = f"timesheet_{start}_to_{end}.csv"
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
 @app.route("/work-bag/notes", methods=["POST"])
