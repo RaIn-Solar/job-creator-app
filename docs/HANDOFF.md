@@ -2,7 +2,22 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.4** (footer shows it plainly as "Version 24.4" — the "did my pull work?" check)
+**Current build:** **Piece 24.5** (footer shows it plainly as "Version 24.5" — the "did my pull work?" check)
+
+**Piece 24.5 — BPMN lanes aligned to the org (part 1 of the workflow/roles
+restructure).** The process swim-lanes were legacy generic labels (Foreman,
+System Designer, Sales Rep, Finance Department, Warehouse Associate) bridged to
+real roles. They're now the company's **functional departments** — Sales,
+Design, Permits, Purchasing, Installation, Finance, Executive (+ the external
+Authorities (CID) / Utility Company and Solbiz System) — matching
+DASHBOARD_DEPARTMENTS. Renamed `bpmn_export.LANES` + every step's lane, plus
+`STATUS_OWNERSHIP` team lanes and `TITLE_LANE_KEYWORDS` in app.py. `LANE_TO_ROLES`
+now keys on the department lanes → real ECC roles (Design→Designer,
+Installation→Lead Installer/Installer/Scheduling/Service Tech, Purchasing→
+Purchasing Agent/Inventory Mgr/Warehouse, Finance→Finance Mgr/Bookkeeper,
+Executive→GM) **and keeps the old labels as aliases** so tasks generated before
+the rename (whose notes say e.g. "Process step · Foreman") still auto-assign — no
+migration needed. **Next (part 2): the roles/permissions overhaul.**
 
 **Piece 24.4 — Inventory usage tracking + stale-stock notice.** New stock ledger
 `inventory_txns` (item_id, kind = received/used/count/adjust, signed qty, optional

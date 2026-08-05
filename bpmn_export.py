@@ -22,10 +22,14 @@ bpmn.io / Camunda Modeler / any BPMN viewer.
 
 from xml.sax.saxutils import escape
 
+# Piece 24.5: swim-lanes are the company's functional departments (matching the
+# app's DASHBOARD_DEPARTMENTS / role model), plus the two external actors and the
+# Solbiz automation. Replaces the earlier generic role labels (Foreman, System
+# Designer, …). LANE_TO_ROLES in app.py resolves each lane to the real ECC roles.
 LANES = [
-    "Sales Rep", "System Designer", "Solbiz System", "Permit Coordinator",
-    "Warehouse Associate", "Foreman", "Finance Department",
-    "Authorities (CID)", "Utility Company", "General Manager",
+    "Sales", "Design", "Solbiz System", "Permits",
+    "Purchasing", "Installation", "Finance",
+    "Authorities (CID)", "Utility Company", "Executive",
 ]
 
 # Layout constants
@@ -139,19 +143,19 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
 
     # --- Proposal: intake → walkthrough → loads → design → contract → deposit
     c = 0
-    add("start", "startEvent", "Client Interest in ECC Solar", "Sales Rep", c); c += 1
-    add("collect", "userTask", "Client Intake & Questionnaire", "Sales Rep", c); c += 1
-    add("sitevisit", "userTask", "Site Visit: Pictures, walkthrough", "Sales Rep", c); c += 1
-    add("loads", "userTask", "Record Electric Loads / Load Calculation", "Sales Rep", c); c += 1
-    add("draft", "task", "Draft and Review Design", "System Designer", c); c += 1
-    add("finalize", "userTask", "Finalize and approve Design", "System Designer", c); c += 1
-    add("contract", "task", "Client Signs Contract", "Sales Rep", c); c += 1
-    add("dep50", "task", "50% Deposit Received", "Finance Department", c); c += 1
+    add("start", "startEvent", "Client Interest in ECC Solar", "Sales", c); c += 1
+    add("collect", "userTask", "Client Intake & Questionnaire", "Sales", c); c += 1
+    add("sitevisit", "userTask", "Site Visit: Pictures, walkthrough", "Sales", c); c += 1
+    add("loads", "userTask", "Record Electric Loads / Load Calculation", "Sales", c); c += 1
+    add("draft", "task", "Draft and Review Design", "Design", c); c += 1
+    add("finalize", "userTask", "Finalize and approve Design", "Design", c); c += 1
+    add("contract", "task", "Client Signs Contract", "Sales", c); c += 1
+    add("dep50", "task", "50% Deposit Received", "Finance", c); c += 1
     # Job Prep begins: the software generates the task list (chart-only — no
     # to-do is created for it), then the parallel prep work fans out.
     add("solbiz", "serviceTask", "Solbiz generates tasks, lists & this chart",
         "Solbiz System", c); c += 1
-    add("split", "parallelGateway", "", "Permit Coordinator", c); c += 1
+    add("split", "parallelGateway", "", "Permits", c); c += 1
 
     for a, b in [("start", "collect"), ("collect", "sitevisit"),
                  ("sitevisit", "loads"), ("loads", "draft"), ("draft", "finalize"),
@@ -162,18 +166,18 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
     # Parallel Job-Prep branches off the split: procurement, the finance/rebate
     # milestone (when relevant), and the job-specific permitting chain.
     chain = _permit_chain(matched, grid_tied)
-    add("order", "userTask", "Order all components and materials", "Warehouse Associate", c)
+    add("order", "userTask", "Order all components and materials", "Purchasing", c)
     if needs_finance_step:
         add("finance", "task", "Confirm financing / rebate paperwork",
-            "Finance Department", c)
+            "Finance", c)
     prev = "split"
     for i, (label, items) in enumerate(chain):
         nid = f"permit{i}"
-        add(nid, "userTask", label, "Permit Coordinator", c, items)
+        add(nid, "userTask", label, "Permits", c, items)
         link(prev, nid)
         prev = nid
         c += 1
-    add("join", "parallelGateway", "", "Permit Coordinator", c); c += 1
+    add("join", "parallelGateway", "", "Permits", c); c += 1
     link(prev, "join")
     link("split", "order")
     link("order", "join")
@@ -181,19 +185,19 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
         link("split", "finance")
         link("finance", "join")
 
-    add("setdate", "userTask", "Set Installation Date", "Foreman", c); c += 1
+    add("setdate", "userTask", "Set Installation Date", "Installation", c); c += 1
     # --- Installation ---
-    add("install", "userTask", "Site Installation", "Foreman", c); c += 1
-    add("walkthrough", "task", "Crew Install Walkthrough", "Foreman", c); c += 1
-    add("doctube", "task", "Doc Tube and Pictures", "Foreman", c); c += 1
-    add("dep40", "task", "40% Deposit", "Finance Department", c); c += 1
+    add("install", "userTask", "Site Installation", "Installation", c); c += 1
+    add("walkthrough", "task", "Crew Install Walkthrough", "Installation", c); c += 1
+    add("doctube", "task", "Doc Tube and Pictures", "Installation", c); c += 1
+    add("dep40", "task", "40% Deposit", "Finance", c); c += 1
     for a, b in [("join", "setdate"), ("setdate", "install"),
                  ("install", "walkthrough"), ("walkthrough", "doctube"),
                  ("doctube", "dep40")]:
         link(a, b)
     prev = "dep40"
     if has_monitoring:   # only systems that actually report (PV / battery)
-        add("monitoring", "task", "Set up Monitoring", "Foreman", c); c += 1
+        add("monitoring", "task", "Set up Monitoring", "Installation", c); c += 1
         link("dep40", "monitoring")
         prev = "monitoring"
 
@@ -205,7 +209,7 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
     add("cid", "task", cid_label, "Authorities (CID)", c, cid_items); c += 1
     link(prev, "cid")
     add("passgw", "exclusiveGateway", "Inspection passed?", "Authorities (CID)", c)
-    add("fix", "task", "Correct & Re-inspect", "Foreman", c); c += 1
+    add("fix", "task", "Correct & Re-inspect", "Installation", c); c += 1
     link("cid", "passgw")
     link("passgw", "fix", "No")
     link("fix", "cid")
@@ -226,13 +230,13 @@ def build_job_bpmn(job, matched, materials_note="", docs_note=""):
             "Utility Company", c, loc_items); c += 1
         link(prev, "jmecloc", yes_label if prev == "passgw" else "")
         prev, yes_label = "jmecloc", ""
-    add("sticker", "task", "Photograph Final Inspection Sticker", "Foreman", c); c += 1
+    add("sticker", "task", "Photograph Final Inspection Sticker", "Installation", c); c += 1
     link(prev, "sticker", yes_label if prev == "passgw" else "")
     # --- Closing ---
-    add("inv10", "task", "Final 10% Invoice", "Finance Department", c); c += 1
-    add("saleswalk", "task", "Final Client Walkthrough (Sales)", "Sales Rep", c); c += 1
-    add("review", "task", "Client Review & Sign-off", "Sales Rep", c); c += 1
-    add("end", "endEvent", "Close Out & Submit Final Paperwork", "General Manager", c); c += 1
+    add("inv10", "task", "Final 10% Invoice", "Finance", c); c += 1
+    add("saleswalk", "task", "Final Client Walkthrough (Sales)", "Sales", c); c += 1
+    add("review", "task", "Client Review & Sign-off", "Sales", c); c += 1
+    add("end", "endEvent", "Close Out & Submit Final Paperwork", "Executive", c); c += 1
     for a, b in [("sticker", "inv10"), ("inv10", "saleswalk"),
                  ("saleswalk", "review"), ("review", "end")]:
         link(a, b)

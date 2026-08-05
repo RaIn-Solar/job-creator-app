@@ -782,7 +782,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 24.4"
+VERSION = "Piece 24.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -831,24 +831,24 @@ DEFAULT_JOB_STATUS = "Proposal"
 # the rules engine still drives which job-specific steps actually apply.
 STATUS_OWNERSHIP = {
     "Proposal": {"dept": "Sales", "exit": "Sales signs the contract.",
-                 "team": [("Sales", "Sales Rep"), ("Design", "System Designer")]},
+                 "team": [("Sales", "Sales"), ("Design", "Design")]},
     "Job Prep": {"dept": "Operations — parallel functions",
                  "exit": "All permits filed and an install date set "
                          "(setting the install date advances the job).",
-                 "team": [("Permits", "Permit Coordinator"),
-                          ("Finance", "Finance Department"),
-                          ("Purchasing", "Warehouse Associate"),
-                          ("Install prep", "Foreman")]},
+                 "team": [("Permits", "Permits"),
+                          ("Finance", "Finance"),
+                          ("Purchasing", "Purchasing"),
+                          ("Install prep", "Installation")]},
     "Installation": {"dept": "Service & Technician", "exit": "Install complete.",
-                     "team": [("Install", "Foreman")]},
+                     "team": [("Install", "Installation")]},
     "Inspections": {"dept": "Operations — same team as Job Prep",
                     "exit": "Inspection passed and signed off.",
-                    "team": [("Permits", "Permit Coordinator"),
-                             ("Fixes", "Foreman")]},
+                    "team": [("Permits", "Permits"),
+                             ("Fixes", "Installation")]},
     "Closing": {"dept": "All departments — one final task each",
                 "exit": "Final invoice, walkthrough, and paperwork done.",
-                "team": [("Finance", "Finance Department"),
-                         ("Sales", "Sales Rep"), ("Sign-off", "General Manager")]},
+                "team": [("Finance", "Finance"),
+                         ("Sales", "Sales"), ("Sign-off", "Executive")]},
     "Complete": {"dept": "—", "exit": "Job closed.", "team": []},
     "Lost": {"dept": "—", "exit": "", "team": []},
 }
@@ -921,20 +921,33 @@ LEAD_FOLLOWUP_SCHEDULE = [(7, "7-day"), (14, "2-week"), (30, "1-month")]
 COLD_LEAD_STALE_DAYS = 182  # ~6 months
 # Piece 10: per-job task assignment.
 TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
-# Piece 10.2: when generating tasks from the process, map each BPMN lane
-# (the role responsible for a step) to the employee role(s) that would own
-# it, so a step can auto-assign to the person who holds that role. Lanes
-# not listed (Solbiz System, Authorities (CID), Utility Company) are
-# external/automated and never auto-assign.
+# Piece 10.2 / 24.5: map each BPMN lane (now a functional department) to the
+# real ECC role(s) that own its steps, so a step auto-assigns to the person who
+# holds that role (first match = highest priority). Lanes not listed (Solbiz
+# System, Authorities (CID), Utility Company) are external/automated and never
+# auto-assign. The legacy generic labels (Foreman, System Designer, …) are kept
+# as aliases so tasks generated before the 24.5 lane rename still resolve.
 LANE_TO_ROLES = {
-    "Sales Rep": ["Outside Sales Rep", "Inside Sales Rep", "Sales and Marketing Manager"],
-    "System Designer": ["Designer"],
-    "Permit Coordinator": ["Permit Coordinator"],
-    "Warehouse Associate": ["Warehouse Associate", "Purchasing Agent"],
-    "Foreman": ["Lead Installer"],
-    "Finance Department": ["Finance Manager", "Bookkeeper", "Payroll Manager"],
-    "General Manager": ["General Manager"],
+    "Sales": ["Outside Sales Rep", "Inside Sales Rep", "Sales and Marketing Manager"],
+    "Design": ["Designer"],
+    "Permits": ["Permit Coordinator"],
+    "Purchasing": ["Purchasing Agent", "Inventory Manager", "Warehouse Associate"],
+    "Installation": ["Lead Installer", "Installer", "Scheduling Coordinator",
+                     "Service Technician"],
+    "Finance": ["Finance Manager", "Bookkeeper", "Payroll Manager"],
+    "Executive": ["General Manager"],
 }
+# Legacy lane labels → their new department lane's roles (back-compat for
+# already-generated task notes like "Process step · Foreman").
+LANE_TO_ROLES.update({
+    "Sales Rep": LANE_TO_ROLES["Sales"],
+    "System Designer": LANE_TO_ROLES["Design"],
+    "Permit Coordinator": LANE_TO_ROLES["Permits"],
+    "Warehouse Associate": LANE_TO_ROLES["Purchasing"],
+    "Foreman": LANE_TO_ROLES["Installation"],
+    "Finance Department": LANE_TO_ROLES["Finance"],
+    "General Manager": LANE_TO_ROLES["Executive"],
+})
 # Days between consecutive generated tasks when a target install date is
 # given — a rough schedule anchored on the Site Installation step.
 TASK_DUE_SPACING_DAYS = 2
@@ -950,28 +963,28 @@ TASK_DEFAULT_LEAD_DAYS = 7
 # title, so they can be role-assigned too. First match wins. (Rough — meant
 # to be standardized later.)
 TITLE_LANE_KEYWORDS = [
-    ("interconnection", "Permit Coordinator"),
-    ("plan review", "Permit Coordinator"),
-    ("permit", "Permit Coordinator"),
-    ("inspection", "Permit Coordinator"),
-    ("zoning", "Permit Coordinator"),
-    ("credit", "Finance Department"),
-    ("invoice", "Finance Department"),
-    ("deposit", "Finance Department"),
-    ("payment", "Finance Department"),
-    ("design", "System Designer"),
-    ("order", "Warehouse Associate"),
-    ("material", "Warehouse Associate"),
-    ("component", "Warehouse Associate"),
-    ("install", "Foreman"),
-    ("walkthrough", "Foreman"),
-    ("monitoring", "Foreman"),
-    ("doc tube", "Foreman"),
-    ("contract", "Sales Rep"),
-    ("site visit", "Sales Rep"),
-    ("questionnaire", "Sales Rep"),
-    ("proposal", "Sales Rep"),
-    ("paperwork", "General Manager"),
+    ("interconnection", "Permits"),
+    ("plan review", "Permits"),
+    ("permit", "Permits"),
+    ("inspection", "Permits"),
+    ("zoning", "Permits"),
+    ("credit", "Finance"),
+    ("invoice", "Finance"),
+    ("deposit", "Finance"),
+    ("payment", "Finance"),
+    ("design", "Design"),
+    ("order", "Purchasing"),
+    ("material", "Purchasing"),
+    ("component", "Purchasing"),
+    ("install", "Installation"),
+    ("walkthrough", "Installation"),
+    ("monitoring", "Installation"),
+    ("doc tube", "Installation"),
+    ("contract", "Sales"),
+    ("site visit", "Sales"),
+    ("questionnaire", "Sales"),
+    ("proposal", "Sales"),
+    ("paperwork", "Executive"),
 ]
 
 # Piece 18.1: infer a pipeline stage for an existing (un-tagged) task from its
