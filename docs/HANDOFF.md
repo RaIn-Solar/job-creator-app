@@ -2,7 +2,21 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.7** (footer shows it plainly as "Version 23.7" — the "did my pull work?" check)
+**Current build:** **Piece 23.8** (footer shows it plainly as "Version 23.8" — the "did my pull work?" check)
+
+**Piece 23.8 — Make standardization (catalog cleanup).** `standardize_makes()`
+(meta `make_std_v`, runs before research so keys stay valid) consolidates
+manufacturer spellings: MidNite/Midnite Solar → **MidNite Solar**, Outback →
+**Outback Power**, Schneider → **Schneider Electric**, Solar Rackworks →
+**Solar Rack Works**, Solar World → **SolarWorld**, Calb → **CALB**, plus
+model-text-in-Make fixes (Vicrton→Victron, MILBANK…→Milbank). 15 rows whose Make
+holds a part type/description (Fuse, Surge Protector, MTWC-…, "Structural Pipe",
+"Single Swivel Socket", etc.) are **flagged** for review rather than guessed. Two
+research keys updated to canonical makes (Calb→CALB, Outback→Outback Power). The
+no-spec commodity sheets (Breaker Panel, Controls, Electrical, Wire, Monitoring,
+Enclosure, Pumping, Racking) have no specs to complete — this cleanup is their
+"completion". Workbook regenerated with vendor + make normalization. **Next:
+purchase URLs for active inventory.**
 
 **Piece 23.7 — Vendor standardization.** `standardize_vendors()` (meta
 `vendor_std_v`, VENDOR_STD_VERSION) folds the canonical list 54→52: renames

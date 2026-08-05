@@ -780,7 +780,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 23.7"
+VERSION = "Piece 23.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1724,6 +1724,48 @@ VENDOR_RENAME = {2446: "Megarevo"}          # Magerevo/Megavero typo -> brand
 VENDOR_MERGE = {1487: 2000}                 # Battery Systems -> Continental Battery Systems (2021 merger)
 VENDOR_REMOVE = {1804}                       # "Summit/Graybar" stray combined entry (0 items)
 
+# Piece 23.8: make (manufacturer) standardization. Runs before research so the
+# research keys reference canonical makes.
+MAKE_STD_VERSION = 1
+MAKE_FIX = {
+    "MidNite": "MidNite Solar", "Midnite Solar": "MidNite Solar",
+    "Outback": "Outback Power", "Schneider": "Schneider Electric",
+    "Solar Rackworks": "Solar Rack Works",
+    "Solar Rack Works Top of Pole": "Solar Rack Works",
+    "Solar World": "SolarWorld", "Calb": "CALB",
+    "Vicrton BlueSolar MPPT 150-60--Tr": "Victron",
+    "MILBANK U7021-RL-TG-200 1PH": "Milbank", "Milbank or Equivalent": "Milbank",
+}
+MAKE_FLAG = {  # Make column holds a part type/description, not a manufacturer.
+    "MTWC-0000-BLK": "Make column holds a part number, not a manufacturer — assign the real make.",
+    "MTWC-0000-Red": "Make column holds a part number, not a manufacturer — assign the real make.",
+    'Single Swivel Socket - 2"': "Make column holds a description, not a manufacturer — review.",
+    "Structural Pipe": "Make column holds a generic part type, not a manufacturer — review.",
+    "Fuse": "Make column holds a generic part type, not a manufacturer — review.",
+    "Surge Protector": "Make column holds a generic part type, not a manufacturer — review.",
+    "O'Reilly's or equivalent": "Generic placeholder — specify the actual make.",
+    "Y/T Branch Connectors": "Make column holds a description, not a manufacturer — review.",
+    "Snap It Small EMP Suppressors": "Make column holds a description, not a manufacturer — review.",
+    "Vicrton BlueSolar MPPT 150-60--Tr": "Make had model text; set to Victron — move 'BlueSolar MPPT 150/60' to Model.",
+}
+
+
+def standardize_makes(db):
+    """Consolidate manufacturer-name spellings and flag rows whose Make column
+    actually holds a part type/description. Runs once (or on version bump)."""
+    _mv = db.execute("SELECT value FROM meta WHERE key = 'make_std_v'").fetchone()
+    if _mv and int(_mv[0] or 0) >= MAKE_STD_VERSION:
+        return
+    for mk, flag in MAKE_FLAG.items():   # flag by original make, before rename
+        db.execute("UPDATE inventory_items SET flags = ?"
+                   " WHERE make = ? AND COALESCE(flags, '') = ''", (flag, mk))
+    for old, new in MAKE_FIX.items():
+        db.execute("UPDATE inventory_items SET make = ? WHERE make = ?", (new, old))
+    db.execute("INSERT INTO meta (key, value) VALUES ('make_std_v', ?)"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+               (str(MAKE_STD_VERSION),))
+    db.commit()
+
 
 def standardize_vendors(db):
     """Fold vendor duplicates/typos into a canonical supplier list once (or when
@@ -1990,6 +2032,7 @@ def init_db():
                " WHERE COALESCE(status, '') = ''")
     seed_inventory(db)
     standardize_vendors(db)
+    standardize_makes(db)
     apply_inventory_research(db)
     # Piece 23.4: inverters get an (empty) FCC ID# spec + a flag, once. Values
     # are researched in a later phase; blank ones stay flagged.
