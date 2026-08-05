@@ -990,6 +990,18 @@ link and **Change password** (submits for admin approval).
 - Commit + push after each feature. Kill stray servers with `fuser -k 5000/tcp`.
 
 # 5) Known limitations / deferred / next steps
+- **PLACEHOLDER — auto-rename uploads on upload (wanted, not built).** Rachel wants
+  every uploaded file automatically renamed to a consistent, informative scheme so
+  records are self-describing and nobody hand-renames files. Applies to *all* upload
+  paths — job documents (`upload_file`), client files, employee files, and field
+  photos. Likely scheme: `<Client>_<Job>_<Slot/Label>_<YYYY-MM-DD>.<ext>` (exact
+  tokens/order TBD). Notes for when we build it: `job_files` already separates
+  `stored_name` (uuid-prefixed on disk) from `original_name` (shown + used as the
+  download name), so the clean approach is to compute a friendly **download name**
+  from job/slot/date and keep the on-disk name collision-safe as today — no file
+  moves needed, and it can even apply retroactively to existing rows. Decide: token
+  set, duplicate handling (…-2), whether the uploader can override, and whether to
+  apply to already-uploaded files. **Come back to this.**
 - **Service worker (Piece 24.9)** — the app now cold-starts offline: the SW caches
   visited pages (network-first) and serves them, or a `/offline` page, without a
   signal. Still worth a real field test on crew devices before relying on it, and

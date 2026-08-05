@@ -6111,6 +6111,10 @@ def upload_file(job_id):
     original = upload.filename
     stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
     upload.save(job_upload_dir(job_id) / stored)
+    # TODO (deferred — see HANDOFF §5 "auto-rename uploads"): auto-rename to a
+    # consistent recordkeeping scheme (e.g. Client_Job_Slot_Date.ext). Compute it
+    # as the friendly download name here (original_name) while keeping `stored`
+    # collision-safe on disk; same idea for client/employee/field-photo uploads.
     db.execute(
         "INSERT INTO job_files (job_id, rule_label, stored_name, original_name)"
         " VALUES (?, ?, ?, ?)",
