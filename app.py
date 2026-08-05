@@ -780,7 +780,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 23.6"
+VERSION = "Piece 23.7"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1716,6 +1716,43 @@ def seed_inventory(db):
     db.commit()
 
 
+# Piece 23.7: vendor standardization. Rename to canonical spelling; merge true
+# duplicates (reassigning their items to the survivor); drop stray combined
+# entries. Bump VENDOR_STD_VERSION to re-run after adding more.
+VENDOR_STD_VERSION = 1
+VENDOR_RENAME = {2446: "Megarevo"}          # Magerevo/Megavero typo -> brand
+VENDOR_MERGE = {1487: 2000}                 # Battery Systems -> Continental Battery Systems (2021 merger)
+VENDOR_REMOVE = {1804}                       # "Summit/Graybar" stray combined entry (0 items)
+
+
+def standardize_vendors(db):
+    """Fold vendor duplicates/typos into a canonical supplier list once (or when
+    VENDOR_STD_VERSION bumps). Item vendor_ids on merged vendors are reassigned
+    to the survivor before the duplicate is removed."""
+    _sv = db.execute("SELECT value FROM meta WHERE key = 'vendor_std_v'").fetchone()
+    if _sv and int(_sv[0] or 0) >= VENDOR_STD_VERSION:
+        return
+    for vid, name in VENDOR_RENAME.items():
+        db.execute("UPDATE inventory_vendors SET name = ? WHERE id = ?", (name, vid))
+    for old, survivor in VENDOR_MERGE.items():
+        for tbl in ("inventory_items", "inventory_tools", "inventory_vehicles"):
+            db.execute(f"UPDATE {tbl} SET vendor_id = ? WHERE vendor_id = ?",
+                       (survivor, old))
+        db.execute("DELETE FROM inventory_vendors WHERE id = ?", (old,))
+    for vid in VENDOR_REMOVE:
+        used = db.execute(
+            "SELECT (SELECT COUNT(*) FROM inventory_items WHERE vendor_id = ?)"
+            " + (SELECT COUNT(*) FROM inventory_tools WHERE vendor_id = ?)"
+            " + (SELECT COUNT(*) FROM inventory_vehicles WHERE vendor_id = ?)",
+            (vid, vid, vid)).fetchone()[0]
+        if used == 0:
+            db.execute("DELETE FROM inventory_vendors WHERE id = ?", (vid,))
+    db.execute("INSERT INTO meta (key, value) VALUES ('vendor_std_v', ?)"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+               (str(VENDOR_STD_VERSION),))
+    db.commit()
+
+
 def apply_inventory_research(db):
     """Piece 23.3: fold web-research overrides (inventory_research.py) into the
     seeded items — corrected/completed specs, datasheet + purchase URLs, web
@@ -1952,6 +1989,7 @@ def init_db():
     db.execute("UPDATE inventory_items SET status = 'Active'"
                " WHERE COALESCE(status, '') = ''")
     seed_inventory(db)
+    standardize_vendors(db)
     apply_inventory_research(db)
     # Piece 23.4: inverters get an (empty) FCC ID# spec + a flag, once. Values
     # are researched in a later phase; blank ones stay flagged.

@@ -2,7 +2,18 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 23.6** (footer shows it plainly as "Version 23.6" — the "did my pull work?" check)
+**Current build:** **Piece 23.7** (footer shows it plainly as "Version 23.7" — the "did my pull work?" check)
+
+**Piece 23.7 — Vendor standardization.** `standardize_vendors()` (meta
+`vendor_std_v`, VENDOR_STD_VERSION) folds the canonical list 54→52: renames
+**Magerevo → Megarevo** (the actual brand; make column already spelled it so),
+**merges Battery Systems (1487) → Continental Battery Systems (2000)** —
+reassigning its items — per the verified Dec-2021 merger, and drops the stray
+combined **"Summit/Graybar" (1804)** entry (0 items; Summit + Graybar stay
+separate). Item free-text VendorId typos were already normalized at seed time;
+the updated workbook now also rewrites its VendorId cells to canonical (52 cells)
+and cleans the Vendors sheet. **Next: finish the catalog sheet list, then
+purchase URLs for active inventory.**
 
 **Piece 23.6 — Inverter research.** RESEARCH_VERSION 3, +24 Inverter entries.
 Verified the current **string/hybrid** inverters' **Vin Max** (the calculator's
