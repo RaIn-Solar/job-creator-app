@@ -2,7 +2,25 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.1** (footer shows it plainly as "Version 24.1" — the "did my pull work?" check)
+**Current build:** **Piece 24.2** (footer shows it plainly as "Version 24.2" — the "did my pull work?" check)
+
+**Piece 24.2 — Tool kit priced with big-box listings.** New `TOOLS_RESEARCH`
+(`inventory_research.py`, keyed by tool name) + `apply_tools_research()` (meta
+`tools_research_v`, TOOLS_RESEARCH_VERSION) enrich all 49 seeded tools (which had
+only name + category) with a standard make/model, a store listing URL, and an
+**approx price flagged for verification**. Mixed tier per direction: pro/
+contractor-grade for daily-abuse, accuracy, and safety (Milwaukee M18 FUEL,
+DeWalt, Klein, Fluke, Werner, Guardian) and budget/Harbor Freight for occasional
+hand tools & consumables. ~15 are exact Home Depot `/p/` product pages; the rest
+are Home Depot `/s/` search-listings for the named SKU; MC4 tooling + irradiance
+meter are flagged solar-specialty (not big-box). Prices are approx (retail price
+fetch is proxy-blocked) — never fabricated as exact. The in-app Tools table now
+shows Cost (with ~ for approx), a 🛒 listing link, and an ℹ️ tier/source note;
+`apply_tools_research` only fills rows still blank so later edits survive. New
+**Tools sheet** added to the workbook. NOTE: the commodity sheets (Racking, Wire,
+Electrical, Enclosure, etc.) are intentionally NOT re-priced from big-box — they
+already carry ECC's quoted costs, have no spec fields, and are solar-specialty
+vendors (IronRidge, Cobra, MidNite) not stocked at big-box.
 
 **Piece 24.1 — Remaining spec-gap completions (Generator / Charge Controller /
 Optimizer / Breaker).** RESEARCH_VERSION 6. Closed every genuine spec gap on the

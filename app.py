@@ -40,7 +40,9 @@ from inventory_seed import (
     INVENTORY_VENDORS, INVENTORY_CATEGORY_SPECS, INVENTORY_ITEMS,
     INVENTORY_TOOLS, INVENTORY_VEHICLES,
 )
-from inventory_research import RESEARCH, RESEARCH_VERSION
+from inventory_research import (
+    RESEARCH, RESEARCH_VERSION, TOOLS_RESEARCH, TOOLS_RESEARCH_VERSION,
+)
 
 # Code assets (schema.sql, templates) sit next to this file — except under
 # a PyInstaller desktop build, where they're unpacked into sys._MEIPASS.
@@ -780,7 +782,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 24.1"
+VERSION = "Piece 24.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1833,6 +1835,29 @@ def apply_inventory_research(db):
     db.commit()
 
 
+def apply_tools_research(db):
+    """Piece 24.2: enrich the seeded tool kit (INVENTORY_TOOLS was seeded with
+    only name + category) with a standard make/model, a store listing URL, and
+    an approx price flagged for verification. Matched by tool name. Re-applies
+    whenever TOOLS_RESEARCH_VERSION increases. Only fills rows still blank
+    (make = '') so any later in-app edits are preserved."""
+    _tv = db.execute("SELECT value FROM meta WHERE key = 'tools_research_v'").fetchone()
+    if _tv and int(_tv[0] or 0) >= TOOLS_RESEARCH_VERSION:
+        return
+    for name, upd in TOOLS_RESEARCH.items():
+        db.execute(
+            "UPDATE inventory_tools SET"
+            " make = ?, model = ?, purchase_url = ?, notes = ?,"
+            " cost = COALESCE(cost, ?)"
+            " WHERE name = ? AND COALESCE(make, '') = ''",
+            (upd.get("make", ""), upd.get("model", ""), upd.get("purchase_url", ""),
+             upd.get("notes", ""), upd.get("cost"), name))
+    db.execute("INSERT INTO meta (key, value) VALUES ('tools_research_v', ?)"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+               (str(TOOLS_RESEARCH_VERSION),))
+    db.commit()
+
+
 def init_db():
     """Create tables if missing, upgrade older databases, and add three
     sample clients (one job each) the first time so the app isn't empty."""
@@ -2034,6 +2059,7 @@ def init_db():
     standardize_vendors(db)
     standardize_makes(db)
     apply_inventory_research(db)
+    apply_tools_research(db)
     # Piece 23.4: inverters get an (empty) FCC ID# spec + a flag, once. Values
     # are researched in a later phase; blank ones stay flagged.
     if not db.execute("SELECT 1 FROM meta WHERE key = 'inv_fcc_flagged'").fetchone():

@@ -83,23 +83,24 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
   <summary>🧰 Tools <span class="sect-count">{{ tools|length }}</span></summary>
   <div class="inv-scroll" style="overflow-x:auto;">
   <table class="inv-table">
-    <thead><tr><th>Stock</th><th>Tool</th><th>Category</th><th>Make</th><th>Model</th><th>Vendor</th><th style="text-align:right;">Cost</th></tr></thead>
+    <thead><tr><th>Stock</th><th>Tool</th><th>Category</th><th>Make</th><th>Model</th><th style="text-align:right;">Cost</th><th>Buy</th></tr></thead>
     <tbody>
       {% for t in tools %}
       <tr>
         <td style="font-size:0.82rem;">{{ t["available"] }}/{{ t["needed"] }}</td>
-        <td>{{ t["name"] }}</td>
+        <td>{{ t["name"] }}
+          {% if t["notes"] %}<span title="{{ t['notes'] }}" style="cursor:help;">ℹ️</span>{% endif %}</td>
         <td class="muted">{{ t["category"] or "—" }}</td>
         <td>{{ t["make"] or "—" }}</td>
         <td>{{ t["model"] or "—" }}</td>
-        <td class="muted">{{ t["vendor_name"] or "—" }}</td>
-        <td style="text-align:right;">{% if t["cost"] is not none %}${{ "%.2f"|format(t["cost"]) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td style="text-align:right; white-space:nowrap;">{% if t["cost"] is not none %}${{ "%.2f"|format(t["cost"]) }}{% if t["notes"] and "approx" in t["notes"]|lower %}<span class="muted" title="approximate — verify at listing"> ~</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if t["purchase_url"] %}<a class="inv-ico" href="{{ t['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / listing">🛒</a>{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
-  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">A standard install-work tool kit — fill in makes/models/vendors as you standardize.</p>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Standard install-work tool kit — mixed tier (pro-grade for daily/accuracy/safety, budget for occasional). Prices are <strong>approx (~)</strong>; click 🛒 for the live listing. Hover ℹ️ for tier/source notes.</p>
 </details>
 
 <details class="card sect">
