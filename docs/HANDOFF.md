@@ -2,7 +2,20 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.1** (footer shows it plainly as "Version 26.1" — the "did my pull work?" check)
+**Current build:** **Piece 26.2** (footer shows it plainly as "Version 26.2" — the "did my pull work?" check)
+
+**Piece 26.2 — Work Bag receipt capture.** A new **🧾 Add a receipt** card on the
+Work Bag lets the crew photograph a receipt (`capture="environment"` opens the
+phone camera) and log **date, total, vendor, reference #, and expense category**
+(`RECEIPT_CATEGORIES` = Materials / Meals / Tools and Supplies / Overhead). One
+submit (`/work-bag/receipt`) does two things: records a **paid Expense with
+doc_type='Receipt'** on the job's ledger (so it flows into Finance/bookkeeping and
+the QuickBooks export unchanged) and files the photo as a `job_file`
+(auto-renamed `Client_Job_Receipt_Vendor_Date`, tagged "Receipt", linked to the
+txn via a new `job_files.txn_id`). The Work Bag lists the crew's recent receipts
+with a 📎 view link, and the job's **Billing tab** shows a 📎 next to each
+transaction that has a filed receipt. Validates a required photo (image/PDF) +
+total. Verified end-to-end.
 
 **Piece 26.1 — phone-camera scanning + crew truck-loading + tighter tag perms.**
 Three parts. (1) **Camera scanning**: the scan page and a new **Load-a-truck**

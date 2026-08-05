@@ -111,6 +111,59 @@ offline.</strong></p>
   {% endif %}
 </div>
 
+<div class="card" id="receipts">
+  <h2 style="margin-top:0; font-size:1.1rem;">🧾 Add a receipt</h2>
+  <p class="muted" style="margin-top:0;">Snap a photo of the receipt and log the
+  details — it's filed on the job and recorded as a paid expense for bookkeeping.</p>
+  <form method="post" action="{{ url_for('add_receipt') }}" enctype="multipart/form-data">
+    <div class="form-grid">
+      <div class="field wide">
+        <label>Receipt photo *</label>
+        <input name="photo" type="file" accept="image/*,application/pdf" capture="environment" required>
+      </div>
+      <div class="field">
+        <label>Job *</label>
+        <select name="job_id" required>
+          <option value="">— pick a job —</option>
+          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j["job_name"] or "Job #" ~ j["id"] }} · {{ j["client_name"] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field"><label>Date</label><input name="date" type="date" value="{{ today }}"></div>
+      <div class="field"><label>Total ($) *</label><input name="total" type="number" step="0.01" min="0" required placeholder="0.00"></div>
+      <div class="field"><label>Vendor</label><input name="vendor" placeholder="e.g. Home Depot"></div>
+      <div class="field"><label>Reference #</label><input name="reference" placeholder="receipt / invoice #"></div>
+      <div class="field">
+        <label>Category</label>
+        <select name="category">
+          {% for cat in receipt_categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">＋ Save receipt</button></div>
+  </form>
+
+  {% if my_receipts %}
+  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent receipts</h3>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Date</th><th>Vendor</th><th>Category</th><th style="text-align:right;">Total</th><th>Job</th><th>Photo</th></tr></thead>
+    <tbody>
+      {% for r in my_receipts %}
+      <tr>
+        <td class="muted">{{ r["txn_date"] or "—" }}</td>
+        <td>{{ r["party"] or "—" }}{% if r["reference"] %}<br><span class="muted" style="font-size:0.78rem;">#{{ r["reference"] }}</span>{% endif %}</td>
+        <td class="muted">{{ r["category"] or "—" }}</td>
+        <td style="text-align:right;">${{ "%.2f"|format(r["amount"] or 0) }}</td>
+        <td class="muted">{{ r["job_name"] or "—" }}</td>
+        <td>{% if r["file_id"] %}<a href="{{ url_for('view_file', job_id=r['job_id'], file_id=r['file_id']) }}" target="_blank">📎 view</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+
 <div class="card" id="notes">
   <h2 style="margin-top:0; font-size:1.1rem;">📝 Job notes</h2>
   <p class="muted" style="margin-top:0;">Jot anything the office should know about

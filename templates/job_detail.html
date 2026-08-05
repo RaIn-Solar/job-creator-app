@@ -537,7 +537,7 @@
       <tr>
         <td class="muted">{{ t["txn_date"] or "—" }}</td>
         <td><span class="badge {{ '' if t['kind'] == 'Income' else 'danger' }}">{{ t["kind"] }}</span></td>
-        <td>{% set dt = t["doc_type"] if "doc_type" in t.keys() else "" %}{% if dt %}<span class="badge neutral">{{ dt }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% set dt = t["doc_type"] if "doc_type" in t.keys() else "" %}{% if dt %}<span class="badge neutral">{{ dt }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if "receipt_file_id" in t.keys() and t["receipt_file_id"] %} <a href="{{ url_for('view_file', job_id=job['id'], file_id=t['receipt_file_id']) }}" target="_blank" title="View the filed receipt">📎</a>{% endif %}</td>
         <td>{{ t["category"] or "—" }}</td>
         <td class="muted">{{ t["party"] or "—" }}{% if t["reference"] %}<br><span style="font-size:0.78rem;">#{{ t["reference"] }}</span>{% endif %}</td>
         <td>{{ t["description"] or "—" }}</td>

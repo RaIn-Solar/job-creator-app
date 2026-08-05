@@ -442,6 +442,8 @@ EXPENSE_CATEGORIES = [
     "Materials", "Equipment", "Permit / Fees", "Labor", "Subcontractor",
     "Fuel / Travel", "Other Expense",
 ]
+# Piece 26.2: expense categories offered on the Work Bag receipt capture.
+RECEIPT_CATEGORIES = ["Materials", "Meals", "Tools and Supplies", "Overhead"]
 PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
 
 # Piece 21.5: source-document type for a ledger entry, so scanned/received
@@ -899,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 26.1"
+VERSION = "Piece 26.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2159,6 +2161,8 @@ def init_db():
     ensure_columns(db, "job_transactions", ["doc_type"])
     # Piece 21.7: tie crew-captured field photos back to the task they document.
     ensure_columns(db, "job_files", ["task_id"])
+    # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
+    ensure_columns(db, "job_files", ["txn_id"])
     # Piece 25.2: per-slot accepted file formats (comma-separated extensions) on
     # a rule, so a document slot can require e.g. PDF only.
     ensure_columns(db, "resource_rules", ["allowed_formats"])
@@ -3973,6 +3977,66 @@ def add_job_note():
     db.commit()
     flash("Note saved for the office.")
     return redirect(url_for("work_bag", _anchor="notes"))
+
+
+@app.route("/work-bag/receipt", methods=["POST"])
+def add_receipt():
+    """Piece 26.2: capture a receipt from the field — a photo plus date, total,
+    vendor, reference, and expense category. Records a paid Expense/Receipt on the
+    job's ledger (so it flows into bookkeeping) and files the photo against that
+    transaction."""
+    user = current_user()
+    if user is None:
+        abort(403)
+    db = get_db()
+    job_raw = request.form.get("job_id", "")
+    if not job_raw.isdigit():
+        flash("Pick a job for the receipt.", "error")
+        return redirect(url_for("work_bag", _anchor="receipts"))
+    job = db.execute(
+        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id WHERE j.id = ?",
+        (int(job_raw),)).fetchone()
+    if job is None:
+        flash("That job wasn't found.", "error")
+        return redirect(url_for("work_bag", _anchor="receipts"))
+    upload = request.files.get("photo")
+    if upload is None or not upload.filename:
+        flash("Take or attach a photo of the receipt.", "error")
+        return redirect(url_for("work_bag", _anchor="receipts"))
+    ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    if ext not in (PHOTO_EXTENSIONS | {"pdf"}):
+        flash("Receipts should be a photo (JPG/PNG/HEIC) or a PDF.", "error")
+        return redirect(url_for("work_bag", _anchor="receipts"))
+    total = _to_float(request.form.get("total"))
+    if not total:
+        flash("Enter the receipt total.", "error")
+        return redirect(url_for("work_bag", _anchor="receipts"))
+    vendor = request.form.get("vendor", "").strip()
+    reference = request.form.get("reference", "").strip()
+    category = request.form.get("category", "").strip()
+    date = request.form.get("date", "").strip() or datetime.now().strftime("%Y-%m-%d")
+    job_id = job["id"]
+    # 1) Ledger entry: a paid expense, tagged as a Receipt.
+    cur = db.execute(
+        "INSERT INTO job_transactions (job_id, kind, category, description, amount,"
+        " txn_date, status, party, reference, method, doc_type, created_by)"
+        " VALUES (?, 'Expense', ?, ?, ?, ?, 'Paid', ?, ?, '', 'Receipt', ?)",
+        (job_id, category, (f"Receipt — {vendor}" if vendor else "Receipt"),
+         total, date, vendor, reference, user["name"]))
+    txn_id = cur.lastrowid
+    # 2) File the photo against the job + that transaction (auto-renamed).
+    friendly = friendly_filename(
+        [job["client_name"], job["job_name"], "Receipt", vendor], ext,
+        taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
+    upload.save(job_upload_dir(job_id) / stored)
+    db.execute(
+        "INSERT INTO job_files (job_id, rule_label, stored_name, original_name, txn_id)"
+        " VALUES (?, 'Receipt', ?, ?, ?)", (job_id, stored, friendly, txn_id))
+    db.commit()
+    flash(f"Receipt saved: ${total:.2f}{(' · ' + vendor) if vendor else ''}.")
+    return redirect(url_for("work_bag", _anchor="receipts"))
 
 
 @app.route("/work-bag/notes/<int:note_id>/delete", methods=["POST"])
@@ -5801,8 +5865,9 @@ def job_billing(db, job_id, contract_amount=0.0):
     expenses, and the balance — plus the raw transactions. Drives the Finance
     Payments table and the per-job Billing tab."""
     txns = db.execute(
-        "SELECT * FROM job_transactions WHERE job_id = ? ORDER BY txn_date, id",
-        (job_id,)).fetchall()
+        "SELECT t.*, (SELECT f.id FROM job_files f WHERE f.txn_id = t.id LIMIT 1)"
+        " AS receipt_file_id FROM job_transactions t WHERE t.job_id = ?"
+        " ORDER BY t.txn_date, t.id", (job_id,)).fetchall()
     def total(kind, paid=None):
         return sum(t["amount"] or 0 for t in txns if t["kind"] == kind
                    and (paid is None or (t["status"] == "Paid") == paid))
@@ -6235,7 +6300,7 @@ def work_bag():
         "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
         " JOIN clients c ON c.id = j.client_id"
         " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
-    my_entries = my_notes = []
+    my_entries = my_notes = my_receipts = []
     if user is not None:
         my_entries = db.execute(
             "SELECT te.*, pt.name AS type_name, j.job_name FROM time_entries te"
@@ -6248,10 +6313,18 @@ def work_bag():
             "SELECT n.*, j.job_name, c.name AS client_name FROM job_notes n"
             " JOIN jobs j ON j.id = n.job_id JOIN clients c ON c.id = j.client_id"
             " WHERE n.author = ? ORDER BY n.id DESC LIMIT 12", (user["name"],)).fetchall()
+        # Piece 26.2: receipts this worker recently captured, with the photo.
+        my_receipts = db.execute(
+            "SELECT t.*, j.job_name, f.id AS file_id FROM job_transactions t"
+            " JOIN jobs j ON j.id = t.job_id"
+            " LEFT JOIN job_files f ON f.txn_id = t.id"
+            " WHERE t.doc_type = 'Receipt' AND t.created_by = ?"
+            " ORDER BY t.id DESC LIMIT 10", (user["name"],)).fetchall()
     return render_template("work_bag.html", task_statuses=TASK_STATUSES,
                            today=datetime.now().strftime("%Y-%m-%d"),
                            pay_types=pay_types, jobs=jobs, my_entries=my_entries,
-                           my_notes=my_notes)
+                           my_notes=my_notes, my_receipts=my_receipts,
+                           receipt_categories=RECEIPT_CATEGORIES)
 
 
 @app.route("/api/my-tasks")
