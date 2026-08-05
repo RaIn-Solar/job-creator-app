@@ -2,7 +2,24 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.5** (footer shows it plainly as "Version 24.5" — the "did my pull work?" check)
+**Current build:** **Piece 24.6** (footer shows it plainly as "Version 24.6" — the "did my pull work?" check)
+
+**Piece 24.6 — Roles/permissions overhaul (part 2 of the workflow/roles
+restructure).** Access now flows from the org chart. New `ROLE_PERMISSIONS`
+(role → default permissions) is folded into `has_permission`: a person's
+effective permissions = their role defaults ∪ explicit grants (GM still gets
+everything; **'delete' is never role-conferred** — it stays GM-or-explicit-grant
+for the soft-delete safety model). E.g. Designer / Purchasing Agent / Inventory
+Mgr / Warehouse / Ops Mgr → `inventory.manage`; Sales roles → `leads.manage`;
+R&D → `rules.manage` + `catalog.manage`; HR/Admin Mgr → `employees.manage`. New
+permission **`inventory.manage`** gates the inventory editing built in 24.1–24.4
+(item/tool/vehicle add-edit, stock adjust, the stale-stock queue) via
+`VIEW_PERMISSION` + `@admin_required`; viewing the catalog stays open to all, and
+the New/edit/stale controls are hidden in the template for users without it. The
+**access console** now marks role-conferred tools as *via role* (checked +
+disabled — change the role, not a grant). No migration; existing grants keep
+working. Verified end-to-end (a Permit Coordinator is blocked + sees no edit
+controls; a Designer gets full inventory access through their role alone).
 
 **Piece 24.5 — BPMN lanes aligned to the org (part 1 of the workflow/roles
 restructure).** The process swim-lanes were legacy generic labels (Foreman,

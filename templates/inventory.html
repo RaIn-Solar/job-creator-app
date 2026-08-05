@@ -21,7 +21,7 @@
 <div class="toolbar">
   <h1>📦 Inventory</h1>
   <div style="display:flex; gap:0.75rem; align-items:center;">
-    <a href="{{ url_for('inventory_stale') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🕰️ Stale stock{% if stale_count %} <span class="badge warn">{{ stale_count }}</span>{% endif %}</a>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_stale') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🕰️ Stale stock{% if stale_count %} <span class="badge warn">{{ stale_count }}</span>{% endif %}</a>{% endif %}
     <span class="muted" style="font-size:0.9rem;">{{ item_total }} items · {{ vendor_count }} vendors</span>
   </div>
 </div>
@@ -39,7 +39,7 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
       <span class="inv-legend"><strong>Stock</strong> = Available / Needed / On PO</span>
       {% if s.specs %}<button type="button" class="btn btn-secondary specs-toggle" data-target="tbl-{{ loop.index }}" style="padding:0.2rem 0.6rem; font-size:0.8rem;">⚙ Show specs</button>{% endif %}
     </div>
-    <a href="{{ url_for('inventory_item_new', category=s.category) }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New product</a>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_item_new', category=s.category) }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New product</a>{% endif %}
   </div>
 
   {# Top horizontal scrollbar, synced with the table below. #}
@@ -72,7 +72,7 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
           {% if it["manual_url"] %}<a class="inv-ico" href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Datasheet / manual">📄</a>{% endif %}
           {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
         </td>
-        <td><a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a></td>
+        <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>{% endif %}</td>
         {% for sp in s.specs %}<td class="spec-col" style="white-space:nowrap;">{{ it["specs"].get(sp, "") }}</td>{% endfor %}
       </tr>
       {% endfor %}
@@ -86,7 +86,7 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
   <summary>🧰 Tools <span class="sect-count">{{ tools|length }}</span></summary>
   <div class="inv-toolbar">
     <span class="inv-legend"><strong>Stock</strong> = Available / Needed</span>
-    <a href="{{ url_for('inventory_tool_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New tool</a>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_tool_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New tool</a>{% endif %}
   </div>
   <div class="inv-scroll" style="overflow-x:auto;">
   <table class="inv-table">
@@ -102,7 +102,7 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
         <td>{{ t["model"] or "—" }}</td>
         <td style="text-align:right; white-space:nowrap;">{% if t["cost"] is not none %}${{ "%.2f"|format(t["cost"]) }}{% if t["notes"] and "approx" in t["notes"]|lower %}<span class="muted" title="approximate — verify at listing"> ~</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if t["purchase_url"] %}<a class="inv-ico" href="{{ t['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / listing">🛒</a>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td><a class="inv-edit" href="{{ url_for('inventory_tool_edit', tool_id=t['id']) }}" title="Edit">✎</a></td>
+        <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_tool_edit', tool_id=t['id']) }}" title="Edit">✎</a>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -115,7 +115,7 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
   <summary>🚚 Vehicles &amp; heavy equipment <span class="sect-count">{{ vehicles|length }}</span></summary>
   <div class="inv-toolbar">
     <span class="inv-legend">Each unit has a shop <strong>nickname</strong> field.</span>
-    <a href="{{ url_for('inventory_vehicle_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New unit</a>
+    {% if can('inventory.manage') %}<a href="{{ url_for('inventory_vehicle_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New unit</a>{% endif %}
   </div>
   <div class="inv-scroll" style="overflow-x:auto;">
   <table class="inv-table">
@@ -130,7 +130,7 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
         <td>{{ v["model"] or "—" }}</td>
         <td>{{ v["year"] or "—" }}</td>
         <td class="muted">{{ v["vendor_name"] or "—" }}</td>
-        <td><a class="inv-edit" href="{{ url_for('inventory_vehicle_edit', vehicle_id=v['id']) }}" title="Edit">✎</a></td>
+        <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_vehicle_edit', vehicle_id=v['id']) }}" title="Edit">✎</a>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -7,9 +7,12 @@
 </div>
 <p class="muted">Grant individual tools to people who sign in. <strong>General
 Managers</strong> have full access automatically. <strong>Admins</strong> already
-have every tool except <strong>Delete</strong>. <strong>Standard</strong> users
-get only what you grant here. Set an optional <strong>expiry date</strong> per
-tool for temporary access — it lapses on its own after that date.</p>
+have every tool except <strong>Delete</strong>. Some tools are conferred
+<strong>by role</strong> (marked <em>via role</em> below) — those follow the org
+chart, so change them on the person's <strong>roles</strong>, not here.
+<strong>Standard</strong> users get their role tools plus whatever you grant.
+Set an optional <strong>expiry date</strong> per grant for temporary access — it
+lapses on its own after that date.</p>
 
 {% for r in rows %}
 <div class="card" id="emp{{ r.id }}">
@@ -28,12 +31,16 @@ tool for temporary access — it lapses on its own after that date.</p>
       <tbody>
         {% for key, label in permissions.items() %}
         {% set expv = r.grants.get(key, "") %}
+        {% set via_role = key in r.role_perms %}
         <tr>
-          <td>{{ label }}{% if key != 'delete' and r.level == 'Admin' %}
+          <td>{{ label }}{% if via_role %}
+            <span class="badge" style="font-size:0.7rem;">via role</span>{% elif key != 'delete' and r.level == 'Admin' %}
             <span class="muted" style="font-size:0.8rem;">— Admin already has this</span>{% endif %}</td>
-          <td><input type="checkbox" name="perm_{{ key }}" {% if key in r.grants %}checked{% endif %} style="width:auto;"></td>
-          <td><input type="date" name="exp_{{ key }}" value="{{ expv }}"
-                     {% if expv and expv < today %}style="border-color:#c0392b; background:#fdf2f2;" title="Expired"{% endif %}></td>
+          <td>{% if via_role %}<input type="checkbox" checked disabled style="width:auto;" title="Comes from this person's role">
+            {% else %}<input type="checkbox" name="perm_{{ key }}" {% if key in r.grants %}checked{% endif %} style="width:auto;">{% endif %}</td>
+          <td>{% if via_role %}<span class="muted" style="font-size:0.8rem;">automatic</span>
+            {% else %}<input type="date" name="exp_{{ key }}" value="{{ expv }}"
+                     {% if expv and expv < today %}style="border-color:#c0392b; background:#fdf2f2;" title="Expired"{% endif %}>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

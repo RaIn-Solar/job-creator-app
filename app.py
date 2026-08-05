@@ -216,6 +216,7 @@ ACCESS_LEVELS = ["Standard", "Admin"]
 PERMISSIONS = {
     "rules.manage": "Manage rules",
     "catalog.manage": "Manage catalog (appliances & components)",
+    "inventory.manage": "Manage inventory (add/edit items, tools, stock)",
     "employees.manage": "Manage employees & accounts",
     "approvals": "Approve field work",
     "audit.view": "View the audit log",
@@ -223,6 +224,44 @@ PERMISSIONS = {
     "clients.history": "View client change history",
     "delete": "Delete data (sends it to the trash)",
 }
+# Piece 24.6: department/role-scoped access. Holding a role confers its module
+# permissions automatically, so access follows the org chart instead of needing
+# a per-person grant for everyone. A person's effective permissions are the
+# union of these role defaults and any explicit grants; the GM still has
+# everything, and 'delete' is deliberately never role-conferred (it stays
+# GM-or-explicit-grant, preserving the soft-delete safety model).
+ROLE_PERMISSIONS = {
+    "Operations Manager": {"inventory.manage", "approvals", "audit.view"},
+    "Inventory Manager": {"inventory.manage"},
+    "Purchasing Agent": {"inventory.manage"},
+    "Warehouse Associate": {"inventory.manage"},
+    "Designer": {"inventory.manage"},          # actions the stale-stock queue
+    "Sales and Marketing Manager": {"leads.manage", "clients.history"},
+    "Outside Sales Rep": {"leads.manage"},
+    "Inside Sales Rep": {"leads.manage"},
+    "Administration Manager": {"employees.manage"},
+    "HR Manager": {"employees.manage"},
+    "Finance Manager": {"approvals", "clients.history"},
+    "Research and Development Manager": {"rules.manage", "catalog.manage"},
+    "Process Developer": {"rules.manage", "catalog.manage"},
+    "Software Developer": {"rules.manage", "catalog.manage"},
+}
+
+
+def roles_of(user):
+    """The set of role names a user holds (comma-separated in employees.roles)."""
+    if user is None:
+        return set()
+    return {r.strip() for r in (user["roles"] or "").split(",") if r.strip()}
+
+
+def permissions_from_roles(user):
+    """The permissions a user gets purely from the roles they hold."""
+    held = roles_of(user)
+    out = set()
+    for role in held:
+        out |= ROLE_PERMISSIONS.get(role, set())
+    return out
 PASSWORD_MIN_LEN = 6
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "first_name": "First name", "last_name": "Last name",
@@ -782,7 +821,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 24.5"
+VERSION = "Piece 24.6"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1194,10 +1233,14 @@ def has_permission(perm):
     if _has_gm_role(user):
         return True
     if perm == "delete":
-        return _has_grant(user, "delete")
+        return _has_grant(user, "delete")   # never role-conferred (safety)
     if perm is None:
         return user["access_level"] == "Admin"
     if user["access_level"] == "Admin":
+        return True
+    # Piece 24.6: a role the user holds may confer this permission (org-chart
+    # scoped access), else fall back to an explicit per-person grant.
+    if perm in permissions_from_roles(user):
         return True
     return _has_grant(user, perm)
 
@@ -1229,6 +1272,18 @@ VIEW_PERMISSION = {
     "upload_employee_file": "employees.manage",
     "delete_employee_file": "employees.manage",
     "audit_log_page": "audit.view",
+    # Piece 24.6: inventory editing is scoped to inventory.manage (viewing the
+    # catalog stays open to any signed-in user).
+    "inventory_item_new": "inventory.manage",
+    "inventory_item_edit": "inventory.manage",
+    "inventory_item_adjust": "inventory.manage",
+    "inventory_tool_new": "inventory.manage",
+    "inventory_tool_edit": "inventory.manage",
+    "inventory_vehicle_new": "inventory.manage",
+    "inventory_vehicle_edit": "inventory.manage",
+    "inventory_stale": "inventory.manage",
+    "inventory_stale_keep": "inventory.manage",
+    "inventory_stale_discontinue": "inventory.manage",
 }
 
 
@@ -1347,6 +1402,9 @@ def access_console():
     rows = [{
         "id": p["id"], "name": p["name"], "is_gm": _has_gm_role(p),
         "level": p["access_level"] or "Standard", "grants": grants.get(p["id"], {}),
+        # Piece 24.6: permissions this person already gets from their roles —
+        # shown as auto-granted (change the role to alter these, not a grant).
+        "role_perms": permissions_from_roles(p),
     } for p in people]
     return render_template("access.html", rows=rows, permissions=PERMISSIONS,
                            today=datetime.now().strftime("%Y-%m-%d"))
@@ -4277,6 +4335,7 @@ def _inventory_form_values():
 
 
 @app.route("/inventory/items/new", methods=["GET", "POST"])
+@admin_required
 def inventory_item_new():
     """Piece 23.4: add a new inventory item from inside the app (the per-category
     'New product' button preselects the category)."""
@@ -4308,6 +4367,7 @@ def inventory_item_new():
 
 
 @app.route("/inventory/items/<int:item_id>/edit", methods=["GET", "POST"])
+@admin_required
 def inventory_item_edit(item_id):
     """Piece 23.4: update an existing inventory item in place."""
     db = get_db()
@@ -4360,6 +4420,7 @@ def inventory_item_delete(item_id):
 
 
 @app.route("/inventory/items/<int:item_id>/adjust", methods=["POST"])
+@admin_required
 def inventory_item_adjust(item_id):
     """Piece 24.4: record a stock movement (received / used / count correction)
     through the ledger. 'Used' can be tied to a job and stamps last_used."""
@@ -4394,6 +4455,7 @@ def inventory_item_adjust(item_id):
 
 
 @app.route("/inventory/stale")
+@admin_required
 def inventory_stale():
     """Piece 24.4: the Designer's stale-stock review queue — zero on hand and
     unused for 6+ months. Keep active / Discontinue / Move to trash."""
@@ -4403,6 +4465,7 @@ def inventory_stale():
 
 
 @app.route("/inventory/stale/<int:item_id>/keep", methods=["POST"])
+@admin_required
 def inventory_stale_keep(item_id):
     """Dismiss a stale-stock flag: mark reviewed today (re-checks in 6 months)."""
     db = get_db()
@@ -4414,6 +4477,7 @@ def inventory_stale_keep(item_id):
 
 
 @app.route("/inventory/stale/<int:item_id>/discontinue", methods=["POST"])
+@admin_required
 def inventory_stale_discontinue(item_id):
     """Soft-retire a stale item: mark Discontinued (keeps the record)."""
     db = get_db()
@@ -4454,6 +4518,7 @@ def _tool_form_values():
 
 
 @app.route("/inventory/tools/new", methods=["GET", "POST"])
+@admin_required
 def inventory_tool_new():
     """Add a tool to the kit from inside the app."""
     db = get_db()
@@ -4479,6 +4544,7 @@ def inventory_tool_new():
 
 
 @app.route("/inventory/tools/<int:tool_id>/edit", methods=["GET", "POST"])
+@admin_required
 def inventory_tool_edit(tool_id):
     """Update a tool in place."""
     db = get_db()
@@ -4533,6 +4599,7 @@ def _vehicle_form_values():
 
 
 @app.route("/inventory/vehicles/new", methods=["GET", "POST"])
+@admin_required
 def inventory_vehicle_new():
     """Add a vehicle / heavy-equipment unit."""
     db = get_db()
@@ -4558,6 +4625,7 @@ def inventory_vehicle_new():
 
 
 @app.route("/inventory/vehicles/<int:vehicle_id>/edit", methods=["GET", "POST"])
+@admin_required
 def inventory_vehicle_edit(vehicle_id):
     """Update a vehicle / heavy-equipment unit in place."""
     db = get_db()
