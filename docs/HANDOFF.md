@@ -2,7 +2,24 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 24.2** (footer shows it plainly as "Version 24.2" — the "did my pull work?" check)
+**Current build:** **Piece 24.3** (footer shows it plainly as "Version 24.3" — the "did my pull work?" check)
+
+**Piece 24.3 — Inventory cleanup + Tools/Vehicles edit UI.** Two parts.
+(a) `cleanup_inventory()` (meta `inv_cleanup_v`, INV_CLEANUP_VERSION; runs after
+the research passes since it changes category/model): moves the 4 Schneider
+PDP / connection / breaker-kit accessories **Inverter → Electrical**; splits the
+two AP Smart rows that shared one model into **RSD Transmitter** (part 300-00252)
+and **RSD Push Button** (part 300-00253) — they were different devices mislabeled
+alike; and **flags** (does not delete) the genuine duplicate line-pairs
+(IronRidge XR-1000-210M, MidNite MNTRANSFER-60A) that carry two different
+recorded costs, for hand reconciliation. NOTE: the other "duplicate" groups
+(Pytes cables, MNPV12) turned out to be distinct SKUs with different part
+numbers — left as-is. (b) Full **add / edit / delete-to-trash** for the Tools
+and Vehicles tables (`inventory_tool_*`, `inventory_vehicle_*` routes + two form
+templates; `＋ New tool` / `＋ New unit` buttons and a ✎ edit link per row;
+TRASH_REGISTRY gains `inventory_tool` + `inventory_vehicle`). Workbook synced:
+Schneider rows moved to the Electrical sheet, AP Smart rows renamed, duplicate
+pairs flagged.
 
 **Piece 24.2 — Tool kit priced with big-box listings.** New `TOOLS_RESEARCH`
 (`inventory_research.py`, keyed by tool name) + `apply_tools_research()` (meta

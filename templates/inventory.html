@@ -79,11 +79,15 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
 </details>
 {% endfor %}
 
-<details class="card sect">
+<details class="card sect" id="tools">
   <summary>🧰 Tools <span class="sect-count">{{ tools|length }}</span></summary>
+  <div class="inv-toolbar">
+    <span class="inv-legend"><strong>Stock</strong> = Available / Needed</span>
+    <a href="{{ url_for('inventory_tool_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New tool</a>
+  </div>
   <div class="inv-scroll" style="overflow-x:auto;">
   <table class="inv-table">
-    <thead><tr><th>Stock</th><th>Tool</th><th>Category</th><th>Make</th><th>Model</th><th style="text-align:right;">Cost</th><th>Buy</th></tr></thead>
+    <thead><tr><th>Stock</th><th>Tool</th><th>Category</th><th>Make</th><th>Model</th><th style="text-align:right;">Cost</th><th>Buy</th><th></th></tr></thead>
     <tbody>
       {% for t in tools %}
       <tr>
@@ -95,19 +99,24 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
         <td>{{ t["model"] or "—" }}</td>
         <td style="text-align:right; white-space:nowrap;">{% if t["cost"] is not none %}${{ "%.2f"|format(t["cost"]) }}{% if t["notes"] and "approx" in t["notes"]|lower %}<span class="muted" title="approximate — verify at listing"> ~</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if t["purchase_url"] %}<a class="inv-ico" href="{{ t['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / listing">🛒</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td><a class="inv-edit" href="{{ url_for('inventory_tool_edit', tool_id=t['id']) }}" title="Edit">✎</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
-  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Standard install-work tool kit — mixed tier (pro-grade for daily/accuracy/safety, budget for occasional). Prices are <strong>approx (~)</strong>; click 🛒 for the live listing. Hover ℹ️ for tier/source notes.</p>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Standard install-work tool kit — mixed tier (pro-grade for daily/accuracy/safety, budget for occasional). Prices are <strong>approx (~)</strong>; click 🛒 for the live listing. Hover ℹ️ for tier/source notes. Use <strong>＋ New tool</strong> or ✎ to edit.</p>
 </details>
 
-<details class="card sect">
+<details class="card sect" id="vehicles">
   <summary>🚚 Vehicles &amp; heavy equipment <span class="sect-count">{{ vehicles|length }}</span></summary>
+  <div class="inv-toolbar">
+    <span class="inv-legend">Each unit has a shop <strong>nickname</strong> field.</span>
+    <a href="{{ url_for('inventory_vehicle_new') }}" class="btn" style="padding:0.25rem 0.7rem; font-size:0.85rem;">＋ New unit</a>
+  </div>
   <div class="inv-scroll" style="overflow-x:auto;">
   <table class="inv-table">
-    <thead><tr><th>Unit</th><th>Nickname</th><th>Category</th><th>Make</th><th>Model</th><th>Year</th><th>Vendor</th></tr></thead>
+    <thead><tr><th>Unit</th><th>Nickname</th><th>Category</th><th>Make</th><th>Model</th><th>Year</th><th>Vendor</th><th></th></tr></thead>
     <tbody>
       {% for v in vehicles %}
       <tr>
@@ -118,12 +127,13 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
         <td>{{ v["model"] or "—" }}</td>
         <td>{{ v["year"] or "—" }}</td>
         <td class="muted">{{ v["vendor_name"] or "—" }}</td>
+        <td><a class="inv-edit" href="{{ url_for('inventory_vehicle_edit', vehicle_id=v['id']) }}" title="Edit">✎</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
-  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Each unit has a shop <strong>nickname</strong> field.</p>
+  <p class="muted" style="margin:0.4rem 0 0; font-size:0.78rem;">Use <strong>＋ New unit</strong> to add a truck, trailer, or piece of heavy equipment, or ✎ to edit — nickname, year, and vendor included.</p>
 </details>
 
 <script>

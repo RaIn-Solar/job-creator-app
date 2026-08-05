@@ -782,7 +782,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 24.2"
+VERSION = "Piece 24.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1475,6 +1475,14 @@ TRASH_REGISTRY = {
                        "label": lambda r: f"{r['make']} {r['model']}".strip() or r["category"],
                        "found_in": lambda db, r: f"Inventory — {r['category']}",
                        "in_use": lambda db, r: []},
+    "inventory_tool": {"table": "inventory_tools",
+                       "label": lambda r: r["name"] or "Tool",
+                       "found_in": lambda db, r: "Inventory — Tools",
+                       "in_use": lambda db, r: []},
+    "inventory_vehicle": {"table": "inventory_vehicles",
+                          "label": lambda r: r["name"] or "Vehicle",
+                          "found_in": lambda db, r: "Inventory — Vehicles",
+                          "in_use": lambda db, r: []},
 }
 
 
@@ -1858,6 +1866,62 @@ def apply_tools_research(db):
     db.commit()
 
 
+INV_CLEANUP_VERSION = 1
+
+
+def cleanup_inventory(db):
+    """Piece 24.3: catalog cleanup that changes category/model (so it can't live
+    in apply_inventory_research, which matches on those). Runs once per version:
+    (1) recategorize the Schneider PDP / connection / breaker-kit accessories out
+    of Inverter into Electrical; (2) disambiguate the two AP Smart rows that were
+    mislabeled with an identical model — one is the RSD transmitter, the other a
+    RSD push-button; (3) flag the genuine duplicate line-pairs (same model, two
+    entries at different recorded costs) for reconciliation rather than deleting
+    real purchase history. Plain sqlite3 connection here — no row factory."""
+    _cv = db.execute("SELECT value FROM meta WHERE key = 'inv_cleanup_v'").fetchone()
+    if _cv and int(_cv[0] or 0) >= INV_CLEANUP_VERSION:
+        return
+    # (1) Schneider accessories: Inverter -> Electrical.
+    schneider_models = (
+        "Breaker Kit for Conext XW+PDP #RNW865121501",
+        "XW Connection kit for Inverter 2 (RNW865102002",
+        "XW+ mini Power Distribution Panel RNW865101301",
+        "XW+ POWER DISTIBUTION PANEL (RNW865101501)",
+    )
+    for model in schneider_models:
+        db.execute(
+            "UPDATE inventory_items SET category = 'Electrical',"
+            " flags = 'Recategorized from Inverter to Electrical — accessory (PDP /"
+            " connection kit / breaker kit), not an inverter.'"
+            " WHERE category = 'Inverter' AND make = 'Schneider Electric'"
+            " AND model = ?", (model,))
+    # (2) AP Smart: the two rows share model 'APsmart transmitter APS 406001 Single
+    #     Core' but are different devices; split them by vendor part number.
+    db.execute(
+        "UPDATE inventory_items SET model = 'APsmart RSD Transmitter (APS 406001)',"
+        " flags = 'PLC rapid-shutdown transmitter — one per array; not a per-module"
+        " optimizer.' WHERE make = 'AP Smart' AND vendor_number = '300-00252'")
+    db.execute(
+        "UPDATE inventory_items SET model = 'APsmart RSD Push Button (APS 406001)',"
+        " flags = 'Rapid-shutdown initiation push-button (NO/NC contacts) — not a"
+        " transmitter or optimizer; model corrected (was mislabeled as the"
+        " transmitter).' WHERE make = 'AP Smart' AND vendor_number = '300-00253'")
+    # (3) Genuine duplicate line-pairs: flag, don't delete (they carry different
+    #     recorded costs = real purchase history to reconcile by hand).
+    db.execute(
+        "UPDATE inventory_items SET flags = 'Possible duplicate line — two"
+        " XR-1000-210M rail entries at different recorded costs; reconcile qty &"
+        " price, then trash one.' WHERE make = 'IronRidge' AND model = 'XR-1000-210M'")
+    db.execute(
+        "UPDATE inventory_items SET flags = 'Possible duplicate line — two"
+        " MNTRANSFER-60A entries at different recorded costs; reconcile, then trash"
+        " one.' WHERE make = 'MidNite Solar' AND model = 'MNTRANSFER-60A'")
+    db.execute("INSERT INTO meta (key, value) VALUES ('inv_cleanup_v', ?)"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+               (str(INV_CLEANUP_VERSION),))
+    db.commit()
+
+
 def init_db():
     """Create tables if missing, upgrade older databases, and add three
     sample clients (one job each) the first time so the app isn't empty."""
@@ -2060,6 +2124,7 @@ def init_db():
     standardize_makes(db)
     apply_inventory_research(db)
     apply_tools_research(db)
+    cleanup_inventory(db)
     # Piece 23.4: inverters get an (empty) FCC ID# spec + a flag, once. Values
     # are researched in a later phase; blank ones stay flagged.
     if not db.execute("SELECT 1 FROM meta WHERE key = 'inv_fcc_flagged'").fetchone():
@@ -4229,6 +4294,165 @@ def inventory_item_delete(item_id):
     ok, msg = trash_item("inventory_item", item_id)
     flash(msg, "" if ok else "error")
     return redirect(url_for("inventory_page"))
+
+
+# --- Tools CRUD (Piece 24.3) -------------------------------------------------
+def _tool_form_values():
+    """Pull a tool's fields out of the POSTed form."""
+    vid = request.form.get("vendor_id", "")
+    return {
+        "name": request.form.get("name", "").strip(),
+        "category": request.form.get("category", "").strip(),
+        "make": request.form.get("make", "").strip(),
+        "model": request.form.get("model", "").strip(),
+        "description": request.form.get("description", "").strip(),
+        "vendor_id": int(vid) if vid.isdigit() else None,
+        "cost": _to_float(request.form.get("cost")),
+        "purchase_url": request.form.get("purchase_url", "").strip(),
+        "manual_url": request.form.get("manual_url", "").strip(),
+        "needed": int(_to_float(request.form.get("needed")) or 0),
+        "available": int(_to_float(request.form.get("available")) or 0),
+        "notes": request.form.get("notes", "").strip(),
+    }
+
+
+@app.route("/inventory/tools/new", methods=["GET", "POST"])
+def inventory_tool_new():
+    """Add a tool to the kit from inside the app."""
+    db = get_db()
+    if request.method == "POST":
+        v = _tool_form_values()
+        if not v["name"]:
+            flash("A tool name is required.", "error")
+            return redirect(url_for("inventory_tool_new"))
+        db.execute(
+            "INSERT INTO inventory_tools (name, category, make, model, description,"
+            " vendor_id, cost, purchase_url, manual_url, needed, available, notes)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (v["name"], v["category"], v["make"], v["model"], v["description"],
+             v["vendor_id"], v["cost"], v["purchase_url"], v["manual_url"],
+             v["needed"], v["available"], v["notes"]))
+        db.commit()
+        flash(f"Added tool: {v['name']}.")
+        return redirect(url_for("inventory_page", _anchor="tools"))
+    return render_template(
+        "inventory_tool_form.html", tool=None,
+        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
+                               " ORDER BY name").fetchall())
+
+
+@app.route("/inventory/tools/<int:tool_id>/edit", methods=["GET", "POST"])
+def inventory_tool_edit(tool_id):
+    """Update a tool in place."""
+    db = get_db()
+    row = db.execute("SELECT * FROM inventory_tools WHERE id = ?", (tool_id,)).fetchone()
+    if row is None:
+        abort(404)
+    if request.method == "POST":
+        v = _tool_form_values()
+        db.execute(
+            "UPDATE inventory_tools SET name = ?, category = ?, make = ?, model = ?,"
+            " description = ?, vendor_id = ?, cost = ?, purchase_url = ?,"
+            " manual_url = ?, needed = ?, available = ?, notes = ? WHERE id = ?",
+            (v["name"], v["category"], v["make"], v["model"], v["description"],
+             v["vendor_id"], v["cost"], v["purchase_url"], v["manual_url"],
+             v["needed"], v["available"], v["notes"], tool_id))
+        db.commit()
+        flash("Tool updated.")
+        return redirect(url_for("inventory_page", _anchor="tools"))
+    return render_template(
+        "inventory_tool_form.html", tool=dict(row),
+        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
+                               " ORDER BY name").fetchall())
+
+
+@app.route("/inventory/tools/<int:tool_id>/delete", methods=["POST"])
+@delete_required
+def inventory_tool_delete(tool_id):
+    """Send a tool to the trash (restorable, GM-only)."""
+    ok, msg = trash_item("inventory_tool", tool_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("inventory_page", _anchor="tools"))
+
+
+# --- Vehicles CRUD (Piece 24.3) ----------------------------------------------
+def _vehicle_form_values():
+    """Pull a vehicle/heavy-equipment unit's fields out of the POSTed form."""
+    vid = request.form.get("vendor_id", "")
+    return {
+        "name": request.form.get("name", "").strip(),
+        "nickname": request.form.get("nickname", "").strip(),
+        "category": request.form.get("category", "").strip(),
+        "make": request.form.get("make", "").strip(),
+        "model": request.form.get("model", "").strip(),
+        "year": request.form.get("year", "").strip(),
+        "description": request.form.get("description", "").strip(),
+        "vendor_id": int(vid) if vid.isdigit() else None,
+        "cost": _to_float(request.form.get("cost")),
+        "purchase_url": request.form.get("purchase_url", "").strip(),
+        "manual_url": request.form.get("manual_url", "").strip(),
+        "notes": request.form.get("notes", "").strip(),
+    }
+
+
+@app.route("/inventory/vehicles/new", methods=["GET", "POST"])
+def inventory_vehicle_new():
+    """Add a vehicle / heavy-equipment unit."""
+    db = get_db()
+    if request.method == "POST":
+        v = _vehicle_form_values()
+        if not v["name"]:
+            flash("A unit name is required.", "error")
+            return redirect(url_for("inventory_vehicle_new"))
+        db.execute(
+            "INSERT INTO inventory_vehicles (name, nickname, category, make, model,"
+            " year, description, vendor_id, cost, purchase_url, manual_url, notes)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (v["name"], v["nickname"], v["category"], v["make"], v["model"],
+             v["year"], v["description"], v["vendor_id"], v["cost"],
+             v["purchase_url"], v["manual_url"], v["notes"]))
+        db.commit()
+        flash(f"Added unit: {v['name']}.")
+        return redirect(url_for("inventory_page", _anchor="vehicles"))
+    return render_template(
+        "inventory_vehicle_form.html", vehicle=None,
+        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
+                               " ORDER BY name").fetchall())
+
+
+@app.route("/inventory/vehicles/<int:vehicle_id>/edit", methods=["GET", "POST"])
+def inventory_vehicle_edit(vehicle_id):
+    """Update a vehicle / heavy-equipment unit in place."""
+    db = get_db()
+    row = db.execute("SELECT * FROM inventory_vehicles WHERE id = ?",
+                     (vehicle_id,)).fetchone()
+    if row is None:
+        abort(404)
+    if request.method == "POST":
+        v = _vehicle_form_values()
+        db.execute(
+            "UPDATE inventory_vehicles SET name = ?, nickname = ?, category = ?,"
+            " make = ?, model = ?, year = ?, description = ?, vendor_id = ?,"
+            " cost = ?, purchase_url = ?, manual_url = ?, notes = ? WHERE id = ?",
+            (v["name"], v["nickname"], v["category"], v["make"], v["model"],
+             v["year"], v["description"], v["vendor_id"], v["cost"],
+             v["purchase_url"], v["manual_url"], v["notes"], vehicle_id))
+        db.commit()
+        flash("Unit updated.")
+        return redirect(url_for("inventory_page", _anchor="vehicles"))
+    return render_template(
+        "inventory_vehicle_form.html", vehicle=dict(row),
+        vendor_list=db.execute("SELECT id, name FROM inventory_vendors"
+                               " ORDER BY name").fetchall())
+
+
+@app.route("/inventory/vehicles/<int:vehicle_id>/delete", methods=["POST"])
+@delete_required
+def inventory_vehicle_delete(vehicle_id):
+    """Send a vehicle / heavy-equipment unit to the trash (restorable, GM-only)."""
+    ok, msg = trash_item("inventory_vehicle", vehicle_id)
+    flash(msg, "" if ok else "error")
+    return redirect(url_for("inventory_page", _anchor="vehicles"))
 
 
 @app.route("/catalog/appliances/add", methods=["POST"])
