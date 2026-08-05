@@ -2,7 +2,19 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 25.3** (footer shows it plainly as "Version 25.3" — the "did my pull work?" check)
+**Current build:** **Piece 25.4** (footer shows it plainly as "Version 25.4" — the "did my pull work?" check)
+
+**Piece 25.4 — auto-rename uploads for recordkeeping.** Every uploaded file is
+renamed on upload to a consistent, self-describing **Name_What_Date** scheme so
+records read cleanly and nobody hand-renames: job docs →
+`Client_Job_Slot_YYYY-MM-DD.ext`, client files → `Client_Category_Date`,
+employee files → `Employee_Credential_Date`, field photos → `Client_Job_Task_Date`
+(a `-2/-3` suffix keeps same-slot/same-day files distinct). `friendly_filename()`
+(+ `_slug()`, `_taken_names()`) builds it; the friendly name becomes
+`original_name` (the shown + download name) while the on-disk `stored_name` stays
+uuid-prefixed and collision-safe, so downloads/thumbnails are unaffected. Applied
+across all four upload paths (job/client/employee/field-photo). New uploads only —
+existing files untouched per direction.
 
 **Piece 25.3 — background scheduler for follow-up generation.** Lead follow-ups
 used to be generated only when someone loaded the home / dashboard / task pages.
@@ -1003,18 +1015,14 @@ link and **Change password** (submits for admin approval).
 - Commit + push after each feature. Kill stray servers with `fuser -k 5000/tcp`.
 
 # 5) Known limitations / deferred / next steps
-- **PLACEHOLDER — auto-rename uploads on upload (wanted, not built).** Rachel wants
-  every uploaded file automatically renamed to a consistent, informative scheme so
-  records are self-describing and nobody hand-renames files. Applies to *all* upload
-  paths — job documents (`upload_file`), client files, employee files, and field
-  photos. Likely scheme: `<Client>_<Job>_<Slot/Label>_<YYYY-MM-DD>.<ext>` (exact
-  tokens/order TBD). Notes for when we build it: `job_files` already separates
-  `stored_name` (uuid-prefixed on disk) from `original_name` (shown + used as the
-  download name), so the clean approach is to compute a friendly **download name**
-  from job/slot/date and keep the on-disk name collision-safe as today — no file
-  moves needed, and it can even apply retroactively to existing rows. Decide: token
-  set, duplicate handling (…-2), whether the uploader can override, and whether to
-  apply to already-uploaded files. **Come back to this.**
+- **Auto-rename uploads (Piece 25.4)** — every upload is now renamed to a
+  self-describing **Name_What_Date** scheme via `friendly_filename()` /`_slug()`:
+  job docs → `Client_Job_Slot_YYYY-MM-DD.ext`, client files →
+  `Client_Category_Date`, employee files → `Employee_Credential_Date`, field
+  photos → `Client_Job_Task_Date` (a `-2/-3` suffix de-dupes same-slot/day). The
+  friendly name is stored as `original_name` (what shows + the download name);
+  the on-disk `stored_name` stays uuid-prefixed and collision-safe. New uploads
+  only — existing files were intentionally left as-is (no backfill).
 - **Service worker (Piece 24.9)** — the app now cold-starts offline: the SW caches
   visited pages (network-first) and serves them, or a `/offline` page, without a
   signal. Still worth a real field test on crew devices before relying on it, and

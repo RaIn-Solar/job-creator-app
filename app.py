@@ -390,6 +390,41 @@ def allowed_formats_for_label(db, label):
         return _parse_formats(row["allowed_formats"]) or None
     return None
 
+
+# ---- Piece 25.4: auto-rename uploads for recordkeeping (Name_What_Date) -------
+def _slug(text, maxlen=48):
+    """A filename-safe slug: letters/digits kept, runs of anything else become a
+    single hyphen. Trimmed to maxlen so names stay reasonable."""
+    s = re.sub(r"[^A-Za-z0-9]+", "-", (text or "").strip()).strip("-")
+    return s[:maxlen].strip("-")
+
+
+def friendly_filename(parts, ext, taken=None):
+    """Build 'Part1_Part2_…_YYYY-MM-DD.ext' from meaningful parts (each slugged,
+    blanks dropped) so uploads are self-describing. `taken` is a set of display
+    names already used in the same place — a numeric suffix avoids collisions."""
+    slugs = [s for s in (_slug(p) for p in parts) if s]
+    slugs.append(datetime.now().strftime("%Y-%m-%d"))
+    base = "_".join(slugs) or "Document"
+    ext = (ext or "").lower().lstrip(".")
+    name = f"{base}.{ext}" if ext else base
+    n = 2
+    while taken and name in taken:
+        name = f"{base}-{n}.{ext}" if ext else f"{base}-{n}"
+        n += 1
+    return name
+
+
+def _ext_of(filename):
+    return filename.rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
+
+
+def _taken_names(db, table, column, id_col, id_val):
+    """Existing display names filed against the same owner (for de-duping)."""
+    rows = db.execute(
+        f"SELECT original_name FROM {table} WHERE {id_col} = ?", (id_val,)).fetchall()
+    return {r["original_name"] for r in rows if r["original_name"]}
+
 # Piece 21: Finance ledger vocabulary. Income = money in (deposits, invoices,
 # rebates); Expense = money out (materials, permits, labor, subs). Categories
 # map cleanly onto QuickBooks income/expense accounts on export.
@@ -860,7 +895,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 25.3"
+VERSION = "Piece 25.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3244,17 +3279,22 @@ def upload_client_file(client_id):
     category = request.form.get("category", "").strip()
     if category not in CLIENT_FILE_CATEGORIES:
         category = ""
-    original = upload.filename
-    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
-    upload.save(client_upload_dir(client_id) / stored)
     db = get_db()
+    # Piece 25.4: auto-rename to Client_Category_Date.ext for recordkeeping.
+    cname = db.execute("SELECT name FROM clients WHERE id = ?",
+                       (client_id,)).fetchone()
+    friendly = friendly_filename(
+        [cname["name"] if cname else "", category or "Document"], extension,
+        taken=_taken_names(db, "client_files", "original_name", "client_id", client_id))
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
+    upload.save(client_upload_dir(client_id) / stored)
     db.execute(
         "INSERT INTO client_files (client_id, category, stored_name, original_name)"
         " VALUES (?, ?, ?, ?)",
-        (client_id, category, stored, original),
+        (client_id, category, stored, friendly),
     )
     db.commit()
-    flash(f"Uploaded: {original}")
+    flash(f"Uploaded: {friendly}")
     return redirect(url_for("client_detail", client_id=client_id, _anchor="documents"))
 
 
@@ -6109,20 +6149,23 @@ def upload_file(job_id):
         flash(f"{where} only: {', '.join('.' + e for e in sorted(allowed))}. "
               f"You picked .{extension or '(no extension)'}.", "error")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
-    original = upload.filename
-    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
+    # Piece 25.4: auto-rename to Client_Job_Slot_Date.ext for recordkeeping.
+    who = db.execute(
+        "SELECT j.job_name, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id WHERE j.id = ?", (job_id,)).fetchone()
+    friendly = friendly_filename(
+        [who["client_name"] if who else "", who["job_name"] if who else "",
+         label or "Document"], extension,
+        taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
     upload.save(job_upload_dir(job_id) / stored)
-    # TODO (deferred — see HANDOFF §5 "auto-rename uploads"): auto-rename to a
-    # consistent recordkeeping scheme (e.g. Client_Job_Slot_Date.ext). Compute it
-    # as the friendly download name here (original_name) while keeping `stored`
-    # collision-safe on disk; same idea for client/employee/field-photo uploads.
     db.execute(
         "INSERT INTO job_files (job_id, rule_label, stored_name, original_name)"
         " VALUES (?, ?, ?, ?)",
-        (job_id, label, stored, original),
+        (job_id, label, stored, friendly),
     )
     db.commit()
-    flash(f"Uploaded: {original}")
+    flash(f"Uploaded: {friendly}")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="documents"))
 
 
@@ -6178,20 +6221,26 @@ def task_photos(task_id):
     job_id = task["job_id"]
     if request.method == "POST":
         saved = 0
+        # Piece 25.4: auto-rename photos to Client_Job_Task_Date.ext (a numeric
+        # suffix keeps a burst of shots on one day distinct).
+        taken = _taken_names(db, "job_files", "original_name", "job_id", job_id)
         for up in request.files.getlist("photos"):
             if not up or not up.filename:
                 continue
             ext = up.filename.rsplit(".", 1)[-1].lower() if "." in up.filename else ""
             if ext not in PHOTO_EXTENSIONS:
                 continue
-            original = up.filename
-            stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
+            friendly = friendly_filename(
+                [task["client_name"], task["job_name"], task["title"] or "Photo"],
+                ext, taken=taken)
+            taken.add(friendly)
+            stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
             up.save(job_upload_dir(job_id) / stored)
             db.execute(
                 "INSERT INTO job_files"
                 " (job_id, rule_label, stored_name, original_name, task_id)"
                 " VALUES (?, ?, ?, ?, ?)",
-                (job_id, FIELD_PHOTO_LABEL, stored, original, str(task_id)))
+                (job_id, FIELD_PHOTO_LABEL, stored, friendly, str(task_id)))
             saved += 1
         db.commit()
         flash(f"Added {saved} photo(s)." if saved
@@ -6967,19 +7016,25 @@ def upload_employee_file(employee_id):
     if extension not in ALLOWED_EXTENSIONS:
         flash(f"File type .{extension} is not allowed.", "error")
         return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
-    original = upload.filename
-    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(original)}"
-    upload.save(employee_upload_dir(employee_id) / stored)
     db = get_db()
+    credential_name = request.form.get("credential_name", "").strip()
+    # Piece 25.4: auto-rename to Employee_Credential_Date.ext for recordkeeping.
+    ename = db.execute("SELECT name FROM employees WHERE id = ?",
+                       (employee_id,)).fetchone()
+    friendly = friendly_filename(
+        [ename["name"] if ename else "", credential_name or "Document"], extension,
+        taken=_taken_names(db, "employee_files", "original_name",
+                           "employee_id", employee_id))
+    stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
+    upload.save(employee_upload_dir(employee_id) / stored)
     db.execute(
         "INSERT INTO employee_files"
         " (employee_id, credential_name, stored_name, original_name)"
         " VALUES (?, ?, ?, ?)",
-        (employee_id, request.form.get("credential_name", "").strip(),
-         stored, original),
+        (employee_id, credential_name, stored, friendly),
     )
     db.commit()
-    flash(f"Uploaded: {original}")
+    flash(f"Uploaded: {friendly}")
     return redirect(url_for("employee_detail", employee_id=employee_id, _anchor="documents"))
 
 
