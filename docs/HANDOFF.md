@@ -2,7 +2,21 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.6** (footer shows it plainly as "Version 27.6" — the "did my pull work?" check)
+**Current build:** **Piece 27.7** (footer shows it plainly as "Version 27.7" — the "did my pull work?" check)
+
+**Piece 27.7 — Work Bag split into a jobs landing + per-job page (part 1).** The Work
+Bag landing (`/work-bag`) now shows **only the jobs** in the worker's bag — one tappable
+card each (job name, client, install date, open-task count, unsubmitted badge), rendered
+client-side from the same cached `/api/my-tasks` data so it still works offline. Tapping a
+card opens the new **`/work-bag/job/<id>`** page (`work_bag_job`), which holds the rest —
+that job's field tasks + packing list, submit-for-approval, log-hours, add-receipt, and
+job-notes — all scoped to the job (hidden `job_id`, no job pickers; recent lists filtered
+to the job). The capture routes (`log_my_hours`, `add_receipt`, `add_job_note`, and the two
+deletes) now redirect back to the per-job page via `_workbag_redirect()`. Submit only sends
+the queued changes for the current job (shared localStorage queue, filtered by `JOB_ID`).
+Verified with the test client (routes render, redirects) + a headless run (landing shows 2
+job cards and no task list; clicking opens the per-job page with its tasks). **NOTE:** the
+user will refine this per-job screen next.
 
 **Piece 27.6 — Dropped the email from the customer invoice.** Removed `rachel@eccsolar.com`
 from both the invoice header remit-to block and the footer remit line (the personal

@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 27.6"
+VERSION = "Piece 27.7"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -4261,6 +4261,16 @@ def save_ot_rules():
     return redirect(url_for("payroll_settings"))
 
 
+def _workbag_redirect(anchor=None):
+    """Piece 27.7: Work-Bag POSTs now come from a job's own page, so return
+    there (using the form's job_id) instead of the landing. Falls back to the
+    landing when no job is on the form."""
+    jid = request.form.get("job_id", "")
+    if jid.isdigit():
+        return redirect(url_for("work_bag_job", job_id=int(jid), _anchor=anchor))
+    return redirect(url_for("work_bag"))
+
+
 @app.route("/work-bag/hours", methods=["POST"])
 def log_my_hours():
     """An employee logs their own hours from the Work Bag — saved as Pending
@@ -4279,7 +4289,7 @@ def log_my_hours():
          request.form.get("note", "").strip(), user["name"]))
     db.commit()
     flash("Hours submitted for approval.")
-    return redirect(url_for("work_bag"))
+    return _workbag_redirect(anchor="hours")
 
 
 @app.route("/work-bag/hours/<int:entry_id>/delete", methods=["POST"])
@@ -4291,7 +4301,7 @@ def delete_my_hours(entry_id):
     db.execute("DELETE FROM time_entries WHERE id = ? AND employee_id = ?"
                " AND status = 'Pending'", (entry_id, user["id"]))
     db.commit()
-    return redirect(url_for("work_bag"))
+    return _workbag_redirect(anchor="hours")
 
 
 # ---------------------- Piece 25.1: timesheets --------------------------------
@@ -4410,12 +4420,12 @@ def add_job_note():
     note = request.form.get("note", "").strip()
     if not job_id.isdigit() or not note:
         flash("Pick a job and type a note.", "error")
-        return redirect(url_for("work_bag", _anchor="notes"))
+        return _workbag_redirect(anchor="notes")
     db.execute("INSERT INTO job_notes (job_id, note, author) VALUES (?, ?, ?)",
                (int(job_id), note, user["name"]))
     db.commit()
     flash("Note saved for the office.")
-    return redirect(url_for("work_bag", _anchor="notes"))
+    return _workbag_redirect(anchor="notes")
 
 
 @app.route("/work-bag/receipt", methods=["POST"])
@@ -4431,26 +4441,26 @@ def add_receipt():
     job_raw = request.form.get("job_id", "")
     if not job_raw.isdigit():
         flash("Pick a job for the receipt.", "error")
-        return redirect(url_for("work_bag", _anchor="receipts"))
+        return _workbag_redirect(anchor="receipts")
     job = db.execute(
         "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
         " JOIN clients c ON c.id = j.client_id WHERE j.id = ?",
         (int(job_raw),)).fetchone()
     if job is None:
         flash("That job wasn't found.", "error")
-        return redirect(url_for("work_bag", _anchor="receipts"))
+        return _workbag_redirect(anchor="receipts")
     upload = request.files.get("photo")
     if upload is None or not upload.filename:
         flash("Take or attach a photo of the receipt.", "error")
-        return redirect(url_for("work_bag", _anchor="receipts"))
+        return _workbag_redirect(anchor="receipts")
     ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
     if ext not in (PHOTO_EXTENSIONS | {"pdf"}):
         flash("Receipts should be a photo (JPG/PNG/HEIC) or a PDF.", "error")
-        return redirect(url_for("work_bag", _anchor="receipts"))
+        return _workbag_redirect(anchor="receipts")
     total = _to_float(request.form.get("total"))
     if not total:
         flash("Enter the receipt total.", "error")
-        return redirect(url_for("work_bag", _anchor="receipts"))
+        return _workbag_redirect(anchor="receipts")
     vendor = request.form.get("vendor", "").strip()
     reference = request.form.get("reference", "").strip()
     category = request.form.get("category", "").strip()
@@ -4475,7 +4485,7 @@ def add_receipt():
         " VALUES (?, 'Receipt', ?, ?, ?)", (job_id, stored, friendly, txn_id))
     db.commit()
     flash(f"Receipt saved: ${total:.2f}{(' · ' + vendor) if vendor else ''}.")
-    return redirect(url_for("work_bag", _anchor="receipts"))
+    return _workbag_redirect(anchor="receipts")
 
 
 @app.route("/work-bag/notes/<int:note_id>/delete", methods=["POST"])
@@ -4489,7 +4499,7 @@ def delete_job_note(note_id):
                (note_id, user["name"]))
     db.commit()
     flash("Note removed.")
-    return redirect(url_for("work_bag", _anchor="notes"))
+    return _workbag_redirect(anchor="notes")
 
 
 @app.route("/payroll/settings", methods=["GET"])
@@ -6806,41 +6816,46 @@ def _to_float(v):
 
 @app.route("/work-bag")
 def work_bag():
-    """The Work Bag: an offline-capable page holding the signed-in worker's
-    field tasks. Task data and submission happen in the browser via the /api
-    endpoints, so it keeps working through a dropped connection."""
+    """Piece 27.7: the Work Bag landing — just the jobs in the worker's bag.
+    Tapping a job opens its own page (work_bag_job) with that job's tasks, hours,
+    receipts and notes. The job list is rendered in the browser from the same
+    cached /api/my-tasks data, so the landing keeps working offline."""
+    return render_template("work_bag.html")
+
+
+@app.route("/work-bag/job/<int:job_id>")
+def work_bag_job(job_id):
+    """A single job's Work Bag page: its field tasks plus hours / receipt / note
+    capture scoped to this job. Task data still flows through the /api endpoints
+    (offline-capable); the capture forms and recent lists are pinned to the job."""
     db = get_db()
+    job = fetch_job(job_id)
     user = current_user()
     pay_types = payroll_pay_types(db)
-    jobs = db.execute(
-        "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
-        " JOIN clients c ON c.id = j.client_id"
-        " WHERE j.status NOT IN ('Complete', 'Lost') ORDER BY j.id DESC").fetchall()
+    client = db.execute("SELECT name FROM clients WHERE id = ?",
+                        (job["client_id"],)).fetchone()
     my_entries = my_notes = my_receipts = []
     if user is not None:
         my_entries = db.execute(
-            "SELECT te.*, pt.name AS type_name, j.job_name FROM time_entries te"
+            "SELECT te.*, pt.name AS type_name FROM time_entries te"
             " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
-            " LEFT JOIN jobs j ON j.id = te.job_id"
-            " WHERE te.employee_id = ?"
-            " ORDER BY te.work_date DESC, te.id DESC LIMIT 12", (user["id"],)).fetchall()
-        # Piece 21.9: the notes this worker recently left, for confirmation.
+            " WHERE te.employee_id = ? AND te.job_id = ?"
+            " ORDER BY te.work_date DESC, te.id DESC LIMIT 12",
+            (user["id"], job_id)).fetchall()
         my_notes = db.execute(
-            "SELECT n.*, j.job_name, c.name AS client_name FROM job_notes n"
-            " JOIN jobs j ON j.id = n.job_id JOIN clients c ON c.id = j.client_id"
-            " WHERE n.author = ? ORDER BY n.id DESC LIMIT 12", (user["name"],)).fetchall()
-        # Piece 26.2: receipts this worker recently captured, with the photo.
+            "SELECT n.* FROM job_notes n WHERE n.author = ? AND n.job_id = ?"
+            " ORDER BY n.id DESC LIMIT 12", (user["name"], job_id)).fetchall()
         my_receipts = db.execute(
-            "SELECT t.*, j.job_name, f.id AS file_id FROM job_transactions t"
-            " JOIN jobs j ON j.id = t.job_id"
+            "SELECT t.*, f.id AS file_id FROM job_transactions t"
             " LEFT JOIN job_files f ON f.txn_id = t.id"
-            " WHERE t.doc_type = 'Receipt' AND t.created_by = ?"
-            " ORDER BY t.id DESC LIMIT 10", (user["name"],)).fetchall()
-    return render_template("work_bag.html", task_statuses=TASK_STATUSES,
-                           today=datetime.now().strftime("%Y-%m-%d"),
-                           pay_types=pay_types, jobs=jobs, my_entries=my_entries,
-                           my_notes=my_notes, my_receipts=my_receipts,
-                           receipt_categories=RECEIPT_CATEGORIES)
+            " WHERE t.doc_type = 'Receipt' AND t.created_by = ? AND t.job_id = ?"
+            " ORDER BY t.id DESC LIMIT 10", (user["name"], job_id)).fetchall()
+    return render_template(
+        "work_bag_job.html", job=job,
+        client_name=client["name"] if client else "",
+        task_statuses=TASK_STATUSES, today=datetime.now().strftime("%Y-%m-%d"),
+        pay_types=pay_types, my_entries=my_entries, my_notes=my_notes,
+        my_receipts=my_receipts, receipt_categories=RECEIPT_CATEGORIES)
 
 
 @app.route("/api/my-tasks")

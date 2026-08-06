@@ -9,234 +9,23 @@
     <button id="refresh" class="btn btn-secondary">Refresh</button>
   </div>
 </div>
-<p class="muted">Your on-site work, grouped by job with each install date. Update
-tasks even with no signal — changes are saved on this device. When you're back
-online, submit your completed work and hours; it's held for your manager to
-approve before it counts. <strong>Keep this page open while you're
-offline.</strong></p>
+<p class="muted">Your jobs. Tap a job to see its tasks, log hours, add receipts,
+and leave notes. Once you've opened a job it keeps working offline —
+<strong>open the jobs you'll need before you lose signal.</strong></p>
 
 <div id="status" class="flash" style="display:none;"></div>
-
-<div class="card">
-  <div id="pending" class="muted" style="margin-bottom:0.6rem;"></div>
-  <div id="tasklist"><p class="empty">Loading…</p></div>
-</div>
-
-<div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">Submit completed work</h2>
-  <p class="muted" style="margin-top:0;">Sends your changes above plus your
-  hours to your manager for approval. Nothing counts in the system until it's
-  approved.</p>
-  <div class="form-grid">
-    <div class="field">
-      <label for="work_date">Work date</label>
-      <input id="work_date" type="date" value="{{ today }}">
-    </div>
-    <div class="field">
-      <label for="hours">Hours worked</label>
-      <input id="hours" type="number" step="0.25" min="0" placeholder="e.g. 8">
-    </div>
-    <div class="field wide">
-      <label for="wnote">Note for your manager (optional)</label>
-      <input id="wnote" placeholder="anything they should know">
-    </div>
-  </div>
-  <div class="actions">
-    <button id="submitbtn" class="btn">Submit for approval</button>
-  </div>
-</div>
-
-<div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">Your recent submissions</h2>
-  <div id="subs"><p class="muted">None yet.</p></div>
-</div>
-
-<div class="card">
-  <h2 style="margin-top:0; font-size:1.1rem;">⏱ Log payroll hours</h2>
-  <p class="muted" style="margin-top:0;">Record your hours by type (regular, roof,
-  travel…). These go to your supervisor to approve for payroll — overtime is
-  figured automatically once you pass the weekly limit, so don't log it separately.</p>
-  <form method="post" action="{{ url_for('log_my_hours') }}">
-    <div class="form-grid">
-      <div class="field"><label>Date</label><input type="date" name="work_date" value="{{ today }}"></div>
-      <div class="field">
-        <label>Pay type</label>
-        <select name="pay_type_id">
-          {% for t in pay_types %}<option value="{{ t['id'] }}">{{ t["name"] }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="field"><label>Hours *</label><input name="hours" type="number" step="0.25" min="0" required placeholder="8"></div>
-      <div class="field">
-        <label>Job (optional)</label>
-        <select name="job_id">
-          <option value="">— none —</option>
-          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j["job_name"] or "Job #" ~ j["id"] }} · {{ j["client_name"] }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="field wide"><label>Note</label><input name="note" placeholder="optional"></div>
-    </div>
-    <div class="actions"><button type="submit" class="btn">＋ Submit hours</button></div>
-  </form>
-
-  <div style="margin-top:0.8rem;">
-    <a href="{{ url_for('timesheet') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;">🕒 My full timesheet</a>
-  </div>
-
-  {% if my_entries %}
-  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent hours</h3>
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Date</th><th>Pay type</th><th>Job</th><th style="text-align:right;">Hours</th><th>Status</th><th></th></tr></thead>
-    <tbody>
-      {% for e in my_entries %}
-      <tr>
-        <td class="muted">{{ e["work_date"] or "—" }}</td>
-        <td>{{ e["type_name"] or "—" }}</td>
-        <td class="muted">{{ e["job_name"] or "—" }}</td>
-        <td style="text-align:right;">{{ "%.2f"|format(e["hours"] or 0) }}</td>
-        <td><span class="badge {{ '' if e['status'] == 'Approved' else 'warn' }}">{{ e["status"] }}</span></td>
-        <td>
-          {% if e["status"] == "Pending" %}
-          <form method="post" action="{{ url_for('delete_my_hours', entry_id=e['id']) }}" style="margin:0;"
-                onsubmit="return confirm('Remove this pending time entry?');">
-            <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
-</div>
-
-<div class="card" id="receipts">
-  <h2 style="margin-top:0; font-size:1.1rem;">🧾 Add a receipt</h2>
-  <p class="muted" style="margin-top:0;">Snap a photo of the receipt and log the
-  details — it's filed on the job and recorded as a paid expense for bookkeeping.</p>
-  <form method="post" action="{{ url_for('add_receipt') }}" enctype="multipart/form-data">
-    <div class="form-grid">
-      <div class="field wide">
-        <label>Receipt photo *</label>
-        <input name="photo" type="file" accept="image/*,application/pdf" capture="environment" required>
-      </div>
-      <div class="field">
-        <label>Job *</label>
-        <select name="job_id" required>
-          <option value="">— pick a job —</option>
-          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j["job_name"] or "Job #" ~ j["id"] }} · {{ j["client_name"] }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="field"><label>Date</label><input name="date" type="date" value="{{ today }}"></div>
-      <div class="field"><label>Total ($) *</label><input name="total" type="number" step="0.01" min="0" required placeholder="0.00"></div>
-      <div class="field"><label>Vendor</label><input name="vendor" placeholder="e.g. Home Depot"></div>
-      <div class="field"><label>Reference #</label><input name="reference" placeholder="receipt / invoice #"></div>
-      <div class="field">
-        <label>Category</label>
-        <select name="category">
-          {% for cat in receipt_categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
-        </select>
-      </div>
-    </div>
-    <div class="actions"><button type="submit" class="btn">＋ Save receipt</button></div>
-  </form>
-
-  {% if my_receipts %}
-  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent receipts</h3>
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Date</th><th>Vendor</th><th>Category</th><th style="text-align:right;">Total</th><th>Job</th><th>Photo</th></tr></thead>
-    <tbody>
-      {% for r in my_receipts %}
-      <tr>
-        <td class="muted">{{ r["txn_date"] or "—" }}</td>
-        <td>{{ r["party"] or "—" }}{% if r["reference"] %}<br><span class="muted" style="font-size:0.78rem;">#{{ r["reference"] }}</span>{% endif %}</td>
-        <td class="muted">{{ r["category"] or "—" }}</td>
-        <td style="text-align:right;">${{ "%.2f"|format(r["amount"] or 0) }}</td>
-        <td class="muted">{{ r["job_name"] or "—" }}</td>
-        <td>{% if r["file_id"] %}<a href="{{ url_for('view_file', job_id=r['job_id'], file_id=r['file_id']) }}" target="_blank">📎 view</a>{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
-</div>
-
-<div class="card" id="notes">
-  <h2 style="margin-top:0; font-size:1.1rem;">📝 Job notes</h2>
-  <p class="muted" style="margin-top:0;">Jot anything the office should know about
-  a job — access details, a change on site, a callback needed. Each note is
-  stamped with the time and your name.</p>
-  <form method="post" action="{{ url_for('add_job_note') }}">
-    <div class="form-grid">
-      <div class="field wide">
-        <label>Job *</label>
-        <select name="job_id" required>
-          <option value="">— pick a job —</option>
-          {% for j in jobs %}<option value="{{ j['id'] }}">{{ j["job_name"] or "Job #" ~ j["id"] }} · {{ j["client_name"] }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="field wide"><label>Note *</label>
-        <textarea name="note" rows="2" required placeholder="what happened / what the office should know"></textarea></div>
-    </div>
-    <div class="actions"><button type="submit" class="btn">＋ Save note</button></div>
-  </form>
-
-  {% if my_notes %}
-  <h3 style="font-size:0.95rem; margin:1rem 0 0.3rem;">Your recent notes</h3>
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>When</th><th>Job</th><th>Note</th><th></th></tr></thead>
-    <tbody>
-      {% for n in my_notes %}
-      <tr>
-        <td class="muted" style="white-space:nowrap; font-size:0.82rem;">{{ n["created_at"] }}</td>
-        <td style="font-size:0.85rem;"><a href="{{ url_for('job_detail', job_id=n['job_id']) }}">{{ n["job_name"] or "Job #" ~ n["job_id"] }}</a><br><span class="muted" style="font-size:0.78rem;">{{ n["client_name"] }}</span></td>
-        <td>{{ n["note"] }}</td>
-        <td>
-          <form method="post" action="{{ url_for('delete_job_note', note_id=n['id']) }}" style="margin:0;"
-                onsubmit="return confirm('Remove this note?');">
-            <button type="submit" class="btn btn-secondary" style="padding:0 0.45rem; font-size:0.75rem;">✕</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
-</div>
+<div id="joblist"><p class="empty">Loading…</p></div>
 
 <script>
 (function () {
-  const LS_TASKS = "solbiz_wb_tasks", LS_QUEUE = "solbiz_wb_queue", LS_MATS = "solbiz_wb_mats";
-  const STATUSES = {{ task_statuses | tojson }};
-  // Piece 21.6: the bag is a field tool — show only on-site work (install &
-  // inspection) and cluster it by job. Office/scheduling steps live on the
-  // dashboard, not in the crew's bag.
+  const LS_TASKS = "solbiz_wb_tasks", LS_QUEUE = "solbiz_wb_queue";
+  // Field work only (install & inspection) — office/scheduling tasks live on the
+  // dashboard, so the bag only surfaces the jobs the crew is on site for.
   const FIELD_STAGES = ["Installation", "Inspections"];
   const $ = s => document.querySelector(s);
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
   let tasks = load(LS_TASKS, []);
-  let queue = load(LS_QUEUE, {});           // id -> {status, notes, base_updated_at}
-  let pending = {};                          // task_id -> {new_status,new_notes} (server pending)
-  let submissions = [];
-  let materials = load(LS_MATS, {});         // job_id -> [{item, quantity, unit, status}] (truck load list)
-  function save() {
-    localStorage.setItem(LS_TASKS, JSON.stringify(tasks));
-    localStorage.setItem(LS_QUEUE, JSON.stringify(queue));
-    localStorage.setItem(LS_MATS, JSON.stringify(materials));
-  }
-  // Colour a material by whether it's ready to load: green = on hand/received,
-  // amber = still to source, red = backordered.
-  function matClass(s) {
-    if (s === "Backordered") return "danger";
-    if (s === "Needed" || s === "Quoted") return "warn";
-    if (s === "On hand" || s === "Received") return "";
-    return "neutral";
-  }
+  let queue = load(LS_QUEUE, {});
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
     c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -244,189 +33,77 @@ offline.</strong></p>
     const on = navigator.onLine, el = $("#net");
     el.textContent = on ? "🟢 Online" : "🔴 Offline";
     el.className = "badge " + (on ? "" : "danger");
-    $("#submitbtn").disabled = !on;
   }
   function msg(text, kind) {
     const s = $("#status");
     s.textContent = text || ""; s.className = "flash " + (kind || "");
     s.style.display = text ? "block" : "none";
   }
-  const queueCount = () => Object.keys(queue).length;
-
-  function taskRow(t) {
-    const row = document.createElement("div");
-    row.style.cssText = "border-bottom:1px solid var(--border); padding:0.6rem 0;";
-    let badge = "";
-    if (queue[t.id]) badge = ' <span class="badge warn">not submitted</span>';
-    else if (pending[t.id]) badge = ' <span class="badge neutral">submitted: ' + esc(pending[t.id].new_status) + ' — awaiting approval</span>';
-    let photoBlock = "";
-    if (t.is_photo_step) {
-      const n = (t.photos || []).length;
-      const thumbs = (t.photos || []).slice(0, 6).map(p =>
-        '<a href="' + esc(p.url) + '" target="_blank" rel="noopener">' +
-        '<img src="' + esc(p.url) + '" loading="lazy" alt="job photo" ' +
-        'style="width:52px; height:52px; object-fit:cover; border-radius:5px; border:1px solid var(--border);"></a>').join("");
-      photoBlock =
-        '<div style="margin-top:0.45rem;">' +
-          '<a href="' + esc(t.photos_url) + '" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.82rem;">' +
-            '📷 ' + (n ? 'Photos (' + n + ')' : 'Add photos') + '</a>' +
-          (n ? '<div style="display:flex; gap:0.35rem; flex-wrap:wrap; margin-top:0.4rem;">' + thumbs + '</div>' : '') +
-        '</div>';
-    }
-    row.innerHTML =
-      '<div style="font-weight:600;">' + esc(t.title) + badge + '</div>' +
-      (t.due_date ? '<div class="muted" style="font-size:0.8rem; margin-bottom:0.3rem;">due ' + esc(t.due_date) + '</div>' : '') +
-      '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">' +
-        '<select data-id="' + t.id + '" class="st" style="padding:0.2rem;">' +
-          STATUSES.map(s => '<option' + (s === t.status ? ' selected' : '') + '>' + esc(s) + '</option>').join('') +
-        '</select>' +
-        '<input data-id="' + t.id + '" class="nt" value="' + esc(t.notes) +
-          '" placeholder="notes" style="flex:1; min-width:8rem; padding:0.2rem;">' +
-      '</div>' + photoBlock;
-    return row;
-  }
 
   function render() {
-    const list = $("#tasklist");
-    // Field work only, clustered by job (with its install date as the header).
+    const list = $("#joblist");
     const field = tasks.filter(t => FIELD_STAGES.indexOf(t.pipeline_status) !== -1);
     list.innerHTML = "";
     if (!tasks.length) {
-      list.innerHTML = '<p class="empty">No tasks assigned to you.</p>';
-    } else if (!field.length) {
-      list.innerHTML = '<p class="empty">No field work in your bag right now. Office and scheduling tasks are on your <a href="/dashboard">dashboard</a>.</p>';
-    } else {
-      const order = [], groups = {};
-      field.forEach(t => {
-        const k = t.job_id;
-        if (!groups[k]) { groups[k] = []; order.push(k); }
-        groups[k].push(t);
-      });
-      order.forEach(k => {
-        const first = groups[k][0];
-        const head = document.createElement("div");
-        head.style.cssText =
-          "margin:1.1rem 0 0; padding:0.5rem 0.7rem; background:#e7f4ec;" +
-          " border-left:4px solid var(--brand); border-radius:6px;" +
-          " display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem;";
-        head.innerHTML =
+      list.innerHTML = '<p class="empty">No tasks assigned to you.</p>'; setNet(); return;
+    }
+    if (!field.length) {
+      list.innerHTML = '<p class="empty">No jobs in your bag right now. Office and scheduling tasks are on your <a href="/dashboard">dashboard</a>.</p>';
+      setNet(); return;
+    }
+    const order = [], groups = {};
+    field.forEach(t => { const k = t.job_id; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(t); });
+    order.forEach(k => {
+      const g = groups[k], first = g[0];
+      const open = g.filter(t => t.status !== "Done").length;
+      const unsub = g.filter(t => queue[t.id]).length;
+      const a = document.createElement("a");
+      a.href = "/work-bag/job/" + k;
+      a.className = "card";
+      a.style.cssText = "display:block; text-decoration:none; color:inherit; margin-bottom:0.7rem;" +
+        " border-left:4px solid var(--brand); transition:box-shadow .1s;";
+      a.innerHTML =
+        '<div style="display:flex; justify-content:space-between; align-items:baseline; gap:0.6rem; flex-wrap:wrap;">' +
           '<div>' +
-            '<span style="font-weight:800; font-size:1.05rem; color:var(--brand-dark);">🏠 ' + esc(first.job_name) + '</span>' +
-            '<span class="muted" style="font-size:0.82rem;"> · ' + esc(first.client_name) + '</span>' +
+            '<span style="font-weight:800; font-size:1.1rem; color:var(--brand-dark);">🏠 ' + esc(first.job_name) + '</span>' +
+            '<div class="muted" style="font-size:0.85rem;">' + esc(first.client_name || "") + '</div>' +
           '</div>' +
           '<span class="badge" style="white-space:nowrap; background:#fff; border-color:var(--brand); color:var(--brand-dark);">' +
-            (first.install_date ? '🔧 install ' + esc(first.install_date) : 'install date TBD') + '</span>';
-        list.appendChild(head);
-        // Packing list: what materials this job needs, so the crew can pack the
-        // truck before leaving. Named "Packing" (not "Load") to avoid confusion
-        // with the electrical Loads & Sizing tool. Collapsible once packed.
-        const mats = materials[k] || materials[String(k)] || [];
-        if (mats.length) {
-          const md = document.createElement("details");
-          md.style.cssText = "margin:0.35rem 0 0.1rem 0.7rem;";
-          const rows = mats.map(m => {
-            const qty = [m.quantity, m.unit].filter(Boolean).join(" ");
-            return '<tr><td>' + esc(m.item) + '</td>' +
-              '<td class="muted" style="white-space:nowrap;">' + esc(qty || "—") + '</td>' +
-              '<td><span class="badge ' + matClass(m.status) + '">' + esc(m.status) + '</span></td></tr>';
-          }).join("");
-          md.innerHTML =
-            '<summary style="cursor:pointer; font-weight:600; font-size:0.9rem;">📦 Packing list (' + mats.length + ')</summary>' +
-            '<div style="overflow-x:auto; margin-top:0.3rem;"><table>' +
-              '<thead><tr><th>Item</th><th>Qty</th><th>Status</th></tr></thead>' +
-              '<tbody>' + rows + '</tbody></table></div>';
-          list.appendChild(md);
-        }
-        // Tasks sit in an indented rail so they read as belonging to the job above.
-        const body = document.createElement("div");
-        body.style.cssText = "margin:0 0 0.4rem 0.7rem; padding-left:0.7rem; border-left:2px solid var(--border);";
-        groups[k].forEach(t => body.appendChild(taskRow(t)));
-        list.appendChild(body);
-      });
-    }
-    const qc = queueCount();
-    $("#pending").textContent = qc
-      ? (qc + " change" + (qc > 1 ? "s" : "") + " ready to submit")
-      : "No unsubmitted changes.";
-    document.querySelectorAll(".st,.nt").forEach(el => el.addEventListener("change", onEdit));
-    renderSubs();
+            (first.install_date ? '🔧 install ' + esc(first.install_date) : 'install date TBD') + '</span>' +
+        '</div>' +
+        '<div style="margin-top:0.5rem; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">' +
+          '<span class="badge neutral">' + open + ' open task' + (open === 1 ? '' : 's') + '</span>' +
+          (unsub ? '<span class="badge warn">' + unsub + ' not submitted</span>' : '') +
+          '<span class="muted" style="margin-left:auto; font-size:0.85rem;">Open →</span>' +
+        '</div>';
+      list.appendChild(a);
+    });
     setNet();
-  }
-
-  function renderSubs() {
-    const el = $("#subs");
-    if (!submissions.length) { el.innerHTML = '<p class="muted">None yet.</p>'; return; }
-    const cls = { Pending: "warn", Approved: "", Rejected: "danger" };
-    el.innerHTML = '<table><thead><tr><th>Date</th><th>Hours</th><th>Status</th></tr></thead><tbody>' +
-      submissions.map(s => {
-        const hrs = (s.approved_hours != null ? s.approved_hours : (s.reported_hours != null ? s.reported_hours : "—"));
-        return '<tr><td>' + esc(s.work_date || s.submitted_at || "") + '</td><td>' + esc(hrs) +
-          '</td><td><span class="badge ' + (cls[s.status] || "") + '">' + esc(s.status) + '</span></td></tr>';
-      }).join("") + '</tbody></table>';
-  }
-
-  function onEdit(e) {
-    const id = +e.target.dataset.id, t = tasks.find(x => x.id === id);
-    if (!t) return;
-    if (e.target.classList.contains("st")) t.status = e.target.value;
-    else t.notes = e.target.value;
-    if (!queue[id]) queue[id] = { base_updated_at: t.updated_at || "" };
-    queue[id].status = t.status; queue[id].notes = t.notes;
-    save(); render();
   }
 
   function applyServer(data) {
     const server = data.tasks || [];
-    pending = {};
-    (data.pending_items || []).forEach(p => { pending[p.task_id] = p; });
-    submissions = data.submissions || [];
-    materials = data.materials_by_job || {};
-    // Server is the source of truth; re-apply any still-unsubmitted local edits.
     tasks = server.map(t => {
       const q = queue[t.id];
       return q ? Object.assign({}, t, { status: q.status, notes: q.notes }) : t;
     });
-    save();
+    localStorage.setItem(LS_TASKS, JSON.stringify(tasks));
   }
 
   async function pull() {
-    if (!navigator.onLine) { msg("Offline — showing what's saved on this device.", "error"); render(); return; }
+    if (!navigator.onLine) { msg("Offline — showing the jobs saved on this device.", "error"); render(); return; }
     try {
       const r = await fetch("/api/my-tasks", { headers: { "Accept": "application/json" } });
       if (r.status === 401) { msg("Please sign in to use your Work Bag.", "error"); return; }
       applyServer(await r.json());
+      msg("", "");
       render();
-    } catch (e) { msg("Couldn't reach the office — showing saved copy.", "error"); render(); }
-  }
-
-  async function submit() {
-    if (!navigator.onLine) { msg("You're offline — submit once you're back online.", "error"); return; }
-    const hours = $("#hours").value.trim();
-    const changes = Object.keys(queue).map(id => Object.assign({ id: +id }, queue[id]));
-    if (!changes.length && hours === "") { msg("Nothing to submit — update a task or enter your hours.", "error"); return; }
-    try {
-      const r = await fetch("/api/work-bag/submit", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          changes: changes,
-          reported_hours: hours === "" ? null : Number(hours),
-          work_date: $("#work_date").value,
-          note: $("#wnote").value
-        }) });
-      if (r.status === 401) { msg("Please sign in to submit.", "error"); return; }
-      const data = await r.json();
-      if (data.error) { msg(data.error, "error"); return; }
-      queue = {}; save();
-      $("#hours").value = ""; $("#wnote").value = "";
-      msg("Submitted for approval — it counts once your manager approves it.", "");
-      await pull();
-    } catch (e) { msg("Couldn't reach the office — try again when you have signal.", "error"); }
+    } catch (e) { msg("Couldn't reach the office — showing saved jobs.", "error"); render(); }
   }
 
   window.addEventListener("online", () => { setNet(); pull(); });
-  window.addEventListener("offline", () => { setNet(); msg("Offline — changes are saved on this device.", "error"); });
+  window.addEventListener("offline", () => { setNet(); msg("Offline — showing saved jobs.", "error"); });
   $("#refresh").addEventListener("click", pull);
-  $("#submitbtn").addEventListener("click", submit);
 
   render();
   pull();
