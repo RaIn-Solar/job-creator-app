@@ -2,7 +2,12 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.7** (footer shows it plainly as "Version 27.7" — the "did my pull work?" check)
+**Current build:** **Piece 27.8** (footer shows it plainly as "Version 27.8" — the "did my pull work?" check)
+
+**Piece 27.8 — Removed Load truck from the Work Bag landing.** The 🚚 Load truck button
+is gone from the landing toolbar (loading out is per-job — the packing list is always
+different by job). It stays on the per-job page (`work_bag_job`), where it will be wired
+to the specific job when that screen is refined.
 
 **Piece 27.7 — Work Bag split into a jobs landing + per-job page (part 1).** The Work
 Bag landing (`/work-bag`) now shows **only the jobs** in the worker's bag — one tappable
