@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 28.5"
+VERSION = "Piece 28.6"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1848,8 +1848,16 @@ def login():
             "SELECT * FROM employees WHERE LOWER(username) = LOWER(?)"
             " AND COALESCE(username,'') != ''",
             (username,)).fetchone()
-        if user and user["password_hash"] and check_password_hash(
-                user["password_hash"], password):
+        try:
+            ok = bool(user and user["password_hash"] and check_password_hash(
+                user["password_hash"], password))
+        except Exception:  # e.g. scrypt hashing backend unavailable in a frozen build
+            ok = False
+            flash("This account's password can't be verified on this machine "
+                  "(hashing backend unavailable). Ask a manager to reset it, or "
+                  "reset the local database.", "error")
+            return render_template("login.html", next=request.args.get("next", ""))
+        if ok:
             session["user_id"] = user["id"]
             # Piece 24.8: stamp last activity so the session self-expires after
             # 12 hours of inactivity (the window slides on each request).
@@ -1928,7 +1936,7 @@ def request_password_change():
                    " WHERE employee_id = ? AND status = 'Pending'", (user["id"],))
         db.execute(
             "INSERT INTO password_requests (employee_id, new_hash) VALUES (?, ?)",
-            (user["id"], generate_password_hash(new)))
+            (user["id"], generate_password_hash(new, method="pbkdf2:sha256")))
         db.commit()
         flash("Password change submitted — it takes effect once an admin approves it.")
     return redirect(url_for("account"))
@@ -8095,7 +8103,7 @@ def _apply_employee_auth(db, employee_id):
                    (username, level, employee_id))
         if password:
             db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
-                       (generate_password_hash(password), employee_id))
+                       (generate_password_hash(password, method="pbkdf2:sha256"), employee_id))
         elif not existing_hash:
             flash("Login saved — set a password to activate it.", "error")
     else:
