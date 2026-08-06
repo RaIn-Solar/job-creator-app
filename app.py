@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 28.4"
+VERSION = "Piece 28.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1432,6 +1432,15 @@ VIEW_PERMISSION = {
     "inventory_asset_register": "inventory.register",
     "inventory_asset_labels": "inventory.manage",
     "inventory_asset_retire": "inventory.register",
+    # Piece 28.5: stock audits are warehouse-manager work.
+    "inventory_audit": "inventory.manage",
+    "inventory_audit_start": "inventory.manage",
+    "inventory_audit_session": "inventory.manage",
+    "inventory_audit_scan": "inventory.manage",
+    "inventory_audit_finish": "inventory.manage",
+    "inventory_audit_report": "inventory.manage",
+    "inventory_audit_report_csv": "inventory.manage",
+    "inventory_audit_scan_delete": "inventory.manage",
 }
 
 
@@ -5869,6 +5878,242 @@ def inventory_asset_retire(asset_id):
     db.commit()
     flash(f"Retired {a['serial']}.")
     return redirect(url_for("inventory_assets"))
+
+
+# --- Piece 28.5: stock audits (scan the shelf, reconcile against the DB) ------
+def _assets_with_category(db, rows):
+    """Attach a scope 'category' to each asset row: a component's own category,
+    or the broad type for tools / vehicles."""
+    item_cat = {r["id"]: (r["category"] or "Uncategorized")
+                for r in db.execute("SELECT id, category FROM inventory_items").fetchall()}
+    out = []
+    for a in rows:
+        d = dict(a)
+        et = a["entity_type"]
+        d["category"] = (item_cat.get(a["entity_id"], "Uncategorized")
+                         if et == "inventory_item"
+                         else "Tools" if et == "inventory_tool"
+                         else "Vehicles" if et == "inventory_vehicle" else "Other")
+        out.append(d)
+    return out
+
+
+def audit_scope_categories(db):
+    """The categories/types an audit can be scoped to (from registered assets)."""
+    return sorted({a["category"] for a in _assets_with_category(
+        db, db.execute("SELECT entity_type, entity_id FROM inventory_assets").fetchall())})
+
+
+def _audit_in_scope(audit, category):
+    return (audit["scope_kind"] or "all") == "all" or category == (audit["scope"] or "")
+
+
+def audit_report(db, audit):
+    """Reconcile an audit's scans against the assets the DB expects In stock in
+    scope: what's accounted for, what's unaccounted (missing), what was scanned
+    but shouldn't have been (Out/Retired or out of scope), unknown tags, and
+    duplicate scans."""
+    all_assets = _assets_with_category(
+        db, db.execute("SELECT * FROM inventory_assets").fetchall())
+    by_id = {a["id"]: a for a in all_assets}
+    expected = [a for a in all_assets
+                if a["status"] == "In stock" and _audit_in_scope(audit, a["category"])]
+    expected_ids = {a["id"] for a in expected}
+    scan_counts, scanned_ids, unknown = {}, set(), {}
+    for s in db.execute("SELECT * FROM stock_audit_scans WHERE audit_id = ? ORDER BY id",
+                        (audit["id"],)).fetchall():
+        scan_counts[s["serial"]] = scan_counts.get(s["serial"], 0) + 1
+        if s["asset_id"]:
+            scanned_ids.add(s["asset_id"])
+        else:
+            unknown[s["serial"]] = unknown.get(s["serial"], 0) + 1
+    accounted = [a for a in expected if a["id"] in scanned_ids]
+    unaccounted = [a for a in expected if a["id"] not in scanned_ids]
+    unexpected = []
+    for aid in scanned_ids:
+        a = by_id.get(aid)
+        if a is None:
+            continue
+        if a["status"] != "In stock":
+            unexpected.append({**a, "reason": f"system shows {a['status']}"})
+        elif not _audit_in_scope(audit, a["category"]):
+            unexpected.append({**a, "reason": f"outside this audit ({a['category']})"})
+    return {
+        "expected": expected, "accounted": accounted, "unaccounted": unaccounted,
+        "unexpected": unexpected,
+        "unknown": [{"serial": s, "count": n} for s, n in unknown.items()],
+        "duplicates": [{"serial": s, "count": n} for s, n in scan_counts.items() if n > 1],
+        "counts": {"expected": len(expected), "accounted": len(accounted),
+                   "unaccounted": len(unaccounted), "unexpected": len(unexpected),
+                   "unknown": len(unknown),
+                   "duplicates": sum(1 for n in scan_counts.values() if n > 1),
+                   "scans": sum(scan_counts.values())},
+    }
+
+
+@app.route("/inventory/audit")
+@admin_required
+def inventory_audit():
+    """Stock-audit hub: past sessions + start a new one (all stock or by category)."""
+    db = get_db()
+    audits = db.execute(
+        "SELECT a.*, (SELECT COUNT(*) FROM stock_audit_scans s WHERE s.audit_id = a.id)"
+        " AS scans FROM stock_audits a ORDER BY a.id DESC LIMIT 50").fetchall()
+    registered = db.execute("SELECT COUNT(*) FROM inventory_assets").fetchone()[0]
+    return render_template("inventory_audit.html", audits=audits,
+                           categories=audit_scope_categories(db), registered=registered)
+
+
+@app.route("/inventory/audit/start", methods=["POST"])
+@admin_required
+def inventory_audit_start():
+    db = get_db()
+    scope = (request.form.get("scope") or "").strip()
+    scope_kind = "category" if scope else "all"
+    user = current_user()
+    cur = db.execute(
+        "INSERT INTO stock_audits (scope_kind, scope, started_by) VALUES (?, ?, ?)",
+        (scope_kind, scope, user["name"] if user else ""))
+    db.commit()
+    return redirect(url_for("inventory_audit_session", audit_id=cur.lastrowid))
+
+
+def _fetch_audit(db, audit_id):
+    a = db.execute("SELECT * FROM stock_audits WHERE id = ?", (audit_id,)).fetchone()
+    if a is None:
+        abort(404)
+    return a
+
+
+@app.route("/inventory/audit/<int:audit_id>")
+@admin_required
+def inventory_audit_session(audit_id):
+    db = get_db()
+    audit = _fetch_audit(db, audit_id)
+    rows = _assets_with_category(db, db.execute(
+        "SELECT s.*, a.label, a.status AS asset_status, a.entity_type, a.entity_id"
+        " FROM stock_audit_scans s LEFT JOIN inventory_assets a ON a.id = s.asset_id"
+        " WHERE s.audit_id = ? ORDER BY s.id", (audit_id,)).fetchall())
+    seen = set()
+    for r in rows:
+        if r["asset_id"] is None:
+            r["flag"], r["reason"] = "unknown", "no matching tag"
+        elif r["asset_id"] in seen:
+            r["flag"], r["reason"] = "duplicate", "already scanned"
+        else:
+            seen.add(r["asset_id"])
+            if r["asset_status"] != "In stock":
+                r["flag"], r["reason"] = "should_be_out", f"system shows {r['asset_status']}"
+            elif not _audit_in_scope(audit, r["category"]):
+                r["flag"], r["reason"] = "out_of_scope", f"outside this audit ({r['category']})"
+            else:
+                r["flag"], r["reason"] = "ok", r["category"]
+    scans = list(reversed(rows))
+    return render_template("inventory_audit_session.html", audit=audit, scans=scans,
+                           report=audit_report(db, audit))
+
+
+@app.route("/inventory/audit/<int:audit_id>/scan", methods=["POST"])
+@admin_required
+def inventory_audit_scan(audit_id):
+    """Record one scan (AJAX). Resolves the serial, logs it, and returns how it
+    reconciles so the session page can flag it live."""
+    db = get_db()
+    audit = _fetch_audit(db, audit_id)
+    if audit["status"] != "Open":
+        return jsonify({"error": "This audit is closed."}), 400
+    serial = (request.form.get("serial") or "").strip().upper()
+    if not serial:
+        return jsonify({"error": "empty"}), 400
+    asset = _resolve_serial(db, serial)
+    user = current_user()
+    cur = db.execute(
+        "INSERT INTO stock_audit_scans (audit_id, serial, asset_id, scanned_by)"
+        " VALUES (?, ?, ?, ?)",
+        (audit_id, serial, asset["id"] if asset else None,
+         user["name"] if user else ""))
+    new_id = cur.lastrowid
+    if asset is None:
+        flag, label, reason = "unknown", "", "no tag with this serial"
+    else:
+        cat = _assets_with_category(db, [asset])[0]["category"]
+        prior = db.execute(
+            "SELECT COUNT(*) AS c FROM stock_audit_scans WHERE audit_id = ?"
+            " AND asset_id = ? AND id <> ?", (audit_id, asset["id"], new_id)).fetchone()["c"]
+        label = asset["label"] or asset["serial"]
+        if prior:
+            flag, reason = "duplicate", "already scanned in this audit"
+        elif asset["status"] != "In stock":
+            flag, reason = "should_be_out", f"system shows {asset['status']}"
+        elif not _audit_in_scope(audit, cat):
+            flag, reason = "out_of_scope", f"outside this audit ({cat})"
+        else:
+            flag, reason = "ok", cat
+    db.commit()
+    c = audit_report(db, audit)["counts"]
+    return jsonify({"scan_id": new_id, "serial": serial, "label": label,
+                    "flag": flag, "reason": reason,
+                    "accounted": c["accounted"], "expected": c["expected"],
+                    "unknown": c["unknown"], "duplicates": c["duplicates"]})
+
+
+@app.route("/inventory/audit/<int:audit_id>/scan/<int:scan_id>/delete", methods=["POST"])
+@admin_required
+def inventory_audit_scan_delete(audit_id, scan_id):
+    db = get_db()
+    _fetch_audit(db, audit_id)
+    db.execute("DELETE FROM stock_audit_scans WHERE id = ? AND audit_id = ?",
+               (scan_id, audit_id))
+    db.commit()
+    return redirect(url_for("inventory_audit_session", audit_id=audit_id))
+
+
+@app.route("/inventory/audit/<int:audit_id>/finish", methods=["POST"])
+@admin_required
+def inventory_audit_finish(audit_id):
+    db = get_db()
+    _fetch_audit(db, audit_id)
+    db.execute("UPDATE stock_audits SET status = 'Closed', closed_at = datetime('now')"
+               " WHERE id = ? AND status = 'Open'", (audit_id,))
+    db.commit()
+    return redirect(url_for("inventory_audit_report", audit_id=audit_id))
+
+
+@app.route("/inventory/audit/<int:audit_id>/report")
+@admin_required
+def inventory_audit_report(audit_id):
+    db = get_db()
+    audit = _fetch_audit(db, audit_id)
+    return render_template("inventory_audit_report.html", audit=audit,
+                           report=audit_report(db, audit))
+
+
+@app.route("/inventory/audit/<int:audit_id>/report.csv")
+@admin_required
+def inventory_audit_report_csv(audit_id):
+    import csv
+    import io
+    db = get_db()
+    audit = _fetch_audit(db, audit_id)
+    r = audit_report(db, audit)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Result", "Serial", "Item", "Category", "System status", "Note"])
+    for a in r["accounted"]:
+        w.writerow(["Accounted for", a["serial"], a["label"], a["category"], a["status"], ""])
+    for a in r["unaccounted"]:
+        w.writerow(["UNACCOUNTED (not found)", a["serial"], a["label"], a["category"],
+                    a["status"], "expected In stock but not scanned"])
+    for a in r["unexpected"]:
+        w.writerow(["Unexpected (found)", a["serial"], a["label"], a["category"],
+                    a["status"], a.get("reason", "")])
+    for u in r["unknown"]:
+        w.writerow(["Unknown tag", u["serial"], "", "", "", f"scanned {u['count']}×, no matching asset"])
+    for d in r["duplicates"]:
+        w.writerow(["Duplicate scan", d["serial"], "", "", "", f"scanned {d['count']}×"])
+    scope = audit["scope"] if audit["scope"] else "all-stock"
+    return Response(buf.getvalue(), mimetype="text/csv", headers={
+        "Content-Disposition": f"attachment; filename=stock_audit_{audit_id}_{_slug(scope)}.csv"})
 
 
 @app.route("/inventory/load")

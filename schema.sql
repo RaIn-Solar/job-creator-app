@@ -612,3 +612,28 @@ CREATE TABLE IF NOT EXISTS inventory_assets (
     last_action_at TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_inventory_assets_serial ON inventory_assets(serial);
+
+-- Piece 28.5: stock-audit sessions. An audit scans the physical serials on the
+-- shelf and reconciles them against the registered assets (inventory_assets) the
+-- database expects to be "In stock" — optionally scoped to one category/type.
+CREATE TABLE IF NOT EXISTS stock_audits (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope_kind  TEXT NOT NULL DEFAULT 'all',   -- all | category
+    scope       TEXT DEFAULT '',                -- '' for all, else the category/type
+    status      TEXT NOT NULL DEFAULT 'Open',   -- Open | Closed
+    started_by  TEXT DEFAULT '',
+    started_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    closed_at   TEXT DEFAULT '',
+    notes       TEXT DEFAULT ''
+);
+-- One row per physical scan during a session (its raw serial + the asset it
+-- resolved to, or NULL when the tag is unknown).
+CREATE TABLE IF NOT EXISTS stock_audit_scans (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    audit_id    INTEGER NOT NULL REFERENCES stock_audits(id),
+    serial      TEXT DEFAULT '',
+    asset_id    INTEGER,                         -- resolved inventory_assets.id, or NULL
+    scanned_by  TEXT DEFAULT '',
+    scanned_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_stock_audit_scans_audit ON stock_audit_scans(audit_id);

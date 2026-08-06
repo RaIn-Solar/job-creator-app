@@ -229,6 +229,14 @@ can confirm a pull/update took effect.
   scanning** — to load a job's truck (two installers can load the same job from
   their own phones). Only the **Warehouse Manager** can mint new tags; loading a
   job needs no special permission.
+- **Stock audit** (🧮 Audit stock): run a counting session — scan every tag on the
+  shelf (camera or keyboard-wedge) and Solbiz reconciles the scanned serials against
+  the assets the database expects to be **In stock**. Audit **all stock** or scope it
+  to one **category / type**. It flags — live and in a saved report — everything that
+  doesn't line up: **unaccounted-for** items (expected but not scanned), items
+  **scanned but unexpected** (checked out, retired, or out of scope), **unknown tags**,
+  and **duplicate scans** — with an **exportable CSV** of the whole reconciliation.
+  Every scan is logged per session and past audits are kept for reference.
 - **Nav grouping**: the reference/data pages — **Client Profiles, Rules Editor,
   L/P/C Directory, Inventory, Calculator Catalog** — are consolidated under a
   single **🗄 Databases** dropdown in the header; **Employees + Payroll** sit under
@@ -356,6 +364,11 @@ can confirm a pull/update took effect.
   into a jobs landing + per-job page; **per-task Submit-as-done** with time by pay
   type + timeline.
 - **Piece 28** — **photo steps** completed on their own take / review / submit
-  screen (with the time capture), returning to the job's Work Bag when submitted.
+  screen (with the time capture), returning to the job's Work Bag when submitted;
+  Job-Detail polish (bold L/P/C labels, Billing device file-upload, button/stage
+  reorg); a **nav search** over clients & jobs (autocomplete, client name on job
+  hits) and an **inventory search**; and a **stock-audit** tool (scan-and-reconcile
+  against the registered assets, by category, with a saved/exportable discrepancy
+  report).
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

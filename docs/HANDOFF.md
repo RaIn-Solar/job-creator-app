@@ -2,7 +2,23 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 28.4** (footer shows it plainly as "Version 28.4" — the "did my pull work?" check)
+**Current build:** **Piece 28.5** (footer shows it plainly as "Version 28.5" — the "did my pull work?" check)
+
+**Piece 28.5 — Stock Audit (scan-and-reconcile).** New **🧮 Audit stock** button in the
+Inventory toolbar (`inventory.manage`). An audit session scans the physical Code-128 tags
+(camera-continuous via BarcodeDetector, or keyboard-wedge/manual) and reconciles the
+scanned serials against the **registered assets** (`inventory_assets`) the DB expects
+**In stock**, optionally scoped to one **category/type**. New tables `stock_audits` +
+`stock_audit_scans` (schema.sql). Routes: `inventory_audit` (hub — start + history),
+`inventory_audit_start`, `inventory_audit_session` (AJAX `.../scan` logs each scan and
+returns its live flag + progress), `.../scan/<id>/delete`, `.../finish`, `.../report`,
+`.../report.csv`. `audit_report()` classifies: **accounted**, **unaccounted** (expected
+In-stock not scanned), **unexpected** (scanned but Out/Retired or out of scope),
+**unknown** tags (serial doesn't resolve), **duplicates**. An asset's audit category comes
+from `_assets_with_category` (component category, else "Tools"/"Vehicles"). The report page
+shows summary tiles + per-discrepancy tables and an **Export CSV**. Verified end-to-end
+(full + category-scoped audits: exact accounted/unaccounted/unexpected/unknown/duplicate
+counts; CSV; finish closes) + screenshots. README + build history updated.
 
 **Piece 28.4 — Two search bars: nav (clients & jobs) + inventory.**
 (1) **Nav search** in the header (shown when logged in / open mode): an autocomplete over
