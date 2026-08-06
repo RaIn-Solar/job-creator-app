@@ -378,5 +378,9 @@ can confirm a pull/update took effect.
 - **Piece 28.8** — the importer now also runs when `~/Solbiz` holds only a
   **blank starter database** (created by an earlier launch), backing that empty
   file aside first, so a prior run no longer blocks bringing in real data.
+- **Piece 28.9** — the desktop app now writes any server error (HTTP 500) —
+  full traceback + the request that caused it — to `~/Solbiz/solbiz-error.log`
+  and shows a plain-English page pointing to it, so a crash on a teammate's
+  machine can be diagnosed instead of vanishing into the console.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

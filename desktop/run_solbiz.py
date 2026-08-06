@@ -142,6 +142,50 @@ def _seed_from_import():
     print("  (this happens only once — future launches use ~/Solbiz)")
 
 
+def _install_error_logging(app):
+    """A packaged app runs with debug=False, so a server error (HTTP 500)
+    normally leaves only a scrolled-past line in the console. Capture the full
+    traceback of any unhandled error to <home>/Solbiz/solbiz-error.log and show
+    a plain-English page that says where to find it, so a crash on someone
+    else's machine can actually be diagnosed."""
+    import logging
+    from flask import request
+    from werkzeug.exceptions import HTTPException
+
+    log_path = DATA_DIR / "solbiz-error.log"
+    try:
+        handler = logging.FileHandler(log_path, encoding="utf-8")
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s  %(levelname)s  %(message)s"))
+        app.logger.addHandler(handler)
+        app.logger.setLevel(logging.INFO)
+    except OSError:
+        pass  # never let logging setup stop the app from starting
+
+    @app.errorhandler(Exception)
+    def _log_unhandled(e):
+        # Real HTTP responses (404, 405, redirects raised as exceptions, …)
+        # should pass through untouched — only true server errors are logged.
+        if isinstance(e, HTTPException):
+            return e
+        try:
+            where = request.method + " " + request.path
+        except Exception:
+            where = "?"
+        app.logger.error("Unhandled error on %s\n%s", where, traceback.format_exc())
+        return (
+            "<html><body style=\"font-family:system-ui,Segoe UI,sans-serif;"
+            "max-width:640px;margin:3rem auto;padding:0 1rem;color:#1f2937;\">"
+            "<h1 style=\"color:#9a1c1c;\">Solbiz hit a snag</h1>"
+            "<p>Something went wrong loading that page. Your data is safe.</p>"
+            "<p>A detailed error report was just saved to:</p>"
+            f"<p style=\"font-family:monospace;background:#f1f5f9;padding:.6rem;"
+            f"border-radius:6px;word-break:break-all;\">{log_path}</p>"
+            "<p>Please send that file to whoever set up Solbiz — it says "
+            "exactly what to fix. Then try again.</p>"
+            "</body></html>", 500)
+
+
 def _free_port():
     """Grab an available localhost port so two copies (or another program
     on 5000) never collide."""
@@ -157,6 +201,10 @@ def main():
     if not getattr(sys, "frozen", False):
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from app import app, init_db
+
+    # Capture any server error to a log file with a friendly page (must be set
+    # up before the first request is served).
+    _install_error_logging(app)
 
     # First launch only: bring over an existing job_creator.db + uploads if the
     # person dropped them next to the exe (see _seed_from_import). init_db()
