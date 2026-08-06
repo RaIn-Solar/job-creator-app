@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 28.1"
+VERSION = "Piece 28.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3825,7 +3825,7 @@ def add_transaction(job_id):
     doc_type = doc_type if doc_type in DOC_TYPES else ""
     who = current_user()
     db = get_db()
-    db.execute(
+    cur = db.execute(
         "INSERT INTO job_transactions"
         " (job_id, kind, category, description, amount, txn_date, status,"
         "  party, reference, method, doc_type, created_by)"
@@ -3838,6 +3838,29 @@ def add_transaction(job_id):
          request.form.get("reference", "").strip(),
          request.form.get("method", "").strip(), doc_type,
          who["name"] if who else ""))
+    txn_id = cur.lastrowid
+    # Piece 28.2: optionally attach a source document (receipt / invoice / bill)
+    # uploaded from the device — filed against this transaction (txn_id) so it
+    # shows the 📎 link in the ledger and lands on the job's document record.
+    upload = request.files.get("document")
+    if upload is not None and upload.filename:
+        ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+        if ext in (PHOTO_EXTENSIONS | {"pdf"}):
+            info = db.execute(
+                "SELECT j.job_name, c.name AS client_name FROM jobs j"
+                " JOIN clients c ON c.id = j.client_id WHERE j.id = ?", (job_id,)).fetchone()
+            label = doc_type or "Billing"
+            friendly = friendly_filename(
+                [info["client_name"], info["job_name"], label], ext,
+                taken=_taken_names(db, "job_files", "original_name", "job_id", job_id))
+            stored = f"{uuid.uuid4().hex[:8]}_{secure_filename(friendly)}"
+            upload.save(job_upload_dir(job_id) / stored)
+            db.execute(
+                "INSERT INTO job_files"
+                " (job_id, rule_label, stored_name, original_name, txn_id)"
+                " VALUES (?, ?, ?, ?, ?)", (job_id, label, stored, friendly, txn_id))
+        else:
+            flash("Attachment skipped — it must be a photo (JPG/PNG/HEIC) or a PDF.", "error")
     db.commit()
     flash(f"{doc_type or kind} recorded.")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))

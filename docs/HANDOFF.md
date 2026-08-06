@@ -2,7 +2,19 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 28.1** (footer shows it plainly as "Version 28.1" — the "did my pull work?" check)
+**Current build:** **Piece 28.2** (footer shows it plainly as "Version 28.2" — the "did my pull work?" check)
+
+**Piece 28.2 — Job Detail: bold L/P/C item labels + Billing file upload.**
+(1) In the job's **L/P/C tab**, the requirement **label is now bold** (`<strong>`) in all
+three groups (Permits, Technician Licenses, Compliance Notes) so the item stands out from
+the muted free-text note and the hyperlink. (2) The **Billing** transaction form gained an
+optional **Attach file** input (`multipart/form-data`, `accept="image/*,application/pdf"`,
+no forced camera so it's a device file-picker on mobile + desktop). `add_transaction` saves
+the upload (photo/PDF), auto-renames it (`friendly_filename`, tagged with the doc type or
+"Billing"), and files it against the transaction via `job_files.txn_id` — so the existing
+📎 link in the ledger (`job_billing` LEFT JOINs `txn_id`) surfaces it and it lands on the
+job's document record. Bad file types are skipped with a warning; the transaction still
+records. Verified (bold labels; upload attaches + 📎 shows; bad type skipped).
 
 **Piece 28.1 — README brought current (Pieces 22–28).** Docs-only. The README's
 "Features & capabilities" was frozen at Piece 21; updated every section to reflect
