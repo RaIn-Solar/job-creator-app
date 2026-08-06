@@ -2,7 +2,23 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.3** (footer shows it plainly as "Version 27.3" — the "did my pull work?" check)
+**Current build:** **Piece 27.4** (footer shows it plainly as "Version 27.4" — the "did my pull work?" check)
+
+**Piece 27.4 — NM gross-receipts-tax line on customer invoices.** Each customer
+invoice now carries a GRT line. The rate is **per job** (`jobs.grt_rate`, set beside
+the contract total on the Billing tab) because it varies by install location, and it
+**defaults to 0%** — ECC's solar systems are GRT-deductible, per their own "GRT
+Exemption on Invoice" rule. At generation the invoice snapshots `grt_rate` +
+`grt_amount` (= rate × the invoice subtotal) on the `job_transactions` row; the
+transaction `amount` stays the **pre-tax** subtotal so the internal contract/rollup
+math is unchanged (GRT is a pass-through, not revenue). The printable customer copy
+shows **Subtotal → NM Gross Receipts Tax (rate%) → Amount due**; when the rate is 0 it
+prints "Solar deduction applied — {{ GRT_EXEMPTION_CITE }}" (`NMSA 7-9-112 / 3.2.247
+NMAC`) so every invoice carries the citation ECC's compliance rule requires. Rates
+render to 4 decimals (NM rates like 7.9375%). Verified both paths: 7.9375% on a
+$12,000 deposit → $952.50 tax / $12,952.50 due, and the 0% exemption line with the
+NMSA citation (+ screenshot). *(GRT is not yet broken out as its own QuickBooks export
+column — the invoice shows/records it; revisit if the books need a separate tax line.)*
 
 **Piece 27.3 — 50/40/10 invoice generation + pay-scheme callouts.** Generate
 customer invoices from a job's contract + BOM (Path A — self-contained, no QB needed).

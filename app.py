@@ -481,6 +481,14 @@ COMPANY_INFO = {
     "email": "rachel@eccsolar.com",
     "terms_days": 15,   # net terms for the Progress / Final invoices
 }
+# New Mexico gross-receipts tax on the customer invoice. The rate is per job
+# (it varies by the install location), defaulting to 0% because ECC's solar
+# systems are GRT-deductible (see the "GRT Exemption on Invoice" rule); Finance
+# sets a rate on the Billing tab where any receipts are taxable. The exemption
+# citation prints on every invoice per NMSA 7-9-112, as ECC's own rule requires.
+GRT_DEFAULT_RATE = 0.0
+GRT_EXEMPTION_CITE = ("NMSA 7-9-112 (3.2.247 NMAC) — NM solar-energy-system "
+                      "gross-receipts deduction")
 
 # Piece 21.2: payroll pay-type calculation. A type is either a "multiplier" on
 # the employee's base wage (so it's per-employee automatically) or a "flat"
@@ -929,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 27.3"
+VERSION = "Piece 27.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2208,8 +2216,9 @@ def init_db():
     # deposit invoice captures (BOM added after it counts as billable extras).
     ensure_columns(db, "job_transactions",
                    ["invoice_number", "milestone", "due_date", "contract_snapshot",
-                    "base_amount", "extras_amount", "bom_snapshot"])
-    ensure_columns(db, "jobs", ["deposit_bom_cutoff_id"])
+                    "base_amount", "extras_amount", "bom_snapshot",
+                    "grt_rate", "grt_amount"])   # Piece 27.4: GRT snapshot per invoice
+    ensure_columns(db, "jobs", ["deposit_bom_cutoff_id", "grt_rate"])
     # Piece 21.7: tie crew-captured field photos back to the task they document.
     ensure_columns(db, "job_files", ["task_id"])
     # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
@@ -3791,8 +3800,11 @@ def job_detail(job_id):
 def set_contract(job_id):
     fetch_job(job_id)
     db = get_db()
-    db.execute("UPDATE jobs SET contract_amount = ? WHERE id = ?",
-               (_to_float(request.form.get("contract_amount")) or 0.0, job_id))
+    # Piece 27.4: GRT rate is set alongside the contract (both drive invoicing).
+    grt = max(_to_float(request.form.get("grt_rate")) or 0.0, 0.0)
+    db.execute("UPDATE jobs SET contract_amount = ?, grt_rate = ? WHERE id = ?",
+               (_to_float(request.form.get("contract_amount")) or 0.0,
+                str(grt), job_id))
     db.commit()
     flash("Contract total updated.")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
@@ -3945,17 +3957,22 @@ def generate_invoice(job_id):
     desc = f"{nxt} invoice — {pct}% of contract"
     if extras and nxt != "Deposit":
         desc += f" + ${extras:,.2f} added materials"
+    # Piece 27.4: snapshot the job's GRT rate + the tax on this invoice's subtotal.
+    grt_rate = max(_to_float(job["grt_rate"] if "grt_rate" in job.keys() else 0) or 0.0, 0.0)
+    grt_amount = round(grt_rate / 100.0 * amount, 2)
     who = current_user()
     db.execute(
         "INSERT INTO job_transactions"
         " (job_id, kind, category, description, amount, txn_date, status, party,"
         "  reference, method, doc_type, created_by, invoice_number, milestone,"
-        "  due_date, contract_snapshot, base_amount, extras_amount, bom_snapshot)"
+        "  due_date, contract_snapshot, base_amount, extras_amount, bom_snapshot,"
+        "  grt_rate, grt_amount)"
         " VALUES (?, 'Income', ?, ?, ?, ?, 'Outstanding', '', ?, '', 'Invoice', ?,"
-        "         ?, ?, ?, ?, ?, ?, ?)",
+        "         ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (job_id, f"{pct}% {nxt}", desc, amount, today.strftime("%Y-%m-%d"),
          number, who["name"] if who else "", number, nxt,
-         due.strftime("%Y-%m-%d"), contract, base, round(amount - base, 2), bom_snapshot))
+         due.strftime("%Y-%m-%d"), contract, base, round(amount - base, 2), bom_snapshot,
+         str(grt_rate), grt_amount))
     if nxt == "Deposit":
         maxid = db.execute("SELECT COALESCE(MAX(id), 0) AS m FROM job_bom"
                            " WHERE job_id = ?", (job_id,)).fetchone()["m"]
@@ -3992,10 +4009,13 @@ def view_invoice(job_id, txn_id):
                          "amount": _to_float(t["amount"]) if t else None,
                          "status": t["status"] if t else None,
                          "current": t is not None and t["id"] == inv["id"]})
+    grt_rate = _to_float(inv["grt_rate"] if "grt_rate" in inv.keys() else 0) or 0.0
+    grt_amount = _to_float(inv["grt_amount"] if "grt_amount" in inv.keys() else 0) or 0.0
     return render_template(
         "invoice.html", job=job, client=client, inv=inv, bom=bom,
         schedule=schedule, company=COMPANY_INFO, payment_scheme=PAYMENT_SCHEME_NOTE,
-        contract=_to_float(inv["contract_snapshot"]) or 0.0)
+        contract=_to_float(inv["contract_snapshot"]) or 0.0,
+        grt_rate=grt_rate, grt_amount=grt_amount, grt_cite=GRT_EXEMPTION_CITE)
 
 
 @app.route("/finance/quickbooks.csv")
