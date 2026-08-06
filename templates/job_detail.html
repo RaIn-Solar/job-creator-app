@@ -528,6 +528,20 @@
     {% endfor %}
   </p>
 
+  {# Piece 27.2: QuickBooks exports for THIS job (moved here from the Finance dashboard). #}
+  <p style="margin:0 0 0.8rem; display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
+    <span class="muted" style="font-size:0.85rem;">Export to QuickBooks:</span>
+    <a href="{{ url_for('quickbooks_export', job=job['id']) }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;"
+       title="Download this job's transactions as a QuickBooks-importable CSV">⬇ All (CSV)</a>
+    <span class="muted" style="font-size:0.82rem;">or by document:</span>
+    <a href="{{ url_for('quickbooks_export', job=job['id'], doc='Receipt') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
+       title="Only receipts">🧾 Receipts</a>
+    <a href="{{ url_for('quickbooks_export', job=job['id'], doc='Invoice') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
+       title="Only invoices (A/R)">📄 Invoices</a>
+    <a href="{{ url_for('quickbooks_export', job=job['id'], doc='Bill') }}" class="btn btn-secondary" style="padding:0.2rem 0.55rem; font-size:0.8rem;"
+       title="Only bills (A/P)">📑 Bills</a>
+  </p>
+
   {% if billing.txns %}
   <div style="overflow-x:auto;">
   <table>

@@ -901,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 27.1"
+VERSION = "Piece 27.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3823,15 +3823,23 @@ def quickbooks_export():
     db = get_db()
     doc_filter = request.args.get("doc", "").strip()
     doc_filter = doc_filter if doc_filter in DOC_TYPES else ""
+    # Piece 27.2: the export lives on each job's Billing tab now, so scope to one
+    # job when ?job= is passed; with no job it still exports every job (company-wide).
+    job_filter = request.args.get("job", type=int)
     sql = ("SELECT t.*, j.job_name, j.id AS jid, c.name AS client_name"
            " FROM job_transactions t JOIN jobs j ON j.id = t.job_id"
            " JOIN clients c ON c.id = j.client_id")
-    params = ()
+    where, params = [], []
     if doc_filter:
-        sql += " WHERE t.doc_type = ?"
-        params = (doc_filter,)
+        where.append("t.doc_type = ?")
+        params.append(doc_filter)
+    if job_filter:
+        where.append("t.job_id = ?")
+        params.append(job_filter)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY t.txn_date, t.id"
-    rows = db.execute(sql, params).fetchall()
+    rows = db.execute(sql, tuple(params)).fetchall()
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["Date", "Description", "Amount", "Type", "Document", "Customer",
@@ -3845,16 +3853,27 @@ def quickbooks_export():
         w.writerow([r["txn_date"], desc, f"{signed:.2f}", r["kind"], doc_type,
                     r["client_name"], job_label, r["category"], r["status"],
                     r["reference"], r["method"]])
-    suffix = f"_{doc_filter.lower()}s" if doc_filter else ""
+    parts = []
+    if job_filter:
+        parts.append(f"job{job_filter}")
+    if doc_filter:
+        parts.append(f"{doc_filter.lower()}s")
+    suffix = ("_" + "_".join(parts)) if parts else ""
     return Response(buf.getvalue(), mimetype="text/csv", headers={
         "Content-Disposition": f"attachment; filename=solbiz_quickbooks{suffix}.csv"})
 
 
 def _pay_period():
-    """Default pay period: the last 14 days, overridable via ?start/?end."""
-    end = request.args.get("end") or datetime.now().date().strftime("%Y-%m-%d")
-    start = request.args.get("start") or (
-        datetime.now().date() - timedelta(days=13)).strftime("%Y-%m-%d")
+    """Default pay period: the most recent full **Sunday → Saturday** week — the
+    one that ended on the latest Saturday (today included when today is Saturday).
+    Pay periods run Sunday to Saturday. Overridable via ?start/?end."""
+    today = datetime.now().date()
+    # weekday(): Mon=0 … Sat=5, Sun=6 → step back to the most recent Saturday.
+    days_since_sat = (today.weekday() - 5) % 7
+    default_end = today - timedelta(days=days_since_sat)   # a Saturday
+    default_start = default_end - timedelta(days=6)        # the Sunday before it
+    end = request.args.get("end") or default_end.strftime("%Y-%m-%d")
+    start = request.args.get("start") or default_start.strftime("%Y-%m-%d")
     return start, end
 
 

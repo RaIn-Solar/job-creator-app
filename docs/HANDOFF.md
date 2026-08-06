@@ -2,7 +2,25 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.1** (footer shows it plainly as "Version 27.1" — the "did my pull work?" check)
+**Current build:** **Piece 27.2** (footer shows it plainly as "Version 27.2" — the "did my pull work?" check)
+
+**Piece 27.2 — Pay periods run Sunday→Saturday; QuickBooks exports moved to Billing.**
+(1) **Pay period fix.** `_pay_period()` used to default to a rolling *last-14-days*
+window (not week-aligned). It now returns the most recent full **Sunday→Saturday
+week** — the one ending on the latest Saturday (today included when today is a
+Saturday), still overridable via `?start/?end`. This is a **weekly** period (7 days),
+matching the weekly Tue–Thu payroll cadence; it drives payroll, the timesheet, the
+QuickBooks payroll export, and the Finance payroll reminder. *(If ECC actually pays
+biweekly, this is the one knob to revisit — make the window 14 days back from the
+Saturday.)*
+(2) **QuickBooks exports relocated.** Removed the four export buttons (⬇ All CSV ·
+Receipts · Invoices · Bills) from the Finance dashboard's Payments card (replaced
+with a one-line pointer) and put them on each job's **💵 Billing tab**. `quickbooks_export`
+gained an optional `?job=<id>` scope (still company-wide with no job param), so the
+Billing-tab buttons export **that job's** transactions (filename `…_job<id>…`); the
+`?doc=` type filter still stacks on top. Verified: `_pay_period` is Sun→Sat/7-day
+for every weekday, the dashboard buttons are gone, the Billing tab has all four, and
+a job-scoped export returns only that job's rows (+ screenshot).
 
 **Piece 27.1 — Removed the sample client/job seed (clean production data).**
 Deleted the `if clients == 0:` demo-seed block in `init_db` that created three
