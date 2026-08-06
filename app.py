@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 27.8"
+VERSION = "Piece 27.9"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2219,6 +2219,10 @@ def init_db():
                     "base_amount", "extras_amount", "bom_snapshot",
                     "grt_rate", "grt_amount"])   # Piece 27.4: GRT snapshot per invoice
     ensure_columns(db, "jobs", ["deposit_bom_cutoff_id", "grt_rate"])
+    # Piece 27.9: per-task time split by pay type (+ its work date) carried on a
+    # field-submission item, so approving a completed task posts Pending payroll
+    # entries (one per pay-type segment) for Finance to approve.
+    ensure_columns(db, "field_submission_items", ["hours_json", "work_date"])
     # Piece 21.7: tie crew-captured field photos back to the task they document.
     ensure_columns(db, "job_files", ["task_id"])
     # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
@@ -6854,7 +6858,9 @@ def work_bag_job(job_id):
         "work_bag_job.html", job=job,
         client_name=client["name"] if client else "",
         task_statuses=TASK_STATUSES, today=datetime.now().strftime("%Y-%m-%d"),
-        pay_types=pay_types, my_entries=my_entries, my_notes=my_notes,
+        pay_types=pay_types,
+        pay_types_js=[{"id": t["id"], "name": t["name"]} for t in pay_types],
+        my_entries=my_entries, my_notes=my_notes,
         my_receipts=my_receipts, receipt_categories=RECEIPT_CATEGORIES)
 
 
@@ -6929,8 +6935,12 @@ def api_work_bag_submit():
         return jsonify({"error": "not signed in"}), 401
     payload = request.get_json(silent=True) or {}
     db = get_db()
-    # Keep only edits to the worker's own tasks; snapshot title for review.
+    # Piece 27.9: each change is a completed (or blocked) task, optionally with
+    # the time it took split by pay type. Validate segments against active pay
+    # types; store them on the item so approval can post payroll entries.
+    pt_names = {t["id"]: t["name"] for t in payroll_pay_types(db)}
     valid = []
+    total_hours = 0.0
     for ch in payload.get("changes", []) or []:
         row = db.execute(
             "SELECT * FROM job_tasks WHERE id = ? AND employee_id = ?",
@@ -6940,9 +6950,26 @@ def api_work_bag_submit():
         status = ch.get("status", row["status"])
         if status not in TASK_STATUSES:
             status = row["status"]
+        segments = []
+        for seg in (ch.get("segments") or []):
+            pid = seg.get("pay_type_id")
+            try:
+                pid = int(pid)
+            except (TypeError, ValueError):
+                continue
+            hrs = _to_float(seg.get("hours"))
+            if pid not in pt_names or not hrs or hrs <= 0:
+                continue
+            segments.append({"pay_type_id": pid, "pay_type_name": pt_names[pid],
+                             "hours": round(hrs, 2)})
+            total_hours += hrs
+        work_date = (ch.get("work_date") or payload.get("work_date") or "").strip()
         valid.append((row["id"], row["title"], status,
-                      ch.get("notes", row["notes"]), ch.get("base_updated_at") or ""))
+                      ch.get("notes", row["notes"]), ch.get("base_updated_at") or "",
+                      json.dumps(segments), work_date))
     reported_hours = _to_float(payload.get("reported_hours"))
+    if reported_hours is None and total_hours > 0:
+        reported_hours = round(total_hours, 2)
     if not valid and reported_hours is None:
         return jsonify({"error": "nothing to submit"}), 400
     cur = db.execute(
@@ -6951,12 +6978,13 @@ def api_work_bag_submit():
         (user["id"], (payload.get("work_date") or "").strip(), reported_hours,
          (payload.get("note") or "").strip()))
     sub_id = cur.lastrowid
-    for task_id, title, status, notes, base in valid:
+    for task_id, title, status, notes, base, hours_json, work_date in valid:
         db.execute(
             "INSERT INTO field_submission_items"
-            " (submission_id, task_id, task_title, new_status, new_notes, base_updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (sub_id, task_id, title, status, notes, base))
+            " (submission_id, task_id, task_title, new_status, new_notes,"
+            "  base_updated_at, hours_json, work_date)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (sub_id, task_id, title, status, notes, base, hours_json, work_date))
     db.commit()
     return jsonify({"submission_id": sub_id, "status": "Pending",
                     "items": len(valid)})
@@ -6981,7 +7009,13 @@ def submissions_page():
         q = ("SELECT * FROM field_submission_items WHERE submission_id IN (%s)"
              " ORDER BY id" % ",".join("?" * len(ids)))
         for it in db.execute(q, ids).fetchall():
-            items_by_sub.setdefault(it["submission_id"], []).append(it)
+            d = dict(it)
+            try:
+                d["segments"] = json.loads(it["hours_json"]) if ("hours_json" in it.keys()
+                                and it["hours_json"]) else []
+            except (ValueError, TypeError):
+                d["segments"] = []
+            items_by_sub.setdefault(it["submission_id"], []).append(d)
     return render_template("submissions.html", subs=subs, items_by_sub=items_by_sub,
                            show=show)
 
@@ -6999,6 +7033,7 @@ def approve_submission(sub_id):
     approved_hours = _to_float(request.form.get("approved_hours"))
     if approved_hours is None:
         approved_hours = sub["reported_hours"]
+    who = current_user()
     # Now — and only now — apply the field edits to the authoritative tasks.
     for it in db.execute(
             "SELECT * FROM field_submission_items WHERE submission_id = ?",
@@ -7016,7 +7051,28 @@ def approve_submission(sub_id):
         # Field-approved completions re-anchor the next open step's deadline too.
         if status == "Done" and row["status"] != "Done":
             _redefault_next_due(db, row["job_id"], completed)
-    who = current_user()
+        # Piece 27.9: post the task's time (split by pay type) as PENDING payroll
+        # entries for this job — Finance approves them on the payroll page. Two
+        # sign-offs: the supervisor confirms the work here, Finance approves pay.
+        segments = []
+        if "hours_json" in it.keys() and it["hours_json"]:
+            try:
+                segments = json.loads(it["hours_json"])
+            except (ValueError, TypeError):
+                segments = []
+        wd = (it["work_date"] if "work_date" in it.keys() and it["work_date"]
+              else sub["work_date"] or datetime.now().strftime("%Y-%m-%d"))
+        for seg in segments:
+            hrs = _to_float(seg.get("hours"))
+            pid = seg.get("pay_type_id")
+            if not hrs or hrs <= 0 or pid is None:
+                continue
+            db.execute(
+                "INSERT INTO time_entries (employee_id, work_date, job_id,"
+                " pay_type_id, hours, note, status, created_by)"
+                " VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)",
+                (sub["employee_id"], wd, row["job_id"], pid, round(hrs, 2),
+                 f"Field: {it['task_title']}", who["name"] if who else ""))
     db.execute(
         "UPDATE field_submissions SET status = 'Approved', approved_hours = ?,"
         " reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ?",

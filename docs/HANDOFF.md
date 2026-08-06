@@ -2,7 +2,25 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.8** (footer shows it plainly as "Version 27.8" — the "did my pull work?" check)
+**Current build:** **Piece 27.9** (footer shows it plainly as "Version 27.9" — the "did my pull work?" check)
+
+**Piece 27.9 — Per-task "Submit as done" with time by pay type (merged tasks + submit).**
+On the per-job Work Bag page each field task lost the status dropdown + global "submit
+completed work" card; instead every task has its own **✓ Submit as done** (and **⚠ Can't
+finish** → Blocked, note required). Submitting captures the **time it took split by pay
+type** — one or more `[pay type][hours]` segments (＋ Add time type), shown live on a
+**colour-coded proportional timeline** with a legend/total. Flow (two sign-offs, per the
+decision): the crew submit → a `field_submission` whose items now carry `hours_json`
+(segments) + `work_date` → **supervisor approves** (`approve_submission`) which marks the
+task Done AND posts one **Pending** `time_entries` row per segment (by pay type, for the
+job/date) → **Finance approves** those on the payroll page. `api_work_bag_submit` validates
+segments against active pay types and stores them; the submissions review page shows the
+per-task pay-type breakdown. Offline model intact (localStorage queue keyed by task, with
+segments; flushes on reconnect / "Submit now"). Section 5 kept but relabeled **"Log other
+hours"** for time not tied to a task. New columns: `field_submission_items.hours_json,
+work_date`. Verified end-to-end (submit 8+1+2 h → approve → 3 Pending payroll entries;
+blocked path; + a headless run of the segment UI + timeline). *(Blocked kept per the
+decision; per-task time = the payroll hours.)*
 
 **Piece 27.8 — Removed Load truck from the Work Bag landing.** The 🚚 Load truck button
 is gone from the landing toolbar (loading out is per-job — the packing list is always
