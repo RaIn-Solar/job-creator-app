@@ -901,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 26.6"
+VERSION = "Piece 26.7"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2213,6 +2213,18 @@ def init_db():
     # PTO / Holiday / a manual Overtime type don't count toward the OT threshold.
     db.execute("UPDATE pay_types SET ot_eligible = 0"
                " WHERE name IN ('PTO', 'Holiday (2x)', 'Overtime (1.5x)')")
+    # Piece 26.7: mark leave (vacation/PTO/sick) pay types. Leave hours can't be
+    # used to push a week over the 40 h cap — they can't earn overtime — unless a
+    # GM overrides it on the approval form. Seed PTO/vacation/sick as leave; a
+    # meta flag makes the seed run once so hand-edits aren't overwritten.
+    if "is_leave" not in pt_cols:
+        db.execute("ALTER TABLE pay_types ADD COLUMN is_leave INTEGER NOT NULL DEFAULT 0")
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'pay_leave_seeded'").fetchone():
+        db.execute("UPDATE pay_types SET is_leave = 1"
+                   " WHERE name IN ('PTO', 'Vacation', 'Sick', 'Sick leave',"
+                   "                'Paid time off', 'Leave')")
+        db.execute("INSERT OR REPLACE INTO meta (key, value)"
+                   " VALUES ('pay_leave_seeded', '1')")
     te_cols = {r[1] for r in db.execute("PRAGMA table_info(time_entries)")}
     if "status" not in te_cols:
         db.execute("ALTER TABLE time_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'Pending'")
@@ -2779,6 +2791,19 @@ def dashboard():
     if mode == "Installation":
         my_tasks = [t for t in my_tasks
                     if (t["pipeline_status"] or "") in FIELD_STAGES]
+    # Piece 26.7: group My Tasks under each job so the board reads as a banner per
+    # job with its tasks beneath, instead of one flat list. First-seen order keeps
+    # the overdue/soonest-due job on top (my_tasks is already sorted that way).
+    task_groups = []
+    _tg_index = {}
+    for t in my_tasks:
+        jid = t["job_id"]
+        if jid not in _tg_index:
+            _tg_index[jid] = len(task_groups)
+            task_groups.append({
+                "job_id": jid, "job_name": t["job_name"],
+                "client_name": t["client_name"], "tasks": []})
+        task_groups[_tg_index[jid]]["tasks"].append(t)
 
     sections = []
     for d in shown:
@@ -2989,9 +3014,16 @@ def dashboard():
                     if "Executive" in shown else 0)
     # Piece 24.4: the stale-stock notice lands on the Designer's dashboard.
     stale_stock = len(stale_stock_items(db)) if "Design" in shown else 0
+    # Piece 26.7: payroll reminder on the Finance viewport for whoever runs
+    # payroll (Vanessa) — a Tue–Thu nudge until the period is confirmed + exported.
+    payroll_reminder = None
+    if "Finance" in shown and _can_payroll():
+        p_start, p_end = _pay_period()
+        payroll_reminder = payroll_status(db, p_start, p_end)
     return render_template(
         "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
-        stale_stock=stale_stock,
+        stale_stock=stale_stock, task_groups=task_groups,
+        payroll_reminder=payroll_reminder,
         sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
         payments=payments, pay_totals=pay_totals, show_payments=show_payments,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
@@ -3856,6 +3888,41 @@ def _pay_period():
     return start, end
 
 
+# Payroll runs Tuesday–Thursday each week (weekday() 1,2,3).
+PAYROLL_DAYS = (1, 2, 3)
+_WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def payroll_status(db, start, end):
+    """Piece 26.7: the state of this pay period for the Finance dashboard's
+    payroll reminder. Two steps must both be done before payroll is put to bed:
+    (1) hours *confirmed* — nothing left awaiting approval in the period — and
+    (2) *exported* to QuickBooks. The export is only counted as current if it
+    happened after the newest approval, so approving more hours re-opens it. The
+    reminder nags Tuesday–Thursday until both are done."""
+    pending = db.execute(
+        "SELECT COUNT(*) FROM time_entries WHERE status = 'Pending'"
+        " AND work_date >= ? AND work_date <= ?", (start, end)).fetchone()[0]
+    approved = db.execute(
+        "SELECT COUNT(*) FROM time_entries WHERE status = 'Approved'"
+        " AND work_date >= ? AND work_date <= ?", (start, end)).fetchone()[0]
+    last_approved = db.execute(
+        "SELECT MAX(approved_at) FROM time_entries WHERE status = 'Approved'"
+        " AND work_date >= ? AND work_date <= ?", (start, end)).fetchone()[0]
+    exported_at = _meta_get(db, f"payroll_exported:{start}..{end}", "")
+    confirmed = pending == 0
+    exported = bool(exported_at) and (not last_approved or exported_at >= last_approved)
+    today = datetime.now()
+    weekday = today.weekday()
+    return {
+        "start": start, "end": end, "pending": pending, "approved": approved,
+        "confirmed": confirmed, "exported": exported, "exported_at": exported_at,
+        "in_window": weekday in PAYROLL_DAYS, "today_abbr": _WEEKDAY_ABBR[weekday],
+        "days": [_WEEKDAY_ABBR[d] for d in PAYROLL_DAYS],
+        "done": confirmed and exported,
+    }
+
+
 @app.route("/payroll")
 @payroll_required
 def payroll():
@@ -3872,7 +3939,8 @@ def payroll():
         " ORDER BY te.work_date DESC, te.id DESC", (start, end)).fetchall()
     # Supervisor approval queue: hours employees logged that await review.
     pending = db.execute(
-        "SELECT te.*, e.name AS emp_name, pt.name AS type_name, j.job_name"
+        "SELECT te.*, e.name AS emp_name, pt.name AS type_name,"
+        " pt.is_leave AS is_leave, j.job_name"
         " FROM time_entries te"
         " JOIN employees e ON e.id = te.employee_id"
         " LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
@@ -3927,11 +3995,49 @@ def delete_time_entry(entry_id):
 def approve_time_entry(entry_id):
     who = current_user()
     db = get_db()
+    entry = db.execute(
+        "SELECT te.*, pt.is_leave AS is_leave, pt.name AS type_name"
+        " FROM time_entries te LEFT JOIN pay_types pt ON pt.id = te.pay_type_id"
+        " WHERE te.id = ?", (entry_id,)).fetchone()
+    if entry is None:
+        abort(404)
+    # Piece 26.7: the leave/vacation cap. Leave hours (PTO/vacation/sick) can't be
+    # used to take a week past the weekly OT threshold — no one earns overtime on
+    # leave. Approving a leave entry that would push the employee's already-approved
+    # hours for that ISO week over the cap is blocked, UNLESS a GM ticks the manual
+    # override on this form. Worked hours are untouched (they still earn OT).
+    override = bool(request.form.get("gm_override")) and is_gm()
+    if entry["is_leave"] and not override:
+        threshold, _mult = ot_rules(db)
+        wk = _iso_week(entry["work_date"])
+        already = 0.0
+        if wk is not None:
+            for r in db.execute(
+                    "SELECT work_date, hours FROM time_entries"
+                    " WHERE employee_id = ? AND status = 'Approved' AND id != ?",
+                    (entry["employee_id"], entry_id)).fetchall():
+                if _iso_week(r["work_date"]) == wk:
+                    already += r["hours"] or 0.0
+        add = entry["hours"] or 0.0
+        if already + add > threshold + 1e-9:
+            room = max(threshold - already, 0.0)
+            emp = db.execute("SELECT name FROM employees WHERE id = ?",
+                             (entry["employee_id"],)).fetchone()
+            flash(
+                f"{(emp['name'] if emp else 'This employee')} already has "
+                f"{already:.2f} approved hours that week — approving {add:.2f} h of "
+                f"{entry['type_name'] or 'leave'} would pass the {threshold:.0f} h weekly "
+                f"cap (leave can't earn overtime). Only {room:.2f} h of leave fit; reduce "
+                f"the hours, or the GM can override on this row.", "error")
+            return redirect(url_for("payroll"))
     db.execute("UPDATE time_entries SET status = 'Approved', approved_by = ?,"
                " approved_at = datetime('now') WHERE id = ?",
                (who["name"] if who else "", entry_id))
     db.commit()
-    flash("Hours approved.")
+    if entry["is_leave"] and override:
+        flash("Hours approved — GM override applied (leave beyond the weekly cap).")
+    else:
+        flash("Hours approved.")
     return redirect(url_for("payroll"))
 
 
@@ -4214,19 +4320,20 @@ def save_pay_type():
     method = method if method in PAY_METHODS else "multiplier"
     value = _to_float(request.form.get("value")) or 0.0
     ot_eligible = 1 if request.form.get("ot_eligible") else 0
+    is_leave = 1 if request.form.get("is_leave") else 0
     tid = request.form.get("id", "")
     if not name:
         flash("A pay type needs a name.", "error")
     elif tid.isdigit():
         db.execute("UPDATE pay_types SET name = ?, method = ?, value = ?,"
-                   " ot_eligible = ? WHERE id = ?",
-                   (name, method, value, ot_eligible, int(tid)))
+                   " ot_eligible = ?, is_leave = ? WHERE id = ?",
+                   (name, method, value, ot_eligible, is_leave, int(tid)))
         db.commit()
         flash("Pay type updated.")
     else:
         nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM pay_types").fetchone()[0]
-        db.execute("INSERT INTO pay_types (name, method, value, sort_order, ot_eligible)"
-                   " VALUES (?, ?, ?, ?, ?)", (name, method, value, nxt, ot_eligible))
+        db.execute("INSERT INTO pay_types (name, method, value, sort_order, ot_eligible, is_leave)"
+                   " VALUES (?, ?, ?, ?, ?, ?)", (name, method, value, nxt, ot_eligible, is_leave))
         db.commit()
         flash("Pay type added.")
     return redirect(url_for("payroll_settings"))
@@ -4283,6 +4390,11 @@ def payroll_quickbooks_export():
             w.writerow([end, f"Payroll · {r['employee']['name']} · {type_name.get(tid, '')}",
                         f"{-cell['pay']:.2f}", "Expense", r["employee"]["name"],
                         type_name.get(tid, ""), f"{cell['hours']:.2f}", start, end])
+    # Piece 26.7: stamp when this period was exported so Vanessa's payroll
+    # reminder can show "exported ✓" and stop nagging (see payroll_status()).
+    _meta_set(db, f"payroll_exported:{start}..{end}",
+              datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    db.commit()
     return Response(buf.getvalue(), mimetype="text/csv", headers={
         "Content-Disposition": "attachment; filename=solbiz_payroll.csv"})
 

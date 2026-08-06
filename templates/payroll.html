@@ -23,12 +23,18 @@
       <tr>
         <td class="muted">{{ e["work_date"] or "—" }}</td>
         <td>{{ e["emp_name"] }}</td>
-        <td>{{ e["type_name"] or "—" }}</td>
+        <td>{{ e["type_name"] or "—" }}{% if e["is_leave"] %} <span class="badge neutral" style="font-size:0.68rem;" title="Leave can't be used to exceed the weekly 40 h cap">leave</span>{% endif %}</td>
         <td class="muted">{% if e["job_id"] %}<a href="{{ url_for('job_detail', job_id=e['job_id']) }}">{{ e["job_name"] or "Job #" ~ e["job_id"] }}</a>{% else %}—{% endif %}</td>
         <td style="text-align:right;">{{ "%.2f"|format(e["hours"] or 0) }}</td>
         <td class="muted">{{ e["note"] }}</td>
         <td style="white-space:nowrap;">
-          <form method="post" action="{{ url_for('approve_time_entry', entry_id=e['id']) }}" style="display:inline; margin:0;">
+          <form method="post" action="{{ url_for('approve_time_entry', entry_id=e['id']) }}" style="display:inline-flex; flex-direction:column; gap:0.15rem; margin:0; vertical-align:top;">
+            {% if is_gm and e["is_leave"] %}
+            <label style="font-size:0.68rem; display:inline-flex; align-items:center; gap:0.25rem; white-space:nowrap;"
+                   title="GM only: allow this leave even though it takes the week past the 40 h cap">
+              <input type="checkbox" name="gm_override" value="1" style="width:auto;"> GM override
+            </label>
+            {% endif %}
             <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✓ Approve</button>
           </form>
           <form method="post" action="{{ url_for('reject_time_entry', entry_id=e['id']) }}" style="display:inline; margin:0;"

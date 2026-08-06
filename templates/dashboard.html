@@ -399,30 +399,82 @@
 </details>
 {% endif %}
 
+{# ---- Payroll reminder (Finance viewport, above My tasks) ---- #}
+{% if payroll_reminder %}
+{% set pr = payroll_reminder %}
+<details class="card sect" {% if pr.in_window and not pr.done %}open{% endif %}
+         style="border-left:4px solid {{ '#1a6e3c' if pr.done else '#f5a623' }};">
+  <summary>💵 Payroll
+    {% if pr.done %}<span class="badge">up to date</span>
+    {% elif pr.in_window %}<span class="badge warn">do today ({{ pr.today_abbr }})</span>
+    {% else %}<span class="badge neutral">pending</span>{% endif %}
+  </summary>
+  <p class="muted" style="margin:0 0 0.6rem; font-size:0.88rem;">
+    Run payroll <strong>Tuesday–Thursday</strong> each week until this period's hours
+    are confirmed <em>and</em> exported. Pay period <strong>{{ pr.start }} → {{ pr.end }}</strong>.</p>
+  {# Tue-Wed-Thu cadence chips, today highlighted #}
+  <div style="display:flex; gap:0.4rem; margin-bottom:0.7rem;">
+    {% for d in pr.days %}
+    <span style="padding:0.2rem 0.7rem; border-radius:999px; font-size:0.8rem; font-weight:700;
+      {% if d == pr.today_abbr %}background:#f5a623; color:#3a2a00;{% else %}background:var(--bg); color:var(--muted); border:1px solid var(--border);{% endif %}">{{ d }}</span>
+    {% endfor %}
+    {% if not pr.in_window %}<span class="muted" style="align-self:center; font-size:0.8rem;">— today is {{ pr.today_abbr }}, outside the payroll window</span>{% endif %}
+  </div>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Step</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1 · Confirm hours <span class="muted" style="font-size:0.8rem;">(approve everyone's time)</span></td>
+        <td>{% if pr.confirmed %}<span class="badge">✓ Confirmed</span>{% else %}<span class="badge warn">{{ pr.pending }} awaiting approval</span>{% endif %}</td>
+        <td><a href="{{ url_for('payroll') }}" class="btn btn-secondary" style="padding:0.2rem 0.7rem; font-size:0.82rem;">Open payroll</a></td>
+      </tr>
+      <tr>
+        <td>2 · Export to QuickBooks</td>
+        <td>{% if pr.exported %}<span class="badge">✓ Exported</span>{% if pr.exported_at %} <span class="muted" style="font-size:0.8rem;">{{ pr.exported_at }}</span>{% endif %}{% elif pr.exported_at %}<span class="badge warn">re-export (hours changed)</span>{% else %}<span class="badge warn">not yet</span>{% endif %}</td>
+        <td><a href="{{ url_for('payroll_quickbooks_export') }}" class="btn btn-secondary" style="padding:0.2rem 0.7rem; font-size:0.82rem;">⬇ Export</a></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  {% if pr.done %}
+  <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">✅ Payroll is confirmed and exported for this period — nothing to do until next week.</p>
+  {% endif %}
+</details>
+{% endif %}
+
 {# ---- My tasks (bottom) ---- #}
 <details class="card sect" open>
   <summary>✅ My tasks <span class="sect-count">{{ my_tasks|length }}</span></summary>
-  {% if my_tasks %}
+  {% if task_groups %}
   <p style="margin:0 0 0.6rem;">
     <a href="{{ url_for('my_calendar_ics') }}" class="btn btn-secondary" style="padding:0.25rem 0.7rem; font-size:0.85rem;"
        title="Download your due dates + install dates, then import in Google Calendar (Settings → Import & export)">📅 Add my dates to calendar</a>
   </p>
-  <div style="overflow-x:auto;">
-  <table>
-    <thead><tr><th>Task</th><th>Job</th><th>Due</th><th>Status</th></tr></thead>
-    <tbody>
-      {% for t in my_tasks %}
+  {% for g in task_groups %}
+  <div style="margin-bottom:0.9rem; border:1px solid var(--border); border-radius:10px; overflow:hidden;">
+    {# Job banner #}
+    <div style="background:var(--bg); border-bottom:1px solid var(--border); padding:0.5rem 0.8rem; display:flex; align-items:baseline; gap:0.5rem; flex-wrap:wrap;">
+      <a href="{{ url_for('job_detail', job_id=g.job_id) }}#tasks" style="font-weight:700;">{{ g.job_name or "Job #" ~ g.job_id }}</a>
+      {% if g.client_name %}<span class="muted" style="font-size:0.82rem;">{{ g.client_name }}</span>{% endif %}
+      <span class="sect-count" style="margin-left:auto;">{{ g.tasks|length }} task{{ "s" if g.tasks|length != 1 }}</span>
+    </div>
+    {# Tasks as bullet points #}
+    <ul style="list-style:none; margin:0; padding:0.3rem 0;">
+      {% for t in g.tasks %}
       {% set overdue = t["due_date"] and t["due_date"] < today %}
-      <tr>
-        <td>{{ t["title"] }}{% if t["pipeline_status"] %} <span class="badge neutral" style="font-size:0.7rem;">{{ t["pipeline_status"] }}</span>{% endif %}</td>
-        <td><a href="{{ url_for('job_detail', job_id=t['job_id']) }}#tasks">{{ t["job_name"] or "Job #" ~ t["job_id"] }}</a><br><span class="muted" style="font-size:0.8rem;">{{ t["client_name"] }}</span></td>
-        <td>{% if t["due_date"] %}{{ t["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td><span class="badge {{ sc[t['status']] }}">{{ t["status"] }}</span></td>
-      </tr>
+      <li style="display:flex; align-items:baseline; gap:0.5rem; padding:0.35rem 0.8rem 0.35rem 1.4rem; position:relative; flex-wrap:wrap;
+                 {% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
+        <span style="position:absolute; left:0.7rem; color:var(--muted);">•</span>
+        <span style="flex:1 1 auto;">{{ t["title"] }}
+          {% if t["pipeline_status"] %}<span class="badge neutral" style="font-size:0.68rem;">{{ t["pipeline_status"] }}</span>{% endif %}</span>
+        {% if t["due_date"] %}<span class="muted" style="font-size:0.8rem; white-space:nowrap;">due {{ t["due_date"] }}{% if overdue %} <span class="badge danger">overdue</span>{% endif %}</span>{% endif %}
+        <span class="badge {{ sc[t['status']] }}">{{ t["status"] }}</span>
+      </li>
       {% endfor %}
-    </tbody>
-  </table>
+    </ul>
   </div>
+  {% endfor %}
   <p class="muted" style="margin:0.6rem 0 0; font-size:0.85rem;">Update these in the field on your <a href="{{ url_for('work_bag') }}">🎒 Work Bag</a>.</p>
   {% else %}
   <p class="empty">No open tasks assigned to you. 🎉</p>

@@ -2,7 +2,34 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.6** (footer shows it plainly as "Version 26.6" — the "did my pull work?" check)
+**Current build:** **Piece 26.7** (footer shows it plainly as "Version 26.7" — the "did my pull work?" check)
+
+**Piece 26.7 — Payroll reminder, leave-can't-earn-OT rule, grouped My Tasks.**
+Three dashboard/payroll changes.
+(1) **Payroll reminder** on the Finance viewport (for whoever runs payroll, e.g.
+Vanessa): a collapsible "💵 Payroll" card **above My Tasks**, showing a **Tue–Thu**
+cadence (chips with today highlighted) and a two-step checklist — **1 Confirm hours**
+(no time entries left `Pending` in the period) and **2 Export to QuickBooks**. It
+nags (opens + amber) Tue/Wed/Thu until both are done, then collapses green ("up to
+date"). Driven by `payroll_status(db, start, end)`; the QuickBooks export now stamps
+`meta['payroll_exported:<start>..<end>']`, and the export only counts as current if
+its timestamp is ≥ the newest approval in the period (approving more hours re-opens
+"Export"). Card only renders for `"Finance" in shown and _can_payroll()`.
+(2) **Leave can't earn overtime.** New `pay_types.is_leave` flag (seeded on
+PTO/Vacation/Sick via a `pay_leave_seeded` meta guard; editable in Pay settings as a
+"Leave" column). At approval (`approve_time_entry`), approving a **leave** entry that
+would push the employee's already-approved hours **for that ISO week past the OT
+threshold (40 h)** is **blocked** with a message showing how much leave fits —
+**unless a GM ticks a per-row "GM override"** (only shown to `is_gm` on leave rows,
+and only honoured when `is_gm()`). Worked hours are untouched (they still earn OT);
+leave under the cap approves normally.
+(3) **My Tasks grouped by job** on the dashboard: the flat table is now a **banner
+per job** (job name + client + task count) with its tasks as **bullet points**
+beneath (title, pipeline badge, due/overdue, status). Built in the route as
+`task_groups` (first-seen order preserves the overdue/soonest-due job on top).
+Verified end-to-end via the test client (reminder states, the 40 h leave block +
+GM override + leave-under-cap pass-through, and the grouped banners) plus a headless
+screenshot of the Finance dashboard.
 
 **Piece 26.6 — Colour-coded appliance-era tags.** The Modern/Vintage distinction
 had faded to plain "(Modern)/(Vintage)" text in the 26.4 picker's option labels.
