@@ -2,7 +2,24 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.3** (footer shows it plainly as "Version 26.3" — the "did my pull work?" check)
+**Current build:** **Piece 26.4** (footer shows it plainly as "Version 26.4" — the "did my pull work?" check)
+
+**Piece 26.4 — Loads & Sizing survey tweaks.** Four changes to the load-survey
+page. (1) **Removed** the BPMN "Process chart" button from the page toolbar.
+(2) The **Sales/Designer view mode is now a per-viewer default** from their
+department (`loads_view_mode`): Design → Designer, Sales → Sales (Design wins for
+someone in both, e.g. Cary); the toggle is now a per-session preference
+(`session["loads_ui_mode"]`) instead of a per-job stored value, so two people
+viewing the same job see their own default. (3) **Room-aware appliance picker**:
+rooms gain a `category` ("type" like Kitchen/Garage from the appliance-catalog
+categories, set on the add/edit room form); the load-item picker defaults to that
+room's appliances, with a **search box that filters the whole catalog** (e.g. a
+keyboard kept in the kitchen) — driven client-side from a `tojson` of the catalog.
+(4) **Custom fields hide behind a "Custom appliance" toggle** — checking it swaps
+the catalog picker for free-text name/watts/usage (and disables the inactive
+side so only one submits). Verified end-to-end incl. a browser test of the
+picker (Kitchen shows 35 items, "keyboard" search finds the whole-catalog match,
+custom toggle reveals the fields).
 
 **Piece 26.3 — Task board grouped by job.** The cross-job task board was a flat
 list; it now **groups tasks under each job** (a collapsible card per job with the

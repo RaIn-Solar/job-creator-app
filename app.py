@@ -901,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 26.3"
+VERSION = "Piece 26.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1143,6 +1143,23 @@ SYSTEM_TYPE_PRESETS = {
     "gridtie": {"derate_pct": 80, "autonomy_days": 1.5},
 }
 UI_MODES = ["sales", "designer"]
+
+
+def loads_view_mode(user):
+    """Piece 26.4: the Loads & Sizing view mode for this viewer. A per-session
+    toggle wins; otherwise it defaults from their department — Designers get
+    Designer mode, Sales gets Sales mode (Design wins for someone who is both,
+    like Cary). It's a view preference, not access control."""
+    m = session.get("loads_ui_mode")
+    if m in UI_MODES:
+        return m
+    depts = set(user_departments(user)) if user else set()
+    if "Design" in depts:
+        return "designer"
+    if "Sales" in depts:
+        return "sales"
+    return "designer"
+
 
 app = Flask(__name__, template_folder=str(BASE_DIR / "templates"))
 # Needed for flash messages; fine as a constant for an internal single-box tool.
@@ -2163,6 +2180,9 @@ def init_db():
     ensure_columns(db, "job_files", ["task_id"])
     # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
     ensure_columns(db, "job_files", ["txn_id"])
+    # Piece 26.4: a room's appliance-catalog "type" (Kitchen, Garage, …) so the
+    # load-survey picker can default to that room's appliances.
+    ensure_columns(db, "job_load_rooms", ["category"])
     # Piece 25.2: per-slot accepted file formats (comma-separated extensions) on
     # a rule, so a document slot can require e.g. PDF only.
     ensure_columns(db, "resource_rules", ["allowed_formats"])
@@ -4180,6 +4200,12 @@ def job_loads(job_id):
     appliances_by_category = {}
     for a in appliances:
         appliances_by_category.setdefault(a["category"] or "Other", []).append(a)
+    # Piece 26.4: flat catalog (for the room-filtered picker + whole-catalog
+    # search) and the list of room "types" to choose from.
+    all_appliances = [
+        {"id": a["id"], "name": a["name"], "category": a["category"] or "Other",
+         "watts": int(a["avg_w"] or 0), "era": a["era"] or ""} for a in appliances]
+    appliance_categories = sorted(appliances_by_category.keys())
     components_by_category = {}
     for c in components:
         components_by_category.setdefault(c["category"] or "Other", []).append(c)
@@ -4229,6 +4255,8 @@ def job_loads(job_id):
         edit_item=request.args.get("edit_item", type=int),
         edit_bom=request.args.get("edit_bom", type=int),
         load_usage_types=LOAD_USAGE_TYPES, load_eras=LOAD_ERAS,
+        ui_mode=loads_view_mode(current_user()),
+        all_appliances=all_appliances, appliance_categories=appliance_categories,
         daily_kwh=daily_kwh, peak_w=peak_w, array_kw=array_kw,
         panel_count=panel_count, battery_kwh_needed=battery_kwh_needed,
         selected_battery=selected_battery, battery_units_needed=battery_units_needed,
@@ -4282,15 +4310,16 @@ def add_load_room(job_id):
     if not name:
         flash("Room name is required.", "error")
         return redirect(url_for("job_loads", job_id=job_id))
+    category = request.form.get("category", "").strip()
     db = get_db()
     next_order = db.execute(
         "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM job_load_rooms WHERE job_id = ?",
         (job_id,),
     ).fetchone()[0]
     db.execute(
-        "INSERT INTO job_load_rooms (job_id, name, room_type, sort_order)"
-        " VALUES (?, ?, ?, ?)",
-        (job_id, name, room_type, next_order),
+        "INSERT INTO job_load_rooms (job_id, name, room_type, category, sort_order)"
+        " VALUES (?, ?, ?, ?, ?)",
+        (job_id, name, room_type, category, next_order),
     )
     db.commit()
     return redirect(url_for("job_loads", job_id=job_id))
@@ -4321,8 +4350,9 @@ def update_load_room(job_id, room_id):
         flash("The room needs a name.", "error")
         return redirect(url_for("job_loads", job_id=job_id, edit_room=room_id))
     room_type = request.form.get("room_type", "standard").strip() or "standard"
-    db.execute("UPDATE job_load_rooms SET name = ?, room_type = ? WHERE id = ?",
-               (name, room_type, room_id))
+    category = request.form.get("category", "").strip()
+    db.execute("UPDATE job_load_rooms SET name = ?, room_type = ?, category = ?"
+               " WHERE id = ?", (name, room_type, category, room_id))
     db.commit()
     flash("Room updated.")
     return redirect(url_for("job_loads", job_id=job_id))
@@ -4559,15 +4589,10 @@ def update_sizing(job_id):
 
 @app.route("/jobs/<int:job_id>/loads/mode", methods=["POST"])
 def set_ui_mode(job_id):
-    fetch_job(job_id)
-    db = get_db()
-    fetch_job_sizing(db, job_id)  # ensure the row exists
+    # Piece 26.4: the view mode is now a per-viewer session preference (the
+    # default comes from their department), not a per-job stored value.
     ui_mode = request.form.get("ui_mode", "designer")
-    if ui_mode not in UI_MODES:
-        ui_mode = "designer"
-    db.execute("UPDATE job_sizing SET ui_mode = ? WHERE job_id = ?",
-               (ui_mode, job_id))
-    db.commit()
+    session["loads_ui_mode"] = ui_mode if ui_mode in UI_MODES else "designer"
     return redirect(url_for("job_loads", job_id=job_id))
 
 

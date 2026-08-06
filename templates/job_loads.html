@@ -4,7 +4,6 @@
 <div class="toolbar">
   <h1>⚡ Loads &amp; Sizing <span class="muted">· {{ job["job_name"] or "Job #" ~ job["id"] }}</span></h1>
   <div style="display:flex; gap:0.5rem; align-items:center;">
-    <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn btn-secondary">▰▰▰▱▱ Process chart</a>
     <a href="{{ url_for('job_detail', job_id=job['id']) }}" class="btn btn-secondary">← Back to job</a>
   </div>
 </div>
@@ -23,8 +22,8 @@
     <h2 style="margin:0; font-size:1.1rem;">⚡ Electric loads &amp; system sizing</h2>
     <form method="post" action="{{ url_for('set_ui_mode', job_id=job['id']) }}" style="margin:0;">
       <select name="ui_mode" onchange="this.form.submit()" style="padding:0.35rem;">
-        <option value="sales" {% if sizing["ui_mode"] == "sales" %}selected{% endif %}>Sales mode</option>
-        <option value="designer" {% if sizing["ui_mode"] == "designer" %}selected{% endif %}>Designer mode</option>
+        <option value="sales" {% if ui_mode == "sales" %}selected{% endif %}>Sales mode</option>
+        <option value="designer" {% if ui_mode == "designer" %}selected{% endif %}>Designer mode</option>
       </select>
     </form>
   </div>
@@ -40,6 +39,7 @@
   <fieldset class="section" style="margin-bottom:0.9rem;{% if not room['enabled'] %} opacity:0.55;{% endif %}">
     <legend>
       {{ room["name"] }}
+      {% if "category" in room.keys() and room["category"] %}<span class="badge neutral" style="font-weight:400;">{{ room["category"] }}</span>{% endif %}
       {% if room["room_type"] == "scenario" %}<span class="badge warn">custom use-case</span>{% endif %}
       {% if not room["enabled"] %}<span class="badge neutral">excluded from totals</span>{% endif %}
       {% if not locked and edit_room != room["id"] %}
@@ -51,7 +51,14 @@
     <form method="post" action="{{ url_for('update_load_room', job_id=job['id'], room_id=room['id']) }}" class="form-grid" style="margin-bottom:0.7rem;">
       <div class="field"><label>Room name</label><input name="name" required value="{{ room['name'] }}"></div>
       <div class="field">
-        <label>Room type</label>
+        <label>Type <span class="muted" style="font-weight:400;">(filters the appliance picker)</span></label>
+        <select name="category">
+          <option value="">— any —</option>
+          {% for c in appliance_categories %}<option value="{{ c }}" {% if "category" in room.keys() and room["category"] == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Room kind</label>
         <select name="room_type">
           <option value="standard" {% if room['room_type'] != 'scenario' %}selected{% endif %}>Standard room</option>
           <option value="scenario" {% if room['room_type'] == 'scenario' %}selected{% endif %}>Custom use-case (seasonal / unusual load)</option>
@@ -107,32 +114,45 @@
       </tbody>
     </table>
     {% if not locked %}
-    <form method="post" action="{{ url_for('add_load_item', job_id=job['id']) }}" style="margin-top:0.7rem;">
+    <form method="post" action="{{ url_for('add_load_item', job_id=job['id']) }}"
+          class="load-add" data-room-cat="{{ room['category'] if 'category' in room.keys() and room['category'] else '' }}"
+          style="margin-top:0.7rem;">
       <input type="hidden" name="room_id" value="{{ room['id'] }}">
-      <div class="form-grid">
-        <div class="field">
-          <label>From catalog</label>
-          <select name="catalog_id">
-            <option value="">— custom appliance below —</option>
-            {% for cat, items in appliances_by_category.items() %}
-            <optgroup label="{{ cat }}">
-              {% for a in items %}
-              <option value="{{ a['id'] }}">{{ a["name"] }}{% if a["era"] %} ({{ a["era"] }}){% endif %} — {{ a["avg_w"]|int }}W</option>
-              {% endfor %}
-            </optgroup>
-            {% endfor %}
-          </select>
+      <label style="display:inline-flex; gap:0.4rem; align-items:center; font-size:0.85rem; margin-bottom:0.5rem;">
+        <input type="checkbox" class="la-custom" style="width:auto;"> Custom appliance (not in the catalog)
+      </label>
+
+      {# Catalog mode: the room's own appliances by default, or search everything. #}
+      <div class="la-catalog">
+        <div class="form-grid">
+          <div class="field wide">
+            <label>Search all appliances <span class="muted" style="font-weight:400;">— e.g. a keyboard kept in the kitchen</span></label>
+            <input type="search" class="la-search" autocomplete="off" placeholder="type to search the whole catalog…">
+          </div>
+          <div class="field wide">
+            <label>Appliance <span class="la-scope muted" style="font-weight:400;"></span></label>
+            <select name="catalog_id" class="la-select"></select>
+          </div>
         </div>
-        <div class="field"><label>Custom name</label><input name="custom_name" placeholder="only if not using the catalog"></div>
-        <div class="field"><label>Custom watts</label><input type="number" step="any" name="custom_watts"></div>
+      </div>
+
+      {# Custom mode: only shown when the toggle is checked. #}
+      <div class="la-customfields" style="display:none;">
+        <div class="form-grid">
+          <div class="field"><label>Custom name</label><input class="la-cname" name="custom_name" disabled></div>
+          <div class="field"><label>Custom watts</label><input class="la-cwatts" type="number" step="any" name="custom_watts" disabled></div>
+          <div class="field">
+            <label>Usage</label>
+            <select class="la-cusage" name="custom_usage_type" disabled>
+              {% for u in load_usage_types %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-top:0.3rem;">
         <div class="field"><label>Qty</label><input type="number" step="any" name="qty" value="1"></div>
-        <div class="field"><label>Hrs/day (override)</label><input type="number" step="any" name="hrs" placeholder="catalog default if blank"></div>
-        <div class="field">
-          <label>Usage (custom only)</label>
-          <select name="custom_usage_type">
-            {% for u in load_usage_types %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
-          </select>
-        </div>
+        <div class="field"><label>Hrs/day <span class="muted" style="font-weight:400;">(catalog default if blank)</span></label><input type="number" step="any" name="hrs"></div>
       </div>
       <div class="actions">
         <button type="submit" class="btn">＋ Add appliance</button>
@@ -159,7 +179,14 @@
   <form method="post" action="{{ url_for('add_load_room', job_id=job['id']) }}" class="form-grid" style="margin-top:0.6rem;">
     <div class="field"><label>New room name</label><input name="name" required placeholder="e.g. Kitchen"></div>
     <div class="field">
-      <label>Room type</label>
+      <label>Type <span class="muted" style="font-weight:400;">(filters the appliance picker)</span></label>
+      <select name="category">
+        <option value="">— any —</option>
+        {% for c in appliance_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Room kind</label>
       <select name="room_type">
         <option value="standard">Standard room</option>
         <option value="scenario">Custom use-case (seasonal / unusual load)</option>
@@ -179,11 +206,11 @@
   </dl>
 </details>
 
-{% if sizing["ui_mode"] == "designer" %}
+{% if ui_mode == "designer" %}
 <details class="card sect" open>
   <summary>System sizing</summary>
   <form method="post" action="{{ url_for('update_sizing', job_id=job['id']) }}">
-    <input type="hidden" name="ui_mode" value="{{ sizing['ui_mode'] }}">
+    <input type="hidden" name="ui_mode" value="{{ ui_mode }}">
     <fieldset {% if locked %}disabled{% endif %} style="border:0; padding:0; margin:0; min-inline-size:auto;">
     <div class="form-grid">
       <div class="field">
@@ -323,4 +350,60 @@
   {% endif %}
 </div>
 {% endif %}
+
+<script>
+  // Piece 26.4: the load-survey appliance picker. Each room's dropdown shows
+  // that room's "type" of appliances by default; a search box filters the whole
+  // catalog (for the odd item kept in an unusual room). The Custom toggle swaps
+  // in free-text fields.
+  var APPLIANCES = {{ all_appliances | tojson }};
+  function optText(a, withCat) {
+    return a.name + (a.era ? " (" + a.era + ")" : "") + " — " + a.watts + "W"
+           + (withCat ? "  · " + a.category : "");
+  }
+  document.querySelectorAll(".load-add").forEach(function (form) {
+    var roomCat = form.dataset.roomCat || "";
+    var select = form.querySelector(".la-select");
+    var search = form.querySelector(".la-search");
+    var scope = form.querySelector(".la-scope");
+    var customBox = form.querySelector(".la-custom");
+    var catalog = form.querySelector(".la-catalog");
+    var customFields = form.querySelector(".la-customfields");
+
+    function fill() {
+      var q = (search.value || "").trim().toLowerCase();
+      var searching = q.length > 0;
+      var list = APPLIANCES.filter(function (a) {
+        if (searching) return a.name.toLowerCase().indexOf(q) !== -1;
+        return roomCat ? a.category === roomCat : true;
+      });
+      list.sort(function (x, y) { return x.name.localeCompare(y.name); });
+      select.innerHTML = "";
+      if (!list.length) {
+        var o = document.createElement("option");
+        o.value = ""; o.textContent = searching ? "no match — try the Custom toggle" : "— none for this room —";
+        select.appendChild(o);
+      }
+      list.forEach(function (a) {
+        var o = document.createElement("option");
+        o.value = a.id; o.textContent = optText(a, searching || !roomCat);
+        select.appendChild(o);
+      });
+      scope.textContent = searching ? "(whole catalog)"
+                          : (roomCat ? "(" + roomCat + ")" : "(whole catalog)");
+    }
+    function setCustom(on) {
+      customFields.style.display = on ? "" : "none";
+      catalog.style.display = on ? "none" : "";
+      // Only the active mode's inputs submit.
+      select.disabled = on;
+      form.querySelectorAll(".la-cname,.la-cwatts,.la-cusage").forEach(function (el) {
+        el.disabled = !on;
+      });
+    }
+    search.addEventListener("input", fill);
+    customBox.addEventListener("change", function () { setCustom(customBox.checked); });
+    fill(); setCustom(false);
+  });
+</script>
 {% endblock %}
