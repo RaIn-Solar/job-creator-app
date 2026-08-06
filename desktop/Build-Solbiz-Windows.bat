@@ -25,7 +25,7 @@ where py >nul 2>nul && (set "PY=py") || (set "PY=python")
 )
 
 echo.
-echo [2/3] Installing the packaging tools ^(one-time, needs internet^)...
+echo [2/4] Installing the packaging tools ^(one-time, needs internet^)...
 %PY% -m pip install --upgrade pip
 %PY% -m pip install --upgrade pyinstaller flask
 if errorlevel 1 (
@@ -37,7 +37,25 @@ if errorlevel 1 (
 )
 
 echo.
-echo [3/3] Building Solbiz.exe ^(this takes a few minutes^)...
+echo [3/4] Clearing the previous build...
+REM A running Solbiz locks its own files, which makes the rebuild fail with
+REM "Access is denied". Close any open copy first, then wipe the old output.
+taskkill /F /IM Solbiz.exe >nul 2>nul
+rmdir /S /Q dist  >nul 2>nul
+rmdir /S /Q build >nul 2>nul
+if exist "dist\Solbiz" (
+  echo.
+  echo Could not remove the old  dist\Solbiz  folder -- something still has a
+  echo file open in it. Please:
+  echo    1. CLOSE any open Solbiz window ^(the black console window^).
+  echo    2. Close any Explorer window showing the  dist\Solbiz  folder.
+  echo    3. Run this build again.
+  pause
+  exit /b 1
+)
+
+echo.
+echo [4/4] Building Solbiz.exe ^(this takes a few minutes^)...
 %PY% -m PyInstaller --noconfirm --clean desktop\solbiz.spec
 if errorlevel 1 (
   echo.

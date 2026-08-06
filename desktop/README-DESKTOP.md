@@ -31,6 +31,13 @@ You'll do this on your Windows PC — the same one where you already run
 
 > If the build ever fails, copy the red text from the black window and send
 > it to me — that tells me exactly what to fix.
+>
+> **"Access is denied" during the build?** That means a copy of Solbiz was
+> still running and had its own files locked. Close every open **Solbiz
+> window** (the black console windows) and any Explorer window sitting in
+> `dist\Solbiz`, then run the build again. The script now tries to close a
+> running Solbiz and clear the old `dist`/`build` folders for you first, so
+> this should be rare.
 
 ---
 
