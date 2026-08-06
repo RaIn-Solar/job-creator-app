@@ -2,7 +2,13 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.9** (footer shows it plainly as "Version 26.9" — the "did my pull work?" check)
+**Current build:** **Piece 27.0** (footer shows it plainly as "Version 27.0" — the "did my pull work?" check)
+
+**Piece 27.0 — Calculator Catalog rename.** Renamed the load-calculator's
+"Appliance & component catalog" to **"Calculator Catalog"** — the page `<title>`,
+the H1 (now "🔌 Calculator Catalog"), and the Databases nav entry. Route
+(`/catalog`, `catalog_page`), tables (`appliance_catalog` / `component_catalog`),
+and behavior are unchanged; purely a display rename.
 
 **Piece 26.9 — L/P/C Directory consolidation + verbatim source text; renames.**
 Four changes to the two rule pages.
