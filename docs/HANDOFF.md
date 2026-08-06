@@ -2,7 +2,22 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.9** (footer shows it plainly as "Version 27.9" — the "did my pull work?" check)
+**Current build:** **Piece 28.0** (footer shows it plainly as "Version 28.0" — the "did my pull work?" check)
+
+**Piece 28.0 — Photo steps complete on their own screen.** Any task `_is_photo_step`
+(site visit/installation, install walkthrough, meter set, doc tube, re-inspect, or any
+"photo"/"picture" step) no longer shows the inline time form on the per-job Work Bag
+page — instead a prominent **📷 Take, review & submit photos →** button (with thumbnails)
+opens the dedicated photo screen (`work_bag_photos.html`, now a 3-step layout: **1 Take/
+upload → 2 Review → 3 Submit & mark done**). Step 3 carries a Notes field, work date, the
+same **time-by-pay-type segments + timeline**, and **✓ Submit & mark done** / **⚠ Can't
+finish**. Submitting posts to the new **`complete_photo_task`** route, which requires at
+least one photo on file for a "done", creates the field submission (Done/Blocked + segments
+via the shared `_validated_segments` helper), and **redirects back to the job's Work Bag
+page** — where the task shows "submitted — awaiting approval" and, once the supervisor
+approves, flips to Done and posts Pending payroll by pay type (same two-sign-off flow as
+27.9). Verified end-to-end (done-needs-a-photo guard, photo upload, done-with-time,
+blocked-needs-a-note, approval → 2 Pending payroll entries) + headless shots of both screens.
 
 **Piece 27.9 — Per-task "Submit as done" with time by pay type (merged tasks + submit).**
 On the per-job Work Bag page each field task lost the status dropdown + global "submit

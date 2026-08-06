@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 27.9"
+VERSION = "Piece 28.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -6925,6 +6925,26 @@ def api_my_tasks():
     })
 
 
+def _validated_segments(db, segs, pt_names=None):
+    """Piece 27.9/28.0: clean a list of {pay_type_id, hours} time segments —
+    keep only active pay types with positive hours, and attach the pay-type name
+    for display. Shared by the Work Bag submit API and the photo-step completion."""
+    if pt_names is None:
+        pt_names = {t["id"]: t["name"] for t in payroll_pay_types(db)}
+    out = []
+    for seg in (segs or []):
+        try:
+            pid = int(seg.get("pay_type_id"))
+        except (TypeError, ValueError):
+            continue
+        hrs = _to_float(seg.get("hours"))
+        if pid not in pt_names or not hrs or hrs <= 0:
+            continue
+        out.append({"pay_type_id": pid, "pay_type_name": pt_names[pid],
+                    "hours": round(hrs, 2)})
+    return out
+
+
 @app.route("/api/work-bag/submit", methods=["POST"])
 def api_work_bag_submit():
     """Save the worker's completed field work as a PENDING submission — a
@@ -6950,19 +6970,8 @@ def api_work_bag_submit():
         status = ch.get("status", row["status"])
         if status not in TASK_STATUSES:
             status = row["status"]
-        segments = []
-        for seg in (ch.get("segments") or []):
-            pid = seg.get("pay_type_id")
-            try:
-                pid = int(pid)
-            except (TypeError, ValueError):
-                continue
-            hrs = _to_float(seg.get("hours"))
-            if pid not in pt_names or not hrs or hrs <= 0:
-                continue
-            segments.append({"pay_type_id": pid, "pay_type_name": pt_names[pid],
-                             "hours": round(hrs, 2)})
-            total_hours += hrs
+        segments = _validated_segments(db, ch.get("segments"), pt_names)
+        total_hours += sum(s["hours"] for s in segments)
         work_date = (ch.get("work_date") or payload.get("work_date") or "").strip()
         valid.append((row["id"], row["title"], status,
                       ch.get("notes", row["notes"]), ch.get("base_updated_at") or "",
@@ -7221,7 +7230,63 @@ def task_photos(task_id):
     photos = db.execute(
         "SELECT * FROM job_files WHERE job_id = ? AND rule_label = ? AND task_id = ?"
         " ORDER BY id DESC", (job_id, FIELD_PHOTO_LABEL, str(task_id))).fetchall()
-    return render_template("work_bag_photos.html", task=task, photos=photos)
+    pay_types = payroll_pay_types(db)
+    return render_template(
+        "work_bag_photos.html", task=task, photos=photos,
+        today=datetime.now().strftime("%Y-%m-%d"),
+        pay_types_js=[{"id": t["id"], "name": t["name"]} for t in pay_types])
+
+
+@app.route("/work-bag/tasks/<int:task_id>/complete", methods=["POST"])
+def complete_photo_task(task_id):
+    """Piece 28.0: finish a photo step from its dedicated screen — record the
+    photos already uploaded plus (optionally) the time it took, submit the task
+    for the supervisor's approval, and return to the job's Work Bag page."""
+    user = current_user()
+    if user is None:
+        abort(403)
+    db = get_db()
+    task = db.execute("SELECT * FROM job_tasks WHERE id = ? AND employee_id = ?",
+                      (task_id, user["id"])).fetchone()
+    if task is None:
+        flash("That task isn't in your bag.", "error")
+        return redirect(url_for("work_bag"))
+    action = request.form.get("action", "done")
+    status = "Blocked" if action == "blocked" else "Done"
+    notes = request.form.get("notes", "").strip()
+    work_date = request.form.get("work_date", "").strip()
+    if status == "Done":
+        n = db.execute(
+            "SELECT COUNT(*) AS c FROM job_files WHERE task_id = ? AND rule_label = ?",
+            (str(task_id), FIELD_PHOTO_LABEL)).fetchone()["c"]
+        if not n:
+            flash("Take at least one photo before submitting this step as done.", "error")
+            return redirect(url_for("task_photos", task_id=task_id))
+    if status == "Blocked" and not notes:
+        flash("Add a note about what's blocking it.", "error")
+        return redirect(url_for("task_photos", task_id=task_id))
+    try:
+        raw_segs = json.loads(request.form.get("segments") or "[]")
+    except (ValueError, TypeError):
+        raw_segs = []
+    segments = _validated_segments(db, raw_segs) if status == "Done" else []
+    total = sum(s["hours"] for s in segments)
+    cur = db.execute(
+        "INSERT INTO field_submissions (employee_id, work_date, reported_hours, note)"
+        " VALUES (?, ?, ?, ?)",
+        (user["id"], work_date, round(total, 2) if total else None, ""))
+    sub_id = cur.lastrowid
+    db.execute(
+        "INSERT INTO field_submission_items"
+        " (submission_id, task_id, task_title, new_status, new_notes,"
+        "  base_updated_at, hours_json, work_date)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (sub_id, task_id, task["title"], status, notes,
+         task["updated_at"] or "", json.dumps(segments), work_date))
+    db.commit()
+    flash(f"“{task['title']}” submitted for approval."
+          if status == "Done" else f"“{task['title']}” flagged as blocked for the office.")
+    return redirect(url_for("work_bag_job", job_id=task["job_id"]))
 
 
 @app.route("/work-bag/photos/<int:file_id>/delete", methods=["POST"])
