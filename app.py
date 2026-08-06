@@ -901,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 27.0"
+VERSION = "Piece 27.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2245,100 +2245,10 @@ def init_db():
     # Piece 26.9: verbatim source text for a rule (esp. compliance) — the exact
     # wording from the code/source, shown above the shorthand in the L/P/C Directory.
     ensure_columns(db, "resource_rules", ["source_text"])
-    if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
-        # (name, phone, email, referral, mailing parts, billing parts)
-        samples = [
-            ("Johnson Residence (sample)", "575-555-0142",
-             "mjohnson@example.com", "Google search",
-             ("1247 Highway 518", "Mora", "NM", "87732"),
-             ("1247 Highway 518", "Mora", "NM", "87732")),
-            ("Rivera Residence (sample)", "505-555-0189",
-             "", "Neighbor referral — the Ortiz install",
-             ("902 Mesa Verde Dr", "Las Vegas", "NM", "87701"),
-             ("PO Box 2210", "Las Vegas", "NM", "87701")),
-            ("Sandia Ridge Winery (sample)", "505-555-0173",
-             "office@sandiaridge.example.com", "Repeat commercial client",
-             ("58 Bonanza Creek Rd", "Santa Fe", "NM", "87508"),
-             ("PO Box 4415", "Santa Fe", "NM", "87502")),
-        ]
-        db.executemany(
-            "INSERT INTO clients"
-            " (name, phone, email, referral_source,"
-            "  mailing_street, mailing_city, mailing_state, mailing_zip,"
-            "  billing_street, billing_city, billing_state, billing_zip,"
-            "  mailing_address, billing_address, lead_status)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Converted')",
-            [(name, phone, email, referral, *mail, *bill,
-              compose_address(*mail), compose_address(*bill))
-             for name, phone, email, referral, mail, bill in samples],
-        )
-        # One sample job per client, chosen to show off different paths
-        # through the rules engine: residential grid-tie, off-grid multi-
-        # product, and a commercial install.
-        db.executemany(
-            "INSERT INTO jobs (client_id, job_name, site_location, county,"
-            " electric_loads, utility_provider, warranty_type, cost_method,"
-            " tax_credit, expand_option, products, pv_utility_connection,"
-            " pv_mounting_type, pv_manufactured_house, generator_utility_connection,"
-            " battery_utility_connection, service_type, property_type)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (1, "Johnson PV + Battery (sample)",
-                 "1247 Highway 518, Mora, NM 87732", "Mora County",
-                 "3-ton AC, well pump, shop sub-panel", "MSMEC",
-                 "Standard 10-year", "Cash", "Yes", "Yes",
-                 "PV Systems, Battery Banks",
-                 "Grid-tie", "Roof mounted", "", "", "Grid-tie", "", "Residential"),
-                (2, "Rivera Off-Grid Cabin (sample)",
-                 "902 Mesa Verde Dr, Las Vegas, NM 87701", "San Miguel County",
-                 "Well pump, lighting, propane range, mini split", "Springer Electric",
-                 "Standard 10-year", "Finance", "Yes", "No",
-                 "PV Systems, Battery Banks, Generators",
-                 "Off-grid", "Ground mount", "", "Off-grid", "Off-grid", "", "Residential"),
-                (3, "Sandia Ridge Commercial PV (sample)",
-                 "58 Bonanza Creek Rd, Santa Fe, NM 87508", "Santa Fe County",
-                 "Winery process loads, cold storage, tasting room", "PNM",
-                 "Standard 10-year", "Cash", "No", "No",
-                 "PV Systems, Battery Banks",
-                 "Grid-tie", "Roof mounted", "", "", "Grid-tie", "", "Commercial"),
-            ],
-        )
-        emp1 = db.execute(
-            "INSERT INTO employees (name, roles, schedule) VALUES (?, ?, ?)",
-            ("Daniel Ortiz (sample)", "Lead Installer, Installer",
-             "Mon–Fri 7:00 AM – 4:00 PM")).lastrowid
-        emp2 = db.execute(
-            "INSERT INTO employees (name, roles, schedule) VALUES (?, ?, ?)",
-            ("Maria Sandoval (sample)", "Operations Manager, Administration Manager",
-             "Mon–Fri 8:00 AM – 5:00 PM")).lastrowid
-        db.executemany(
-            "INSERT INTO employee_credentials"
-            " (employee_id, name, rule_label, number, issued, expires, notes)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                (emp1, "EE-98J Journeyman", "EE-98J Journeyman", "JX-4821",
-                 "2023-03-15", "2027-03-15", "per tech on site"),
-                (emp1, "EPA Section 608 — Universal",
-                 "EPA Section 608 — Type II or Universal", "", "2019-05-01", "", ""),
-                (emp1, "OSHA 30", "", "", "2022-06-01", "", ""),
-                (emp2, "NABCEP PV Associate", "", "", "2024-01-10", "", ""),
-                (emp2, "First Aid / CPR", "", "", "2024-08-25", "2026-08-25", ""),
-            ],
-        )
-        # A few sample tasks so the Tasks tab isn't empty in the demo.
-        db.executemany(
-            "INSERT INTO job_tasks"
-            " (job_id, employee_id, title, status, due_date, notes, sort_order)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                (1, emp1, "Pull electrical permit (MSMEC)", "In progress", "", "", 0),
-                (1, emp2, "Submit SMDTC 20% credit application", "To do", "", "client files", 1),
-                (1, emp1, "Schedule rough-in inspection", "To do", "", "", 2),
-                (3, emp1, "Fire authority plan review — commercial ESS", "Blocked", "", "waiting on AHJ", 0),
-                (3, emp2, "Order utility interconnection application (PNM)", "To do", "", "", 1),
-            ],
-        )
-        db.commit()
+    # Piece 27.1: sample client/job seed removed for production. A fresh
+    # database now starts with NO clients, jobs, tasks, or sample employees
+    # — only the reference databases (staff roster, inventory, calculator
+    # catalog, rules, pay types) seed. (History has the old demo data.)
     if db.execute("SELECT COUNT(*) FROM resource_rules").fetchone()[0] == 0:
         insert_seed_rules(db, SEED_RULES)
         db.commit()

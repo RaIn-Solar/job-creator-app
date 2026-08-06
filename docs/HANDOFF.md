@@ -2,7 +2,22 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.0** (footer shows it plainly as "Version 27.0" — the "did my pull work?" check)
+**Current build:** **Piece 27.1** (footer shows it plainly as "Version 27.1" — the "did my pull work?" check)
+
+**Piece 27.1 — Removed the sample client/job seed (clean production data).**
+Deleted the `if clients == 0:` demo-seed block in `init_db` that created three
+sample clients, three sample jobs, five sample tasks, and two sample employees
+("Daniel Ortiz (sample)" / "Maria Sandoval (sample)") + their credentials. A fresh
+database now starts with **no clients, jobs, or tasks** — only the reference
+databases seed: the real staff roster (`seed_org_team` — Cary, Will, Rachel, Louie,
+Trish, Si, Lisa, Vanessa, Brady), inventory (439 items / 49 tools / 11 vehicles / 52
+vendors), the Calculator Catalog (379 appliances / 62 components), the 145 resource
+rules, and the 5 pay types. **Scope note:** this only affects *new* databases — an
+already-seeded install keeps whatever data it has (the old guard was `clients == 0`,
+now the block is simply gone), which is exactly right for shipping a clean packaged
+exe. Verified a fresh DB: all client/job/task/sample-employee tables at 0, every
+reference table intact, and all key pages (home, dashboards, tasks, inventory,
+catalog, rules, directory, payroll, employees) render 200 with no clients/jobs.
 
 **Piece 27.0 — Calculator Catalog rename.** Renamed the load-calculator's
 "Appliance & component catalog" to **"Calculator Catalog"** — the page `<title>`,
