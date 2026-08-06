@@ -901,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 26.4"
+VERSION = "Piece 26.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2614,6 +2614,122 @@ def compute_voc(voc_rated, temp_coef_pct, record_low_temp_f, max_input_v):
     return voc_corrected, max_modules
 
 
+# --- Piece 26.5: component auto-suggest from live inventory specs ------------
+def _spec_num(specs, *keys):
+    """First numeric value among the given spec keys, or None. Specs are the
+    per-item JSON blobs (e.g. {'Rating': 630.0, 'Voc': 48.8})."""
+    for k in keys:
+        v = specs.get(k)
+        if v not in (None, ""):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _rank_role(label, unit, cands):
+    """Take the fitting candidates for one role (already carrying a private
+    `_sort` key), order them best-first, and label the top three: the first is
+    the "Recommended" pick, the next two are "Alternate" 2nd/3rd choices."""
+    cands.sort(key=lambda c: c.pop("_sort"))
+    top = cands[:3]
+    tags = ["Recommended", "Alternate", "Alternate"]
+    for i, c in enumerate(top):
+        c["rank"] = i + 1
+        c["tag"] = tags[i]
+    return {"label": label, "unit": unit, "suggestions": top}
+
+
+def suggest_components(db, array_kw, peak_w, battery_kwh_needed):
+    """Read the specs on ACTIVE inventory items and propose the components that
+    fit the sized job — PV modules, batteries, and the inverter. For each role
+    the fitting items are ranked (in-stock first, then the tidiest fit and the
+    lower cost) and the top three are returned: a primary "Recommended" pick
+    plus up to two "Alternate" 2nd/3rd choices, each with the quantity needed
+    and a short "why", so the Designer can accept one with a single click."""
+    rows = db.execute(
+        "SELECT id, category, make, model, cost, available, specs"
+        " FROM inventory_items WHERE active = 1 AND status = 'Active'"
+        "   AND category IN ('PV Module', 'Battery', 'Inverter')"
+    ).fetchall()
+    parsed = []
+    for it in rows:
+        try:
+            sp = json.loads(it["specs"] or "{}")
+        except (ValueError, TypeError):
+            sp = {}
+        parsed.append((it, sp))
+
+    def _name(it):
+        return " ".join(p for p in (it["make"], it["model"]) if p) or it["model"] or "—"
+
+    def _cost_key(it):
+        return it["cost"] if it["cost"] not in (None, "") else float("inf")
+
+    roles = []
+
+    # PV modules — fit by nameplate wattage ("Rating") to reach the array size.
+    if array_kw and array_kw > 0:
+        cands = []
+        for it, sp in parsed:
+            if it["category"] != "PV Module":
+                continue
+            watts = _spec_num(sp, "Rating")
+            if not watts or watts <= 0:
+                continue
+            qty = math.ceil((array_kw * 1000) / watts)
+            in_stock = (it["available"] or 0) > 0
+            cands.append({
+                "item_id": it["id"], "name": _name(it), "category": "PV Module",
+                "qty": qty, "unit_cost": it["cost"], "in_stock": in_stock,
+                "why": f"{watts:g} W module — {qty} panels reach the {array_kw:.2f} kW array",
+                "_sort": (qty, 0 if in_stock else 1, _cost_key(it)),
+            })
+        roles.append(_rank_role("PV modules", "panels", cands))
+
+    # Batteries — fit by usable capacity ("Capacity", kWh) for the backup bank.
+    if battery_kwh_needed and battery_kwh_needed > 0:
+        cands = []
+        for it, sp in parsed:
+            if it["category"] != "Battery":
+                continue
+            cap = _spec_num(sp, "Capacity")
+            if not cap or cap <= 0:
+                continue
+            qty = math.ceil(battery_kwh_needed / cap)
+            in_stock = (it["available"] or 0) > 0
+            cands.append({
+                "item_id": it["id"], "name": _name(it), "category": "Battery",
+                "qty": qty, "unit_cost": it["cost"], "in_stock": in_stock,
+                "why": f"{cap:g} kWh each — {qty} for the {battery_kwh_needed:.1f} kWh bank",
+                "_sort": (qty, 0 if in_stock else 1, _cost_key(it)),
+            })
+        roles.append(_rank_role("Batteries", "units", cands))
+
+    # Inverter — the smallest unit whose rated power ("Pout Rated (kW)") still
+    # carries the peak load; oversizing is the tie-breaker, then cost.
+    if peak_w and peak_w > 0:
+        peak_kw = peak_w / 1000.0
+        cands = []
+        for it, sp in parsed:
+            if it["category"] != "Inverter":
+                continue
+            pout = _spec_num(sp, "Pout Rated (kW)")
+            if not pout or pout <= 0 or pout + 1e-9 < peak_kw:
+                continue
+            in_stock = (it["available"] or 0) > 0
+            cands.append({
+                "item_id": it["id"], "name": _name(it), "category": "Inverter",
+                "qty": 1, "unit_cost": it["cost"], "in_stock": in_stock,
+                "why": f"{pout:g} kW rated — covers the {peak_kw:.1f} kW peak",
+                "_sort": (round(pout, 3), 0 if in_stock else 1, _cost_key(it)),
+            })
+        roles.append(_rank_role("Inverter", "unit", cands))
+
+    return [r for r in roles if r["suggestions"]]
+
+
 @app.route("/")
 def home():
     db = get_db()
@@ -4244,6 +4360,14 @@ def job_loads(job_id):
             )
     bom_total = sum((b["qty"] or 0) * (b["unit_cost"] or 0) for b in bom)
 
+    # Piece 26.5: once the load survey has produced sizing figures, read the
+    # live inventory specs and auto-suggest the components that fit. Only
+    # meaningful in Designer mode and once there's a real survey to size from.
+    ui_mode = loads_view_mode(current_user())
+    suggestions = []
+    if ui_mode == "designer" and load_items and (array_kw or battery_kwh_needed or peak_w):
+        suggestions = suggest_components(db, array_kw, peak_w, battery_kwh_needed)
+
     return render_template(
         "job_loads.html", job=job, locked=_loads_locked(job),
         rooms=rooms, items_by_room=items_by_room, sizing=sizing, bom=bom,
@@ -4255,7 +4379,7 @@ def job_loads(job_id):
         edit_item=request.args.get("edit_item", type=int),
         edit_bom=request.args.get("edit_bom", type=int),
         load_usage_types=LOAD_USAGE_TYPES, load_eras=LOAD_ERAS,
-        ui_mode=loads_view_mode(current_user()),
+        ui_mode=ui_mode, suggestions=suggestions,
         all_appliances=all_appliances, appliance_categories=appliance_categories,
         daily_kwh=daily_kwh, peak_w=peak_w, array_kw=array_kw,
         panel_count=panel_count, battery_kwh_needed=battery_kwh_needed,
@@ -4497,6 +4621,40 @@ def add_bom_item(job_id):
             (job_id, name, category, qty, _float(cost, None) if cost else None, notes),
         )
     db.commit()
+    return redirect(url_for("job_loads", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/loads/bom/suggest", methods=["POST"])
+@loads_unlocked
+def accept_suggested_component(job_id):
+    """Piece 26.5: one-click accept of an auto-suggested inventory component.
+    Drops the picked item into the BOM at the sized quantity, at its inventory
+    cost. Inventory items aren't catalog components, so component_id stays NULL;
+    accepting the same item again tops up its quantity instead of duplicating."""
+    fetch_job(job_id)
+    db = get_db()
+    name = request.form.get("name", "").strip()
+    category = request.form.get("category", "").strip()
+    qty = _float(request.form.get("qty"), 1) or 1
+    cost = request.form.get("unit_cost")
+    unit_cost = _float(cost, None) if cost not in (None, "") else None
+    if not name:
+        flash("Nothing to add.", "error")
+        return redirect(url_for("job_loads", job_id=job_id))
+    existing = db.execute(
+        "SELECT id FROM job_bom WHERE job_id = ? AND component_id IS NULL"
+        "   AND component_name = ? AND category = ?",
+        (job_id, name, category)).fetchone()
+    if existing:
+        db.execute("UPDATE job_bom SET qty = ? WHERE id = ?", (qty, existing["id"]))
+    else:
+        db.execute(
+            "INSERT INTO job_bom"
+            " (job_id, component_id, component_name, category, qty, unit_cost, notes)"
+            " VALUES (?, NULL, ?, ?, ?, ?, ?)",
+            (job_id, name, category, qty, unit_cost, "Suggested from inventory"))
+    db.commit()
+    flash(f"Added {name} to the BOM.")
     return redirect(url_for("job_loads", job_id=job_id))
 
 

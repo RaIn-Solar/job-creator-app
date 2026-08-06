@@ -268,6 +268,46 @@
   design values — confirm against the specific site).</p>
 </details>
 
+{% if suggestions and not locked %}
+<div class="card" style="border-color:var(--brand); background:#f3faf5;">
+  <h3 style="margin-top:0;">✨ Suggested components
+    <span class="muted" style="font-weight:400; font-size:0.82rem;">— matched to the recorded loads &amp; sizing from what's in inventory</span></h3>
+  <p class="muted" style="margin-top:0;">Pick one per row and it drops into the
+    BOM below at the sized quantity. The <strong>Recommended</strong> pick fits
+    best and favors in-stock items; the alternates are 2nd/3rd choices.</p>
+  {% for role in suggestions %}
+  <div style="margin-bottom:0.9rem;">
+    <div style="font-weight:600; margin-bottom:0.35rem;">{{ role.label }}</div>
+    <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+      {% for s in role.suggestions %}
+      <form method="post" action="{{ url_for('accept_suggested_component', job_id=job['id']) }}"
+            style="margin:0; flex:1 1 220px; min-width:220px; border:1px solid var(--border);
+                   border-radius:8px; padding:0.6rem 0.7rem; background:#fff;
+                   {% if s.rank == 1 %}border-color:var(--brand); box-shadow:0 0 0 1px var(--brand);{% endif %}">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem; margin-bottom:0.25rem;">
+          <span class="badge{% if s.rank == 1 %}{% else %} warn{% endif %}">{{ s.tag }}</span>
+          {% if s.in_stock %}<span class="badge" style="background:#1a6e3c;">In stock</span>
+          {% else %}<span class="muted" style="font-size:0.72rem;">order-in</span>{% endif %}
+        </div>
+        <div style="font-weight:600; font-size:0.9rem; line-height:1.25;">{{ s.name }}</div>
+        <div class="muted" style="font-size:0.78rem; margin:0.2rem 0;">{{ s.why }}</div>
+        <div style="font-size:0.82rem; margin-bottom:0.4rem;">
+          <strong>{{ s.qty }}</strong> {{ role.unit }}{% if s.unit_cost %} · ${{ "%.0f"|format(s.unit_cost) }} ea
+          · ${{ "%.0f"|format(s.qty * s.unit_cost) }} line{% endif %}</div>
+        <input type="hidden" name="name" value="{{ s.name }}">
+        <input type="hidden" name="category" value="{{ s.category }}">
+        <input type="hidden" name="qty" value="{{ s.qty }}">
+        <input type="hidden" name="unit_cost" value="{{ s.unit_cost if s.unit_cost is not none else '' }}">
+        <button type="submit" class="btn{% if s.rank != 1 %} btn-secondary{% endif %}"
+                style="width:100%; padding:0.3rem;">✓ Accept</button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="card">
   <h3 style="margin-top:0;">Components / bill of materials</h3>
   {% if bom %}

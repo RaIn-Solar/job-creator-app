@@ -2,7 +2,30 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.4** (footer shows it plainly as "Version 26.4" — the "did my pull work?" check)
+**Current build:** **Piece 26.5** (footer shows it plainly as "Version 26.5" — the "did my pull work?" check)
+
+**Piece 26.5 — Component auto-suggest from inventory specs.** Once a load
+survey has produced sizing figures, the Loads page reads the specs on **Active**
+`inventory_items` and proposes the components that fit the job. `suggest_components(db,
+array_kw, peak_w, battery_kwh_needed)` builds three roles — **PV modules** (fit by
+nameplate `Rating` W → panel count for the array kW), **Batteries** (fit by
+`Capacity` kWh → units for the backup bank), and the **Inverter** (smallest unit
+whose `Pout Rated (kW)` still carries the peak). Each role ranks its candidates by
+the tidiest fit (fewest panels/units, or least-oversized inverter), with in-stock
+(`available > 0`) as the tie-breaker and cost last, then returns the top three: a
+primary **Recommended** pick plus up to two **Alternate** 2nd/3rd choices, each
+with the sized quantity, cost, and a short "why". Only computed in **Designer
+mode** and only when a survey exists (`ui_mode == "designer" and load_items`). The
+job_loads route passes `suggestions`; job_loads.html renders a green "✨ Suggested
+components" panel above the BOM with a one-click **✓ Accept** button per card. Accept
+posts to `accept_suggested_component` (`/jobs/<id>/loads/bom/suggest`, guarded by
+`loads_unlocked`), which drops the item into `job_bom` at the sized qty/inventory
+cost (`component_id` NULL, note "Suggested from inventory"); re-accepting the same
+item **sets** its qty rather than duplicating the row. Helpers `_spec_num()` (first
+numeric among spec keys) and `_rank_role()` (sort + label top three) sit by
+`compute_voc`. Verified end-to-end via the test client (Designer login → panel
+renders → recommended pick is a sensible 12×710 W ≈ 8.5 kW array → accept inserts
+the BOM line → re-accept dedupes).
 
 **Piece 26.4 — Loads & Sizing survey tweaks.** Four changes to the load-survey
 page. (1) **Removed** the BPMN "Process chart" button from the page toolbar.
