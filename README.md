@@ -375,5 +375,8 @@ can confirm a pull/update took effect.
   OpenSSL dependency) with a graceful login fallback; and a **first-launch data
   importer** that adopts an existing `job_creator.db` + `uploads` from a
   drop-in `Solbiz-Import` folder (see `desktop/README-DESKTOP.md`).
+- **Piece 28.8** — the importer now also runs when `~/Solbiz` holds only a
+  **blank starter database** (created by an earlier launch), backing that empty
+  file aside first, so a prior run no longer blocks bringing in real data.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

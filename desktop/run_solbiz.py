@@ -38,10 +38,37 @@ else:
     APP_DIR = Path(__file__).resolve().parent
 
 
+def _db_is_empty_starter(path):
+    """True if `path` is a brand-new database with nothing worth keeping — no
+    clients, no jobs, and no employees with a login. A blank starter DB (which
+    an earlier launch may have already created) must not block importing real
+    data. Anything unreadable is treated as NOT empty, so we never clobber a
+    database we can't inspect."""
+    import sqlite3
+    try:
+        con = sqlite3.connect(str(path))
+        try:
+            for table, cond in (("clients", ""), ("jobs", ""),
+                                ("employees",
+                                 " WHERE COALESCE(username,'') != ''"
+                                 " AND COALESCE(password_hash,'') != ''")):
+                try:
+                    n = con.execute(
+                        f"SELECT COUNT(*) FROM {table}{cond}").fetchone()[0]
+                except sqlite3.Error:
+                    n = 0  # table not created yet -> nothing there
+                if n:
+                    return False
+            return True
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return False
+
+
 def _seed_from_import():
-    """First-run only: copy an existing job_creator.db (+ uploads) into the
-    personal ~/Solbiz folder, so someone moving from the web/dev version keeps
-    all their data.
+    """Copy an existing job_creator.db (+ uploads) into the personal ~/Solbiz
+    folder, so someone moving from the web/dev version keeps all their data.
 
     It looks, in order, at:
       1. $SOLBIZ_IMPORT           - a folder or a .db file you point it at
@@ -49,13 +76,14 @@ def _seed_from_import():
       3. <next to Solbiz.exe>/job_creator.db
       4. ~/Downloads/Solbiz-Import/
 
-    A folder may contain job_creator.db and an uploads/ folder. The import is
-    skipped entirely once ~/Solbiz/job_creator.db already exists, so it never
-    overwrites data you've started entering in the app.
+    A folder may contain job_creator.db and an uploads/ folder. The import runs
+    when ~/Solbiz has no database yet, OR when the one there is a blank starter
+    (no clients/jobs/logins) that an earlier launch created. A database with
+    real data in it is never touched.
     """
     target_db = DATA_DIR / "job_creator.db"
-    if target_db.exists():
-        return  # already set up — never clobber real data
+    if target_db.exists() and not _db_is_empty_starter(target_db):
+        return  # real data already here — never clobber it
 
     # Resolve the source db (and, if present, the uploads folder beside it).
     candidates = []
@@ -85,6 +113,16 @@ def _seed_from_import():
 
     if not src_db:
         return  # nothing to import — normal fresh start
+
+    # If a blank starter DB is already here, set it aside before importing so
+    # nothing is ever destroyed outright.
+    if target_db.exists():
+        backup = target_db.with_name(
+            f"job_creator.db.replaced-{datetime.now():%Y%m%d-%H%M%S}")
+        try:
+            os.replace(target_db, backup)
+        except OSError:
+            pass
 
     shutil.copy2(src_db, target_db)
     imported = f"database from {src_db}"
