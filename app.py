@@ -475,9 +475,9 @@ PAYMENT_SCHEME_NOTE = (
 # Remit-to block printed on customer invoices. Fill in ECC's real details here.
 COMPANY_INFO = {
     "name": "ECC Solar",
-    "address": "",
-    "city_state_zip": "",
-    "phone": "",
+    "address": "1212 Railroad Ave",
+    "city_state_zip": "Las Vegas, NM 87701",
+    "phone": "(505) 454-0614",
     "email": "rachel@eccsolar.com",
     "terms_days": 15,   # net terms for the Progress / Final invoices
 }
@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 27.4"
+VERSION = "Piece 27.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {

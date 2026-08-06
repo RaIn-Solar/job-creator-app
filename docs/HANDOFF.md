@@ -2,7 +2,12 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.4** (footer shows it plainly as "Version 27.4" — the "did my pull work?" check)
+**Current build:** **Piece 27.5** (footer shows it plainly as "Version 27.5" — the "did my pull work?" check)
+
+**Piece 27.5 — ECC remit-to details on invoices.** Filled in `COMPANY_INFO` with
+ECC's real address (1212 Railroad Ave, Las Vegas, NM 87701) and phone
+((505) 454-0614), so the customer invoice header now prints the full remit-to block
+(name, address, city/state/zip, phone, email) instead of name + email only.
 
 **Piece 27.4 — NM gross-receipts-tax line on customer invoices.** Each customer
 invoice now carries a GRT line. The rate is **per job** (`jobs.grt_rate`, set beside
