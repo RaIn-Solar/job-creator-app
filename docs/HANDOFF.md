@@ -2,7 +2,28 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.8** (footer shows it plainly as "Version 26.8" — the "did my pull work?" check)
+**Current build:** **Piece 26.9** (footer shows it plainly as "Version 26.9" — the "did my pull work?" check)
+
+**Piece 26.9 — L/P/C Directory consolidation + verbatim source text; renames.**
+Four changes to the two rule pages.
+(1) **Consolidated the Directory**: `consolidate_rules(rules)` collapses every rule
+sharing a `(category, label)` into ONE entry, listing each triggering **scenario as
+a bullet** beneath it (with that scenario's own note) — so e.g. "EE-98 Contractor
+License" shows once with its scenarios, not a fresh listing per scenario. The entry
+carries a representative source (first non-empty url/link/phone) and escalated verify
+flag (unverified > verify). The count now reads "N requirements".
+(2) **Verbatim source text**: new `resource_rules.source_text` column (+ a "Verbatim
+source text" textarea in the Rules Editor, saved by add/update_rule). In the
+Directory each entry renders, top-to-bottom: **verbatim quote** (when present, esp.
+compliance) → **shorthand label + source hyperlink/phone** → **scenario bullets**.
+Existing rules have no verbatim yet — it's entered per rule in the editor; the block
+is simply omitted when empty.
+(3) **Renamed** the Directory "Rule Directory" → **"L/P/C Directory"** (title, H1,
+nav) — Licenses/Permits/Compliance.
+(4) **Renamed** the editor "Requirement & Resource Rules" → **"Rules Editor"**
+(title, H1, nav). Reciprocal cross-links updated to the new names. Verified via test
+client (verbatim saves + renders, EE-98 appears once with its scenario bullets,
+renames present) + a screenshot.
 
 **Piece 26.8 — Cary defaults to Executive; Rules/Directory tidy-up.**
 (1) **Cary's default dashboard is now the Executive overview** (was Design). The

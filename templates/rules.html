@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Rules{% endblock %}
+{% block title %}Rules Editor{% endblock %}
 {% block content %}
 <div style="margin-bottom: 0.8rem;">
   {% if from_job %}
@@ -9,15 +9,15 @@
   {% endif %}
 </div>
 <div class="toolbar" style="align-items:flex-start;">
-  <h1 style="margin:0;">⚙️ Requirement &amp; resource rules</h1>
-  <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">📖 Browse in the Directory →</a>
+  <h1 style="margin:0;">⚙️ Rules Editor</h1>
+  <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">📖 Browse the L/P/C Directory →</a>
 </div>
-<p class="muted" style="margin-top:0.4rem;">This is the <strong>editor</strong>. Each rule says:
-when a job's <strong>field</strong> matches a <strong>value</strong>, the job needs this
-license, permit, compliance item, link, or phone number. Jobs read these rules live — add
-one here and every matching job page updates immediately, no code changes.
+<p class="muted" style="margin-top:0.4rem;">Each rule says: when a job's
+<strong>field</strong> matches a <strong>value</strong>, the job needs this license,
+permit, compliance item, link, or phone number. Jobs read these rules live — add one
+here and every matching job page updates immediately, no code changes.
 To look up what applies to a given job type instead of editing, use the read-only
-<a href="{{ url_for('rule_directory') }}">Directory</a>.</p>
+<a href="{{ url_for('rule_directory') }}">L/P/C Directory</a>.</p>
 
 {% if can('rules.manage') %}
 {% set er = edit_rule %}
@@ -65,6 +65,11 @@ To look up what applies to a given job type instead of editing, use the read-onl
       <label for="label">The job needs… (label) *</label>
       <input id="label" name="label" required value="{{ er['label'] if er else '' }}"
              placeholder="e.g. County flood-plain permit">
+    </div>
+    <div class="field wide">
+      <label for="source_text">Verbatim source text (optional)</label>
+      <textarea id="source_text" name="source_text" rows="2"
+                placeholder="Exact wording from the code/source — shown above the shorthand in the L/P/C Directory (esp. for compliance rules)">{{ er['source_text'] if er and 'source_text' in er.keys() else '' }}</textarea>
     </div>
     <div class="field">
       <label for="url">Link (optional)</label>

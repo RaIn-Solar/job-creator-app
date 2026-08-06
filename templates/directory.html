@@ -1,15 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Rule directory{% endblock %}
+{% block title %}L/P/C Directory{% endblock %}
 {% block content %}
 <div class="toolbar" style="align-items:flex-start;">
-  <h1 style="margin:0;">📖 Rule directory</h1>
+  <h1 style="margin:0;">📖 L/P/C Directory</h1>
   {% if can('rules.manage') %}
-  <a href="{{ url_for('rules_page') }}" class="btn btn-secondary">⚙️ Edit in Rules →</a>
+  <a href="{{ url_for('rules_page') }}" class="btn btn-secondary">⚙️ Open the Rules Editor →</a>
   {% endif %}
 </div>
-<p class="muted" style="margin-top:0.4rem;">Browse every requirement and resource rule,
-filtered to a job type. <strong>Read-only</strong> — this directory is for looking things
-up{% if can('rules.manage') %}; to add or change a rule, use the <a href="{{ url_for('rules_page') }}">Rules</a> editor{% endif %}.</p>
+<p class="muted" style="margin-top:0.4rem;">Look up the <strong>licenses, permits &amp;
+compliance</strong> items (and portals, phones, docs) a job needs, filtered to a job type.
+Each requirement is listed once with every scenario it applies to beneath it.
+<strong>Read-only</strong>{% if can('rules.manage') %} — to add or change a rule, use the
+<a href="{{ url_for('rules_page') }}">Rules Editor</a>{% endif %}.</p>
 <p class="verify-legend">Verification flags come from the NM reference set:
   <span class="flag flag-verify">⚠ Verify</span> confirm before relying on it ·
   <span class="flag flag-unverified">⚠ Unverified</span> couldn't be checked online — confirm by phone.</p>
@@ -78,31 +80,44 @@ up{% if can('rules.manage') %}; to add or change a rule, use the <a href="{{ url
 
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">
-    {{ total }} rule{{ "s" if total != 1 }}{% if filtering %} matching your filters{% endif %}
+    {{ total }} requirement{{ "s" if total != 1 }}{% if filtering %} matching your filters{% endif %}
   </h2>
   {% if groups %}
     {% for heading, items in groups %}
-    <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:1rem 0 0.3rem;">{{ heading }} ({{ items|length }})</h3>
-    <ul style="margin:0; padding-left:1.2rem;">
+    <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:1.3rem 0 0.4rem;">{{ heading }} ({{ items|length }})</h3>
+    <ul style="margin:0; padding:0; list-style:none;">
       {% for r in items %}
-      <li style="margin-bottom:0.35rem;">
-        {{ r["label"] }}
-        {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}" title="Flagged in the NM reference set — {{ 'could not be verified online; confirm by phone' if r['alert_kind'] == 'unverified' else 'confirm before relying on it' }}">{{ r["alert_text"] }}</span>{% endif %}
-        {% if r["notes"] %}<span class="muted">— {{ r["notes"] }}</span>{% endif %}
-        {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
-        {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
-        <br><span class="muted" style="font-size:0.8rem;">when {{ field_labels.get(r["field_name"], r["field_name"]) }}
-          {% if r["match_type"] == "contains" %}includes{% else %}is{% endif %}
-          “{{ r["field_value"] }}”{% if r["field_name2"] %}
-          and {{ field_labels.get(r["field_name2"], r["field_name2"]) }}
-          {% if r["match_type2"] == "contains" %}includes{% else %}is{% endif %}
-          “{{ r["field_value2"] }}”{% endif %}</span>
+      <li style="margin:0 0 0.7rem; padding:0 0 0.15rem 0.8rem; border-left:2px solid var(--border);">
+        {# Compliance: verbatim source text sits above the shorthand. #}
+        {% if r["source_text"] %}
+        <blockquote style="margin:0 0 0.3rem; padding:0.4rem 0.7rem; background:var(--bg); border-radius:6px; font-size:0.88rem; line-height:1.4;">“{{ r["source_text"] }}”</blockquote>
+        {% endif %}
+        {# Shorthand for the rule, with the source + hyperlink. #}
+        <div>
+          <strong>{{ r["label"] }}</strong>
+          {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}" title="Flagged in the NM reference set — {{ 'could not be verified online; confirm by phone' if r['alert_kind'] == 'unverified' else 'confirm before relying on it' }}">{{ r["alert_text"] }}</span>{% endif %}
+          {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
+          {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+        </div>
+        {# Scenario(s) it applies to, one bullet each. #}
+        <ul style="margin:0.2rem 0 0; padding-left:1.2rem;">
+          {% for s in r["scenarios"] %}
+          <li class="muted" style="font-size:0.82rem; margin-bottom:0.1rem;">
+            when {{ field_labels.get(s["field_name"], s["field_name"]) }}
+            {% if s["match_type"] == "contains" %}includes{% else %}is{% endif %}
+            “{{ s["field_value"] }}”{% if s["field_name2"] %}
+            and {{ field_labels.get(s["field_name2"], s["field_name2"]) }}
+            {% if s["match_type2"] == "contains" %}includes{% else %}is{% endif %}
+            “{{ s["field_value2"] }}”{% endif %}{% if s["notes"] %} — {{ s["notes"] }}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
       </li>
       {% endfor %}
     </ul>
     {% endfor %}
   {% else %}
-  <p class="empty">No rules match these filters.</p>
+  <p class="empty">No requirements match these filters.</p>
   {% endif %}
 </div>
 

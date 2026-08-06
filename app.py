@@ -901,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 26.8"
+VERSION = "Piece 26.9"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2242,6 +2242,9 @@ def init_db():
         db.execute("UPDATE time_entries SET status = 'Approved'")
     ensure_columns(db, "resource_rules",
                    ["field_name2", "field_value2", "match_type2", "link_text"])
+    # Piece 26.9: verbatim source text for a rule (esp. compliance) — the exact
+    # wording from the code/source, shown above the shorthand in the L/P/C Directory.
+    ensure_columns(db, "resource_rules", ["source_text"])
     if db.execute("SELECT COUNT(*) FROM clients").fetchone()[0] == 0:
         # (name, phone, email, referral, mailing parts, billing parts)
         samples = [
@@ -2527,6 +2530,55 @@ def group_rules(matched, dedupe=True):
     for category in sorted(groups):
         ordered.append((CATEGORY_HEADINGS.get(category, category),
                         groups[category]))
+    return ordered
+
+
+def consolidate_rules(rules):
+    """Piece 26.9: the L/P/C Directory view. Collapse every rule that shares a
+    (category, label) into ONE entry, listing each triggering scenario as a
+    bullet beneath it — so a requirement like "EE-98 Contractor License" shows
+    once with all its scenarios, instead of a fresh listing per scenario. The
+    entry carries a representative source (link/phone) and, for compliance, the
+    verbatim source text; verification flags escalate (unverified > verify)."""
+    order = []
+    index = {}
+    for r in rules:
+        cat = r["category"]
+        key = (cat, (r["label"] or "").strip().lower())
+        entry = index.get(key)
+        if entry is None:
+            entry = {"category": cat, "label": r["label"], "url": "",
+                     "link_text": "", "phone": "", "source_text": "",
+                     "alert_kind": None, "alert_text": None, "scenarios": []}
+            index[key] = entry
+            order.append(entry)
+        # Representative source fields: first non-empty across the merged rules.
+        if not entry["url"] and r["url"]:
+            entry["url"] = r["url"]
+        if not entry["link_text"] and r["link_text"]:
+            entry["link_text"] = r["link_text"]
+        if not entry["phone"] and r["phone"]:
+            entry["phone"] = r["phone"]
+        st = r["source_text"] if "source_text" in r.keys() else ""
+        if not entry["source_text"] and st:
+            entry["source_text"] = st
+        kind, text = _rule_alert(r)
+        if kind == "unverified" or (kind == "verify" and entry["alert_kind"] is None):
+            entry["alert_kind"], entry["alert_text"] = kind, text
+        entry["scenarios"].append({
+            "field_name": r["field_name"], "field_value": r["field_value"],
+            "match_type": r["match_type"], "field_name2": r["field_name2"],
+            "field_value2": r["field_value2"], "match_type2": r["match_type2"],
+            "notes": r["notes"]})
+    by_cat = {}
+    for e in order:
+        by_cat.setdefault(e["category"], []).append(e)
+    ordered = []
+    for c in RULE_CATEGORIES:
+        if c in by_cat:
+            ordered.append((CATEGORY_HEADINGS.get(c, c), by_cat.pop(c)))
+    for c in sorted(by_cat):
+        ordered.append((CATEGORY_HEADINGS.get(c, c), by_cat[c]))
     return ordered
 
 
@@ -7168,8 +7220,9 @@ def add_rule():
     db.execute(
         "INSERT INTO resource_rules"
         " (field_name, field_value, match_type, category, label, url, phone, notes,"
-        "  field_name2, field_value2, match_type2, link_text, allowed_formats)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "  field_name2, field_value2, match_type2, link_text, allowed_formats,"
+        "  source_text)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (field_name, field_value,
          "contains" if field_name == "products" else "equals",
          request.form.get("category", "Compliance"),
@@ -7180,7 +7233,8 @@ def add_rule():
          field_name2, field_value2,
          "contains" if field_name2 == "products" else "equals",
          request.form.get("link_text", "").strip(),
-         ",".join(sorted(_parse_formats(request.form.get("allowed_formats"))))),
+         ",".join(sorted(_parse_formats(request.form.get("allowed_formats")))),
+         request.form.get("source_text", "").strip()),
     )
     db.commit()
     flash(f"Rule added: {label}")
@@ -7209,8 +7263,8 @@ def update_rule(rule_id):
     db.execute(
         "UPDATE resource_rules SET field_name = ?, field_value = ?, match_type = ?,"
         " category = ?, label = ?, url = ?, phone = ?, notes = ?, field_name2 = ?,"
-        " field_value2 = ?, match_type2 = ?, link_text = ?, allowed_formats = ?"
-        " WHERE id = ?",
+        " field_value2 = ?, match_type2 = ?, link_text = ?, allowed_formats = ?,"
+        " source_text = ? WHERE id = ?",
         (field_name, field_value,
          "contains" if field_name == "products" else "equals",
          request.form.get("category", "Compliance"), label,
@@ -7221,6 +7275,7 @@ def update_rule(rule_id):
          "contains" if field_name2 == "products" else "equals",
          request.form.get("link_text", "").strip(),
          ",".join(sorted(_parse_formats(request.form.get("allowed_formats")))),
+         request.form.get("source_text", "").strip(),
          rule_id))
     db.commit()
     flash(f"Rule updated: {label}")
@@ -7273,8 +7328,8 @@ def rule_directory():
     rules = [r for r in get_db().execute(
         "SELECT * FROM resource_rules ORDER BY category, label"
     ).fetchall() if visible(r)]
-    groups = group_rules(rules, dedupe=False)
-    total = sum(len(items) for _, items in groups)
+    groups = consolidate_rules(rules)
+    total = sum(len(items) for _, items in groups)   # consolidated requirements
     return render_template(
         "directory.html", groups=groups, total=total,
         field_labels=JOB_FIELD_LABELS,
