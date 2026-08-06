@@ -54,7 +54,7 @@
         <div class="muted" style="font-size:0.88rem; margin-top:0.2rem;">
           {% if company.address %}{{ company.address }}<br>{% endif %}
           {% if company.city_state_zip %}{{ company.city_state_zip }}<br>{% endif %}
-          {% if company.phone %}{{ company.phone }}{% if company.email %} · {% endif %}{% endif %}{{ company.email }}
+          {% if company.phone %}{{ company.phone }}{% endif %}
         </div>
       </div>
       <div class="inv-meta">
@@ -138,7 +138,7 @@
     {% endif %}
 
     <div class="note">{{ payment_scheme | safe }}</div>
-    <p class="muted" style="font-size:0.82rem; margin-top:1rem;">Please remit to {{ company.name }}{% if company.email %} · {{ company.email }}{% endif %}. Thank you for your business.</p>
+    <p class="muted" style="font-size:0.82rem; margin-top:1rem;">Please remit to {{ company.name }}{% if company.phone %} · {{ company.phone }}{% endif %}. Thank you for your business.</p>
   </div>
 </body>
 </html>

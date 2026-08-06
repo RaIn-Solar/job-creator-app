@@ -2,7 +2,12 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.5** (footer shows it plainly as "Version 27.5" — the "did my pull work?" check)
+**Current build:** **Piece 27.6** (footer shows it plainly as "Version 27.6" — the "did my pull work?" check)
+
+**Piece 27.6 — Dropped the email from the customer invoice.** Removed `rachel@eccsolar.com`
+from both the invoice header remit-to block and the footer remit line (the personal
+email shouldn't go out on customer copies). Address + phone still print;
+`COMPANY_INFO["email"]` is left in place (unused on the invoice now).
 
 **Piece 27.5 — ECC remit-to details on invoices.** Filled in `COMPANY_INFO` with
 ECC's real address (1212 Railroad Ave, Las Vegas, NM 87701) and phone
