@@ -2,7 +2,20 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.5** (footer shows it plainly as "Version 26.5" — the "did my pull work?" check)
+**Current build:** **Piece 26.6** (footer shows it plainly as "Version 26.6" — the "did my pull work?" check)
+
+**Piece 26.6 — Colour-coded appliance-era tags.** The Modern/Vintage distinction
+had faded to plain "(Modern)/(Vintage)" text in the 26.4 picker's option labels.
+Now the load-survey appliance picker shows a bold **colour-coded era badge** beside
+the selected appliance — **green = Modern, orange = Vintage** (`.era-tag` /
+`.era-modern` / `.era-vintage` in job_loads.html's local `<style>`). A JS
+`updateEra()` reads the selected option's appliance era and swaps the badge text +
+class on every `change` and after each `fill()`; option text is also tinted the
+same green/orange where the browser honours per-`<option>` colour (Firefox / some
+Chrome). The "(Modern)/(Vintage)" suffix stays in the option text as the native-
+dropdown fallback. Verified with a headless Chromium test: selecting a Modern
+appliance shows the green badge, switching to a Vintage one flips it to orange
+(background colour confirmed to change).
 
 **Piece 26.5 — Component auto-suggest from inventory specs.** Once a load
 survey has produced sizing figures, the Loads page reads the specs on **Active**

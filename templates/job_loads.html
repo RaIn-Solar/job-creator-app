@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Loads & Sizing — {{ job["job_name"] or "Job #" ~ job["id"] }}{% endblock %}
 {% block content %}
+<style>
+  /* Piece 26.6: colour-coded appliance-era tags — green = Modern, orange =
+     Vintage — so the two pop apart at a glance in the load-survey picker. */
+  .era-tag { display:inline-block; padding:0.12rem 0.55rem; border-radius:999px;
+    font-size:0.72rem; font-weight:700; letter-spacing:0.02em; line-height:1.4;
+    vertical-align:middle; }
+  .era-modern { background:#e6f4ea; color:#12673a; border:1px solid #9dd3b0; }
+  .era-vintage { background:#fbe8d3; color:#9a4a06; border:1px solid #eab785; }
+</style>
 <div class="toolbar">
   <h1>⚡ Loads &amp; Sizing <span class="muted">· {{ job["job_name"] or "Job #" ~ job["id"] }}</span></h1>
   <div style="display:flex; gap:0.5rem; align-items:center;">
@@ -130,7 +139,8 @@
             <input type="search" class="la-search" autocomplete="off" placeholder="type to search the whole catalog…">
           </div>
           <div class="field wide">
-            <label>Appliance <span class="la-scope muted" style="font-weight:400;"></span></label>
+            <label>Appliance <span class="la-scope muted" style="font-weight:400;"></span>
+              <span class="la-era era-tag" style="display:none; margin-left:0.35rem;"></span></label>
             <select name="catalog_id" class="la-select"></select>
           </div>
         </div>
@@ -406,9 +416,28 @@
     var select = form.querySelector(".la-select");
     var search = form.querySelector(".la-search");
     var scope = form.querySelector(".la-scope");
+    var eraTag = form.querySelector(".la-era");
     var customBox = form.querySelector(".la-custom");
     var catalog = form.querySelector(".la-catalog");
     var customFields = form.querySelector(".la-customfields");
+
+    // Green = Modern, orange = Vintage. Where the browser honours per-option
+    // colour (Firefox, some Chrome) the whole list is tinted; every browser
+    // gets the bold colour-coded badge beside the picker via updateEra().
+    var ERA_COLOR = { Modern: "#12673a", Vintage: "#9a4a06" };
+    function updateEra() {
+      var a = null, id = select.value;
+      for (var i = 0; i < APPLIANCES.length; i++) {
+        if (String(APPLIANCES[i].id) === String(id)) { a = APPLIANCES[i]; break; }
+      }
+      if (a && a.era) {
+        eraTag.textContent = a.era;
+        eraTag.className = "la-era era-tag " + (a.era === "Vintage" ? "era-vintage" : "era-modern");
+        eraTag.style.display = "";
+      } else {
+        eraTag.style.display = "none";
+      }
+    }
 
     function fill() {
       var q = (search.value || "").trim().toLowerCase();
@@ -427,10 +456,12 @@
       list.forEach(function (a) {
         var o = document.createElement("option");
         o.value = a.id; o.textContent = optText(a, searching || !roomCat);
+        if (ERA_COLOR[a.era]) o.style.color = ERA_COLOR[a.era];
         select.appendChild(o);
       });
       scope.textContent = searching ? "(whole catalog)"
                           : (roomCat ? "(" + roomCat + ")" : "(whole catalog)");
+      updateEra();
     }
     function setCustom(on) {
       customFields.style.display = on ? "" : "none";
@@ -442,6 +473,7 @@
       });
     }
     search.addEventListener("input", fill);
+    select.addEventListener("change", updateEra);
     customBox.addEventListener("change", function () { setCustom(customBox.checked); });
     fill(); setCustom(false);
   });
