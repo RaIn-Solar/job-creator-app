@@ -60,11 +60,18 @@ can confirm a pull/update took effect.
 
 ### Jobs
 - **Job profiles** stored under each client, with full field capture.
-- **Rules engine** (`/rules`): job selections → the licenses, permits, and
-  compliance items that apply. Editable catalog of resources (links, phone
-  numbers, docs). Shared requirements are **compacted** — a requirement needed
-  by more than one selection (e.g. EE-98 for PV + Battery) shows once with its
-  triggering selections listed beneath, instead of repeating.
+- **Rules engine** — job selections → the licenses, permits, and compliance
+  items that apply, across two pages:
+  - **Rules Editor** (`/rules`): the editable catalog of resources (links, phone
+    numbers, docs, accepted file formats). Grouped by category.
+  - **L/P/C Directory** (`/directory`): a read-only lookup filtered by job type.
+    Shared requirements are **consolidated** — a requirement needed by more than
+    one selection (e.g. EE-98 for PV + Battery) shows **once** with every
+    triggering scenario listed beneath, instead of repeating. Compliance rules
+    can also carry the **verbatim source text** (the exact code wording), shown
+    above the shorthand + source link, above the scenarios it applies to.
+- **Verbatim source text** is an editable per-rule field for capturing the exact
+  wording from the code/source, surfaced on the L/P/C Directory.
 - **Verification callouts**: requirements sourced from the NM reference set that
   couldn't be fully confirmed carry a visible **⚠ Verify / ⚠ Unverified** chip,
   with a legend, so field staff know what to confirm before relying on it.
@@ -87,6 +94,20 @@ can confirm a pull/update took effect.
   **Proposal-phase tool**: once the contract is signed (the job moves past
   Proposal) the editor **locks** — the recorded figures stay visible here and in
   Design, but no one edits them (enforced in the UI and on the server).
+  - **Sales / Designer view modes** default per viewer from their department
+    (Design → Designer, Sales → Sales) and are togglable per session.
+  - **Room-aware appliance picker**: each survey room has a "type" (Kitchen,
+    Garage…) so its picker defaults to that room's appliances, with a search box
+    over the whole catalog and a **Custom** toggle for off-catalog items.
+  - **Appliance-era tags** are colour-coded — 🟢 Modern / 🟠 Vintage.
+  - **Component auto-suggest**: once the survey is recorded, Designer mode reads
+    the live inventory specs and proposes the components that fit — **PV modules**
+    (by nameplate watts), **batteries** (by usable kWh), and the **inverter** (by
+    rated power) — ranked with a Recommended pick plus alternates, each one-click
+    addable to the bill of materials at the sized quantity.
+- **Calculator Catalog** (🗄 Databases → Calculator Catalog): the appliance +
+  component reference data that drives the load survey and the BOM/sizing picker;
+  editing it applies everywhere immediately.
 - **Materials lists** per job (status: Needed → Quoted → Ordered → Backordered →
   Received → On hand → Installed) and **document upload/storage** with
   per-requirement filing coverage. The job's **L/P/C tab** leads with **Permits**
@@ -95,6 +116,15 @@ can confirm a pull/update took effect.
   collapsed below. The **Permits dashboard** shows a **permits-filed X/Y** column;
   the **Purchasing dashboard** shows a **procurement rollup** of materials by
   status across Job-Prep jobs.
+- **Per-slot upload formats**: a document slot can restrict its accepted file
+  types (e.g. a permit slot to PDF), enforced on upload.
+- **Auto-renamed uploads**: every uploaded file is renamed to a self-describing
+  `Name_What_Date` scheme for recordkeeping (job docs, client files, employee
+  files, and field photos each get their own pattern); the friendly name is what
+  shows and downloads, while the on-disk name stays collision-safe.
+- **In-place editing** for the add/delete-only records (rules, appliance &
+  component catalog, credentials, load items/rooms, BOM lines) — an ✎ edit
+  pre-fills the record to save back over the original.
 - **Exportable job report**.
 
 ### Pipeline, tasks & scheduling
@@ -114,17 +144,27 @@ can confirm a pull/update took effect.
   (`/calendar/my.ics`) or a single job's dates (`/jobs/<id>/calendar.ics`) and
   import into Google Calendar (or Outlook/Apple). Stable IDs so re-importing
   updates events instead of duplicating.
-- **Work Bag** for field crews to update task status/notes; changes flow through
-  an **approval queue** before being applied to the authoritative tasks. The bag
-  shows **only on-site field work** (install & inspection), **grouped by job**
-  with each job's install date as the header — office/scheduling steps stay on
-  the dashboards.
+- **Work Bag** for field crews — an offline-capable field tool that shows **only
+  on-site field work** (install & inspection); office/scheduling steps stay on the
+  dashboards. It opens on a **jobs landing** that lists just the jobs in the
+  crew's bag (name, client, install date, open-task count); tapping a job opens
+  its **own page** with that job's tasks, plus hours, receipts, and notes pinned
+  to it.
+- **Submit-as-done with time by pay type**: instead of a status dropdown, each
+  task has a single **✓ Submit as done** (and a **⚠ Can't finish** → Blocked).
+  Submitting captures **the time it took, split by pay type** (e.g. 8 h regular +
+  1 h travel + 2 h roof) shown live on a **colour-coded timeline**. It flows
+  through **two sign-offs**: the supervisor approves the task (marking it Done and
+  posting the split hours as **pending payroll** by pay type), then Finance
+  approves the hours on the payroll page. All edits are saved on-device and submit
+  when back online.
 - **Job photos from the field**: every pipeline step that requires photos — the
   site visit, the install itself, the crew walkthrough, doc tube, the meter set,
-  re-inspection of corrections, and the final-sticker photo — gets a **📷 button**
-  that opens a phone-camera capture/upload page; the photos save to the job and
-  **load back into the Work Bag** as thumbnails (and appear on the job record).
-  Crews can remove their own shots.
+  and re-inspection of corrections — is completed on its **own dedicated screen**:
+  a 3-step **take / review / submit** flow (phone camera, thumbnail review, then
+  submit with notes and the time it took). Submitting requires at least one photo,
+  marks the task done for approval, and returns to the job's Work Bag page. Photos
+  save to the job and appear on the job record; crews can remove their own shots.
 - **Packing list**: each job in the Work Bag carries a collapsible **📦 Packing
   list** of its materials (item, qty, status) — colour-coded by readiness (on
   hand / received vs. still-needed vs. backordered) — so installers can pack the
@@ -134,6 +174,17 @@ can confirm a pull/update took effect.
   free-form notes about a job (access details, on-site changes, callbacks). Each
   note is **individually timestamped** (the same clock as the audit log) with the
   author, and surfaces on the job's record for the office to read later.
+- **Field receipts**: crews snap a receipt photo and log the date, total, vendor,
+  reference, and expense category from the Work Bag; it's filed on the job and
+  recorded as a **paid expense** for bookkeeping.
+- **Grouped task board**: the cross-job task board and the dashboard's **My
+  Tasks** are **grouped under each job** (a banner per job with its tasks as
+  bullets beneath) so everything for a job reads at a glance.
+- **Offline cold-start (service worker)**: the app caches visited pages and
+  serves them — or an offline page — without a signal, so the Work Bag works in
+  the field even on a fresh load.
+- **Background scheduler**: lead follow-up generation runs off the request path
+  on a daemon timer, so it keeps working while the app sits unattended.
 
 ### People, roles & permissions
 - **Employees** matched to the org chart, with first / last / optional nickname
@@ -144,8 +195,9 @@ can confirm a pull/update took effect.
   job requirements (a job page can show whether staff hold the licenses it needs
   and warn when a credential has lapsed).
 - **Role-based "My Dashboard"** — the sign-in landing, one role view at a time
-  (mode switch for people who hold multiple roles). Every section is
-  **collapsible**. The **Sales** viewport shows **Active Proposals** (jobs in
+  (mode switch for people who hold multiple roles); each person's **default view
+  is remembered** (e.g. the GM defaults to the Executive overview). Every section
+  is **collapsible**. The **Sales** viewport shows **Active Proposals** (jobs in
   Proposal), a **Leads** worklist (prospects not yet converted, with follow-up
   actions), and My tasks. The **Installation** (Foreman) viewport lists installs
   **bucketed by date** — This week / Upcoming / In inspection · unscheduled —
@@ -159,16 +211,29 @@ can confirm a pull/update took effect.
   remaining close-out steps). Each sub-section sits in its own panel.
 - **Inventory database** (🗄 Databases → Inventory): ECC's stock of components
   seeded from the inventory workbook — **439 items across 15 categories** (PV,
-  inverters, batteries, charge controllers, racking, …) with per-category specs,
-  a **54-vendor** canonical supplier list (names normalized from the workbook's
-  typo'd entries), plus a standard **tool kit** and a **vehicles / heavy-equipment**
-  list (each vehicle has a shop **nickname**). Item specs are meant to feed the
-  Loads & Sizing calculator; a `web_price` sits alongside the quoted `Cost` so a
-  price check never overwrites your number.
-- **Nav grouping**: the reference/data pages — **Client Profiles, Rules,
-  Directory, Inventory, Catalog** — are consolidated under a single **🗄
-  Databases** dropdown in the header; **Employees + Payroll** sit under a **👥
-  Team** dropdown; and **Log / Trash / Access** sit under a **🔧 Admin** dropdown.
+  inverters, batteries, charge controllers, racking, …) with per-category specs, a
+  canonical **~52-vendor** supplier list (names normalized from the workbook's
+  typo'd entries), plus a standard **tool kit** (priced with big-box listings) and
+  a **vehicles / heavy-equipment** list (each vehicle has a shop **nickname**). The
+  table is editable in-app; item specs feed the Loads & Sizing calculator, and a
+  `web_price` sits alongside the quoted `Cost` so a price check never overwrites
+  your number. Battery, inverter, and PV spec data is research-calibrated, with
+  product-page **purchase URLs** on current-install gear.
+- **Stock ledger & stale-stock notice**: every stock change (received / used /
+  count / adjust) flows through a single ledger that keeps each item's on-hand
+  balance; items that go unused past a threshold surface a **stale-stock** notice
+  on the Designer's dashboard.
+- **Barcode / asset registry**: generate and print **Code 128** labels, register
+  serial numbers for **consumables** (hardware, components) and **non-consumables**
+  (tools, PPE, trucks), and **scan** them in/out — including **phone-camera
+  scanning** — to load a job's truck (two installers can load the same job from
+  their own phones). Only the **Warehouse Manager** can mint new tags; loading a
+  job needs no special permission.
+- **Nav grouping**: the reference/data pages — **Client Profiles, Rules Editor,
+  L/P/C Directory, Inventory, Calculator Catalog** — are consolidated under a
+  single **🗄 Databases** dropdown in the header; **Employees + Payroll** sit under
+  a **👥 Team** dropdown; and **Log / Trash / Access** sit under a **🔧 Admin**
+  dropdown.
   Each grouped dropdown shows only the items the user may reach and collapses to a
   plain link when only one applies. Keeps the top bar tidy.
 - **Permissions**: the General Manager (identified by the GM role) has unfettered
@@ -181,7 +246,8 @@ can confirm a pull/update took effect.
   that requires a reason for the audit log.
 - **Logins**: per-user accounts with hashed passwords. **Usernames are
   case-insensitive** (passwords stay case-sensitive); the Accounts page scans for
-  case-duplicate usernames.
+  case-duplicate usernames. Sessions **auto-log-out after 12 hours of
+  inactivity** (a sliding window that renews on each request).
 
 ### Finance & billing
 - **Per-job billing ledger** (💵 Billing tab): set the contract total and record
@@ -197,20 +263,42 @@ can confirm a pull/update took effect.
   total for each type).
 - **Payments table** on the Finance dashboard: every active job with Contract /
   Collected / Outstanding / Expenses / Net and a grand-total row.
-- **QuickBooks export**: one-click CSV of all transactions
-  (`/finance/quickbooks.csv`) whose first three columns (Date, Description,
+- **QuickBooks export**: a CSV whose first three columns (Date, Description,
   Amount, signed) map straight onto QuickBooks Online's import; a **Document**
-  column carries the Receipt/Invoice/Bill tag. Because QuickBooks imports
-  invoices (A/R), bills (A/P) and receipts through separate flows, the Finance
-  dashboard also offers **per-document exports** (`?doc=Receipt|Invoice|Bill`).
+  column carries the Receipt/Invoice/Bill tag, and (because QuickBooks imports
+  invoices (A/R), bills (A/P) and receipts through separate flows) it can be
+  filtered per document type. The export buttons live on **each job's Billing
+  tab** — scoped to that job — with a company-wide export still available.
+- **Customer invoice generation (50 / 40 / 10)**: from the Billing tab, generate
+  the progress-billing invoices straight from the contract + BOM — **Deposit 50%**
+  at signing, **Progress 40%**, **Final 10%** — where any materials added to the
+  BOM after the deposit are billed on top (split across the Progress/Final
+  invoices, with the Final trued-up). Each invoice records as an Income/Invoice
+  line (so it flows into the billing rollup and mark-paid) and prints a clean
+  **customer copy**: the ECC remit-to block, the 50/40/10 schedule, the amount
+  due, and the equipment (BOM) list **without per-item pricing**. A **NM
+  gross-receipts-tax** line is included — a per-job rate (defaulting to 0% for the
+  solar deduction), citing **NMSA 7-9-112** when exempt. The **50/40/10 pay-scheme
+  callout** also shows on the Sales and Finance dashboards so both explain it the
+  same way.
 - **Payroll**: employees **log their own hours** from the 🎒 Work Bag (by date,
-  job, and **pay type**); supervisors **review and approve** them on the Payroll
-  page before they count. The pay schema is configurable — each pay type is a
-  **multiplier** on the employee's base wage (roof time…) or a **flat $/hr**
-  (travel time…), **overridable per employee**. **Overtime is automatic** — hours
-  over the weekly threshold of OT-eligible time earn the OT premium (no manual OT
-  entry). Only **Cary (GM)** and **Lisa (Payroll Manager)** can change pay rates.
-  A pay-period summary rolls up hours + dollars per person with a QuickBooks CSV
+  job, and **pay type** — usually captured right on the task they finished);
+  supervisors **review and approve** them before they count. The pay schema is
+  configurable — each pay type is a **multiplier** on the employee's base wage
+  (roof time…) or a **flat $/hr** (travel time…), **overridable per employee**.
+  **Overtime is automatic** — hours over the weekly threshold of OT-eligible time
+  earn the OT premium (no manual OT entry). Only **Cary (GM)** and **Lisa (Payroll
+  Manager)** can change pay rates.
+- **Pay periods run Sunday → Saturday** (the default period is the most recent
+  full week), overridable by date range.
+- **Leave can't earn overtime**: approving vacation/PTO/sick time that would take
+  an employee past the weekly cap is **blocked** unless the GM overrides it on the
+  approval form (worked hours still earn OT normally).
+- **Payroll reminder**: the Finance dashboard shows a **Tuesday–Thursday** nudge
+  to run payroll each week until the period's hours are **confirmed and exported**.
+- **Timesheets**: a per-employee, printable/CSV timesheet view of logged hours
+  (a read-only lens on the same time data; payroll approval/export is unchanged).
+- A pay-period summary rolls up hours + dollars per person with a QuickBooks CSV
   export.
 
 ### Records & audit
@@ -240,5 +328,34 @@ can confirm a pull/update took effect.
   bucketed by date) + a field-focused, job-grouped Work Bag with **on-site photo
   capture** on photo steps, a **packing list**, and **timestamped field
   notes**.
+- **Piece 22** — Work Bag packing list; Loads & Sizing **locks past Proposal**;
+  **Executive (GM) company overview** (pipeline counts, money-in-flight tiles,
+  attention row, Ready-for-design queue, this-week's installs, Closing worklist);
+  **Databases / Team / Admin** nav dropdowns.
+- **Piece 23** — **Inventory database** (439 items with specs, ~52 canonical
+  vendors, tool kit, vehicles), in-app management + table redesign; battery /
+  inverter / PV spec research calibration; vendor & make standardization; purchase
+  URLs on current-install gear.
+- **Piece 24** — inventory cleanup + Tools/Vehicles edit UI; **stock-usage ledger
+  + stale-stock notice**; BPMN lanes aligned to real departments + a
+  roles/permissions overhaul; **12-hour sliding auto-logout**; **offline service
+  worker** (cold-start).
+- **Piece 25** — **in-place editing** of add/delete-only records; **timesheets**;
+  per-slot document-format restrictions; **background scheduler** for follow-up
+  generation; **auto-renamed uploads** (`Name_What_Date`).
+- **Piece 26** — **barcode / asset registry** (generate/print/scan, phone camera,
+  crew truck-loading); Work Bag **receipt capture**; **grouped task board**; Loads
+  survey tweaks + colour-coded appliance eras; **component auto-suggest** from
+  inventory specs; **payroll reminder** + **leave-can't-earn-OT** rule + grouped
+  My Tasks; **L/P/C Directory** consolidation + verbatim source text; Rules Editor
+  / L/P/C Directory renames; GM defaults to the Executive overview.
+- **Piece 27** — Calculator Catalog rename; **sample seed data removed** for a
+  clean production database; **Sunday→Saturday pay periods**; QuickBooks exports
+  moved to **per-job Billing**; **50/40/10 customer invoice generation** + **NM
+  gross-receipts-tax** line + ECC remit-to + pay-scheme callouts; **Work Bag split**
+  into a jobs landing + per-job page; **per-task Submit-as-done** with time by pay
+  type + timeline.
+- **Piece 28** — **photo steps** completed on their own take / review / submit
+  screen (with the time capture), returning to the job's Work Bag when submitted.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

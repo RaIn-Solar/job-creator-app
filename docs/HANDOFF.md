@@ -2,7 +2,19 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 28.0** (footer shows it plainly as "Version 28.0" — the "did my pull work?" check)
+**Current build:** **Piece 28.1** (footer shows it plainly as "Version 28.1" — the "did my pull work?" check)
+
+**Piece 28.1 — README brought current (Pieces 22–28).** Docs-only. The README's
+"Features & capabilities" was frozen at Piece 21; updated every section to reflect
+everything since — the inventory database + stock ledger/stale-stock + barcode/asset
+registry, Rules Editor / L/P/C Directory (consolidation + verbatim source text) and the
+Calculator Catalog rename, Loads survey tweaks + component auto-suggest + colour-coded
+eras, the Work Bag redesign (jobs landing → per-job page, Submit-as-done with time by
+pay type + timeline, photo steps on their own screen), field receipts / grouped task
+board / offline service worker / background scheduler, 12-hour auto-logout, 50/40/10
+invoice generation + NM GRT + remit-to + pay-scheme callouts, Sun→Sat pay periods,
+per-job QuickBooks exports, payroll reminder + leave-can't-earn-OT, timesheets, and
+in-place editing / auto-renamed uploads. Added Build-history bands for Pieces 22–28.
 
 **Piece 28.0 — Photo steps complete on their own screen.** Any task `_is_photo_step`
 (site visit/installation, install walkthrough, meter set, doc tube, re-inspect, or any
