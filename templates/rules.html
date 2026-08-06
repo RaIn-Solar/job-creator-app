@@ -8,11 +8,16 @@
   <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to clients</a>
   {% endif %}
 </div>
-<h1>Requirement &amp; resource rules</h1>
-<p class="muted">Each rule says: when a job's <strong>field</strong> matches a
-<strong>value</strong>, the job needs this license, permit, compliance item,
-link, or phone number. Jobs read these rules live — add a rule here and every
-matching job page updates immediately. No code changes needed.</p>
+<div class="toolbar" style="align-items:flex-start;">
+  <h1 style="margin:0;">⚙️ Requirement &amp; resource rules</h1>
+  <a href="{{ url_for('rule_directory') }}" class="btn btn-secondary">📖 Browse in the Directory →</a>
+</div>
+<p class="muted" style="margin-top:0.4rem;">This is the <strong>editor</strong>. Each rule says:
+when a job's <strong>field</strong> matches a <strong>value</strong>, the job needs this
+license, permit, compliance item, link, or phone number. Jobs read these rules live — add
+one here and every matching job page updates immediately, no code changes.
+To look up what applies to a given job type instead of editing, use the read-only
+<a href="{{ url_for('rule_directory') }}">Directory</a>.</p>
 
 {% if can('rules.manage') %}
 {% set er = edit_rule %}
@@ -97,41 +102,53 @@ matching job page updates immediately. No code changes needed.</p>
 
 <div class="card">
   <h2 style="margin-top:0; font-size:1.05rem;">Current rules ({{ rules|length }})</h2>
+  {% if groups %}
   <div style="overflow-x:auto;">
-  <table>
-    <thead>
-      <tr><th>When</th><th>Matches</th><th>Category</th><th>Requires</th><th>Notes</th><th></th></tr>
-    </thead>
-    <tbody>
-      {% for r in rules %}
-      <tr>
-        <td class="muted">{{ field_labels.get(r["field_name"], r["field_name"]) }}{% if r["field_name2"] %} <strong>AND</strong> {{ field_labels.get(r["field_name2"], r["field_name2"]) }}{% endif %}</td>
-        <td>{{ r["field_value"] }}{% if r["field_name2"] %} <strong>AND</strong> {{ r["field_value2"] }}{% endif %}</td>
-        <td><span class="badge">{{ r["category"] }}</span></td>
-        <td>
-          {{ r["label"] }}
-          {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
-          {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
-          {% if 'allowed_formats' in r.keys() and r["allowed_formats"] %}<br><span class="muted" style="font-size:0.78rem;">📎 accepts: {{ r["allowed_formats"] }}</span>{% endif %}
-        </td>
-        <td class="muted">{{ r["notes"] }}</td>
-        <td style="white-space:nowrap;">
-          {% if can('rules.manage') %}
-          <a href="{{ url_for('rules_page', edit=r['id'], from_job=from_job['id'] if from_job else none) }}#rule-form"
-             class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
-          {% endif %}
-          {% if can('delete') %}
-          <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
-                onsubmit="return confirm('Send this rule to the trash?');" style="margin:0; display:inline;">
-            {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
-            <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    {% for heading, items in groups %}
+    <h3 style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:1.2rem 0 0.3rem;">{{ heading }} <span class="sect-count">{{ items|length }}</span></h3>
+    <table>
+      <thead>
+        <tr><th style="width:32%;">When the job…</th><th>Requires</th><th>Notes</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in items %}
+        <tr>
+          <td class="muted" style="font-size:0.85rem;">
+            {{ field_labels.get(r["field_name"], r["field_name"]) }}
+            {% if r["match_type"] == "contains" %}includes{% else %}is{% endif %}
+            <strong>{{ r["field_value"] }}</strong>{% if r["field_name2"] %}<br><span style="font-size:0.8rem;">and {{ field_labels.get(r["field_name2"], r["field_name2"]) }}
+            {% if r["match_type2"] == "contains" %}includes{% else %}is{% endif %}
+            <strong>{{ r["field_value2"] }}</strong></span>{% endif %}
+          </td>
+          <td>
+            {{ r["label"] }}
+            {% if r["alert_kind"] %}<span class="flag flag-{{ r['alert_kind'] }}">{{ r["alert_text"] }}</span>{% endif %}
+            {% if r["url"] %} · <a href="{{ r['url'] }}" target="_blank">{{ r["link_text"] or (r["url"].split("//")[-1].split("/")[0]) }}</a>{% endif %}
+            {% if r["phone"] %} · 📞 {{ r["phone"] }}{% endif %}
+            {% if 'allowed_formats' in r.keys() and r["allowed_formats"] %}<br><span class="muted" style="font-size:0.78rem;">📎 accepts: {{ r["allowed_formats"] }}</span>{% endif %}
+          </td>
+          <td class="muted" style="font-size:0.85rem;">{{ r["notes"] }}</td>
+          <td style="white-space:nowrap;">
+            {% if can('rules.manage') %}
+            <a href="{{ url_for('rules_page', edit=r['id'], from_job=from_job['id'] if from_job else none) }}#rule-form"
+               class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" title="Edit">✎</a>
+            {% endif %}
+            {% if can('delete') %}
+            <form method="post" action="{{ url_for('delete_rule', rule_id=r['id']) }}"
+                  onsubmit="return confirm('Send this rule to the trash?');" style="margin:0; display:inline;">
+              {% if from_job %}<input type="hidden" name="from_job" value="{{ from_job['id'] }}">{% endif %}
+              <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;">✕</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
   </div>
+  {% else %}
+  <p class="empty">No rules yet.</p>
+  {% endif %}
 </div>
 {% endblock %}

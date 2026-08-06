@@ -1,9 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Rule directory{% endblock %}
 {% block content %}
-<h1>📖 Rule directory</h1>
-<p class="muted">Browse every requirement and resource rule. Read-only —
-this directory is for looking things up, not changing them.</p>
+<div class="toolbar" style="align-items:flex-start;">
+  <h1 style="margin:0;">📖 Rule directory</h1>
+  {% if can('rules.manage') %}
+  <a href="{{ url_for('rules_page') }}" class="btn btn-secondary">⚙️ Edit in Rules →</a>
+  {% endif %}
+</div>
+<p class="muted" style="margin-top:0.4rem;">Browse every requirement and resource rule,
+filtered to a job type. <strong>Read-only</strong> — this directory is for looking things
+up{% if can('rules.manage') %}; to add or change a rule, use the <a href="{{ url_for('rules_page') }}">Rules</a> editor{% endif %}.</p>
 <p class="verify-legend">Verification flags come from the NM reference set:
   <span class="flag flag-verify">⚠ Verify</span> confirm before relying on it ·
   <span class="flag flag-unverified">⚠ Unverified</span> couldn't be checked online — confirm by phone.</p>

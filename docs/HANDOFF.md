@@ -2,7 +2,24 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 26.7** (footer shows it plainly as "Version 26.7" — the "did my pull work?" check)
+**Current build:** **Piece 26.8** (footer shows it plainly as "Version 26.8" — the "did my pull work?" check)
+
+**Piece 26.8 — Cary defaults to Executive; Rules/Directory tidy-up.**
+(1) **Cary's default dashboard is now the Executive overview** (was Design). The
+org seed sets `dashboard_mode='Executive'`, and a one-time meta-guarded migration
+(`cary_exec_default`) flips existing installs — but only from the old seeded
+`Design`/blank, so a default Cary has since chosen himself is left alone.
+(2) **Rules vs Directory — confirmed not redundant, cleaned up.** They're two views
+of the same `resource_rules` table with distinct jobs: **`/rules`** is the *editor*
+(admin add/edit/delete), **`/directory`** is the *read-only* lookup filtered by job
+type with the ⚠ verify/unverified flags. Data has **zero duplicate rules** (145
+rows, no exact dupes). Changes: the Rules editor's flat "Current rules" table is now
+**grouped by category** (reusing `group_rules(dedupe=False)`, same headings as the
+Directory) with a readable "when the job … includes X" column and the same ⚠ verify
+chips; both pages gained **reciprocal cross-links** ("Browse in the Directory →" /
+"Edit in Rules →") and clarified intros so the edit-vs-browse split is obvious.
+Verified via test client (both render, cross-links present, category headings) + a
+duplicate-rule query + screenshots.
 
 **Piece 26.7 — Payroll reminder, leave-can't-earn-OT rule, grouped My Tasks.**
 Three dashboard/payroll changes.

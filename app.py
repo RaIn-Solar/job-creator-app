@@ -901,7 +901,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 26.7"
+VERSION = "Piece 26.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1924,9 +1924,9 @@ def seed_org_team(db):
                           (name,)).fetchone():
             db.execute("INSERT INTO employees (name, roles) VALUES (?, ?)",
                        (name, ", ".join(roles)))
-    # Cary holds every role (he's the GM); default his dashboard to Design so
-    # day-to-day he works in that role rather than the whole-company overview.
-    db.execute("UPDATE employees SET dashboard_mode = 'Design'"
+    # Cary holds every role (he's the GM); default his dashboard to the Executive
+    # whole-company overview (Piece 26.8 — was Design).
+    db.execute("UPDATE employees SET dashboard_mode = 'Executive'"
                " WHERE name = 'Cary' AND COALESCE(dashboard_mode, '') = ''")
     db.execute("INSERT INTO meta (key, value) VALUES ('org_team_seeded', '1')"
                " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
@@ -2201,6 +2201,14 @@ def init_db():
                " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
     ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS
                    + ["dashboard_mode", "base_wage"])  # Piece 21.2: hourly base wage
+    # Piece 26.8: move Cary's default dashboard to the Executive overview. Runs
+    # once (meta-guarded) and only flips the old seeded 'Design' default, so it
+    # won't override a choice Cary has since made himself.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'cary_exec_default'").fetchone():
+        db.execute("UPDATE employees SET dashboard_mode = 'Executive'"
+                   " WHERE name = 'Cary' AND COALESCE(dashboard_mode, '') IN ('', 'Design')")
+        db.execute("INSERT INTO meta (key, value) VALUES ('cary_exec_default', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     if db.execute("SELECT COUNT(*) FROM pay_types").fetchone()[0] == 0:
         db.executemany(
             "INSERT INTO pay_types (name, method, value, sort_order)"
@@ -7130,8 +7138,12 @@ def rules_page():
     if request.args.get("edit", type=int):
         edit_rule = db.execute("SELECT * FROM resource_rules WHERE id = ?",
                                (request.args.get("edit", type=int),)).fetchone()
+    # Piece 26.8: group the editor by category (same helper the Directory uses),
+    # so the long flat list reads by section and carries the same ⚠ verify chips.
+    groups = group_rules(rules, dedupe=False)
     return render_template(
-        "rules.html", rules=rules, from_job=from_job, edit_rule=edit_rule,
+        "rules.html", rules=rules, groups=groups, from_job=from_job,
+        edit_rule=edit_rule, category_headings=CATEGORY_HEADINGS,
         job_fields=[f for f in JOB_FIELDS if f != "job_name"],
         field_labels=JOB_FIELD_LABELS, categories=RULE_CATEGORIES,
     )
