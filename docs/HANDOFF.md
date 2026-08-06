@@ -2,7 +2,22 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 28.3** (footer shows it plainly as "Version 28.3" — the "did my pull work?" check)
+**Current build:** **Piece 28.4** (footer shows it plainly as "Version 28.4" — the "did my pull work?" check)
+
+**Piece 28.4 — Two search bars: nav (clients & jobs) + inventory.**
+(1) **Nav search** in the header (shown when logged in / open mode): an autocomplete over
+**client + job NAMES only** backed by `/api/quick-search` (`{results:[{type,label,sub,url}]}`).
+The dropdown lists clients (🗂) and jobs (📋); **every job result shows its client name**
+beneath. Click a suggestion → its client/job page; Enter with none highlighted →
+the existing `/search?q=` results page; arrow keys navigate the menu. Styled in base.html
+(`.navsearch*`); the job query also matches the client name so typing a client surfaces
+their jobs. (2) **Inventory search** on `/inventory`, placed **under the explanation, above
+the collapsible tables**: a client-side filter over **every** item (products, tools,
+vehicles) matching each row's full text (make/model/description/vendor/specs). Matching
+sections auto-open, empty ones hide, a live "N items match" hint shows, and clearing
+restores the default (first section open). Verified end-to-end (API returns client+job
+with client names; nav dropdown + navigation; inventory filter + auto-open + count) +
+screenshots.
 
 **Piece 28.3 — Job Detail button/stage reorg.** Reorganized the header controls. The
 job-**stage dropdown** moved out of the button row into the **Pipeline stage** panel: it

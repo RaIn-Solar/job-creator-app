@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 28.3"
+VERSION = "Piece 28.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3198,6 +3198,32 @@ def search():
             (like, like, like, like, like)).fetchall()
     return render_template("search.html", q=q, clients=clients, jobs=jobs,
                            job_status_class=JOB_STATUS_CLASS)
+
+
+@app.route("/api/quick-search")
+def api_quick_search():
+    """Piece 28.4: autocomplete for the nav search — client and job NAMES only.
+    Each job result carries its client name so the crew can tell jobs apart."""
+    q = (request.args.get("q") or "").strip()
+    results = []
+    if q:
+        like = f"%{q}%"
+        db = get_db()
+        for c in db.execute(
+                "SELECT id, name FROM clients WHERE name LIKE ? ORDER BY name LIMIT 6",
+                (like,)).fetchall():
+            results.append({"type": "client", "label": c["name"], "sub": "",
+                            "url": url_for("client_detail", client_id=c["id"])})
+        for j in db.execute(
+                "SELECT j.id, j.job_name, c.name AS client_name FROM jobs j"
+                " JOIN clients c ON c.id = j.client_id"
+                " WHERE j.job_name LIKE ? OR c.name LIKE ?"
+                " ORDER BY j.created_at DESC LIMIT 8", (like, like)).fetchall():
+            results.append({"type": "job",
+                            "label": j["job_name"] or f"Job #{j['id']}",
+                            "sub": j["client_name"],
+                            "url": url_for("job_detail", job_id=j["id"])})
+    return jsonify({"results": results})
 
 
 @app.route("/clients/new", methods=["GET", "POST"])

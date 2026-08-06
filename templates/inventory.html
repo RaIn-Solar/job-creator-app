@@ -35,6 +35,15 @@ Specs are hidden by default — <strong>Show specs</strong> reveals the calculat
 data. Prices show your quoted <strong>Cost</strong> (a web-verified price never
 overwrites it). Use <strong>＋ New product</strong> to add items.</p>
 
+{# Piece 28.4: search across every inventory item (products, tools, vehicles). #}
+<div class="card" style="padding:0.7rem 0.9rem;">
+  <input id="inv-search" type="search" autocomplete="off"
+         placeholder="🔍 Search all inventory — make, model, description, vendor, specs…"
+         style="width:100%; padding:0.5rem 0.7rem; font-size:0.95rem; border:1px solid var(--border); border-radius:8px;">
+  <p id="inv-search-hint" class="muted" style="margin:0.4rem 0 0; font-size:0.82rem; display:none;"></p>
+</div>
+<p id="inv-nomatch" class="empty" style="display:none;">No inventory items match your search.</p>
+
 {% for s in sections %}
 <details class="card sect"{% if loop.first %} open{% endif %}>
   <summary>{{ s.category }} <span class="sect-count">{{ s.count }}</span></summary>
@@ -174,5 +183,37 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
       d.querySelectorAll(".inv-scrolltop").forEach(function (t) { syncTop(t.dataset.scrollfor); });
     });
   });
+
+  // Piece 28.4: filter every inventory table (products, tools, vehicles) as you
+  // type. Rows that don't match hide; sections with matches auto-open, empty
+  // sections hide, and clearing the box restores the default (first open).
+  (function () {
+    var box = document.getElementById("inv-search");
+    if (!box) return;
+    var sects = Array.prototype.slice.call(document.querySelectorAll("details.sect"));
+    var hint = document.getElementById("inv-search-hint");
+    var nomatch = document.getElementById("inv-nomatch");
+    box.addEventListener("input", function () {
+      var q = box.value.trim().toLowerCase();
+      var total = 0;
+      sects.forEach(function (d, i) {
+        var rows = d.querySelectorAll("tbody tr");
+        var shown = 0;
+        rows.forEach(function (tr) {
+          var match = !q || tr.textContent.toLowerCase().indexOf(q) !== -1;
+          tr.style.display = match ? "" : "none";
+          if (match) shown++;
+        });
+        if (!q) { d.style.display = ""; d.open = (i === 0); }
+        else { d.style.display = shown ? "" : "none"; if (shown) d.open = true; }
+        if (q) total += shown;
+        // Keep the top scrollbar in sync when a section opens on match.
+        d.querySelectorAll(".inv-scrolltop").forEach(function (t) { syncTop(t.dataset.scrollfor); });
+      });
+      if (q) { hint.style.display = ""; hint.textContent = total + " item" + (total === 1 ? "" : "s") + " match “" + box.value.trim() + "”."; }
+      else { hint.style.display = "none"; }
+      nomatch.style.display = (q && total === 0) ? "" : "none";
+    });
+  })();
 </script>
 {% endblock %}
