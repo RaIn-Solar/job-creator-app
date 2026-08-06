@@ -2,7 +2,33 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 27.2** (footer shows it plainly as "Version 27.2" — the "did my pull work?" check)
+**Current build:** **Piece 27.3** (footer shows it plainly as "Version 27.3" — the "did my pull work?" check)
+
+**Piece 27.3 — 50/40/10 invoice generation + pay-scheme callouts.** Generate
+customer invoices from a job's contract + BOM (Path A — self-contained, no QB needed).
+- **Model** (`INVOICE_MILESTONES`, `projected_invoice`): **Deposit = 50%** of contract
+  (collected at signing; generating it snapshots `jobs.deposit_bom_cutoff_id` = current
+  max `job_bom.id`). **Progress = 40% of contract + 80% of post-deposit BOM extras**
+  (`_post_deposit_bom_total` = Σ qty×unit_cost of BOM rows with id > cutoff). **Final =
+  a true-up** so total billed = contract + all post-deposit BOM (= 10% + remaining 20%
+  of extras). Sequential, guarded order; global invoice numbers `INV-00001…` via
+  `meta.invoice_seq`.
+- **Storage**: each generated invoice is an `Income`/`Invoice` `job_transactions` row
+  (so it flows into the existing billing rollup + mark-paid + QB export), with new
+  columns `invoice_number, milestone, due_date, contract_snapshot, base_amount,
+  extras_amount, bom_snapshot`.
+- **Customer copy** (`view_invoice` → standalone printable `invoice.html`): ECC remit-to
+  (`COMPANY_INFO`), bill-to, the 50/40/10 schedule, amount-due box, and the BOM as a
+  plain **equipment list with NO per-item pricing**; the itemized expenses stay on the
+  internal Billing tab. Route `/jobs/<id>/invoice/generate` + `/jobs/<id>/invoice/<txn_id>`.
+- **Billing tab**: a "🧾 Customer invoices · 50/40/10" card with per-milestone state and
+  a Generate button for the next one.
+- **Pay-scheme callouts** (`PAYMENT_SCHEME_NOTE`): a plain-language 50/40/10 callout on
+  the **Sales and Finance** dashboards, on the Billing tab, and on the invoice itself, so
+  everyone communicates it to customers the same way.
+- **NOTE**: fill in `COMPANY_INFO` (ECC address/phone) — the invoice remit-to currently
+  shows name + email only. Verified end-to-end (exact amounts 12000/11600/2900 on a
+  24000 contract + 2500 extras; true-up; no price leak; callouts) + a screenshot.
 
 **Piece 27.2 — Pay periods run Sunday→Saturday; QuickBooks exports moved to Billing.**
 (1) **Pay period fix.** `_pay_period()` used to default to a rolling *last-14-days*

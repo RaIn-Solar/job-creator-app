@@ -16,6 +16,17 @@
 </div>
 {% endif %}
 
+{# ---- Payment-scheme callout (Sales & Finance): how customers are billed ---- #}
+{% if payment_scheme %}
+<div class="card" style="border-left:4px solid var(--brand); background:#f3faf5; display:flex; gap:0.6rem; align-items:flex-start;">
+  <span style="font-size:1.3rem; line-height:1;">💬</span>
+  <div>
+    <div style="font-weight:700; margin-bottom:0.15rem;">Customer payment schedule — 50 / 40 / 10</div>
+    <p class="muted" style="margin:0; font-size:0.9rem;">{{ payment_scheme | safe }}</p>
+  </div>
+</div>
+{% endif %}
+
 {# ---- Executive (GM) overview: whole-company snapshot ---- #}
 {% if gm %}
 <details class="card sect" open style="border-left:4px solid var(--brand);">

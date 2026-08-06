@@ -454,6 +454,34 @@ PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
 # A blank doc type is a plain ledger note with no paperwork behind it.
 DOC_TYPES = ["Receipt", "Invoice", "Bill"]
 
+# Piece 27.3: progress-billing ("50 / 40 / 10") schedule used to generate customer
+# invoices from a job's contract + BOM. (name, percent-of-contract, plain-language
+# hint). Materials added to the BOM AFTER the deposit invoice are billed to the
+# customer on top of the contract, split 80/20 across the Progress and Final
+# invoices (the Final trues up so the total billed = contract + all added materials).
+INVOICE_MILESTONES = [
+    ("Deposit", 50, "Collected upfront at contract signing."),
+    ("Progress", 40, "Billed once materials are ordered and the project is underway."),
+    ("Final", 10, "Billed on completion / at commissioning."),
+]
+# Plain-language description of the pay scheme — shown as a callout to Sales and
+# Finance (and on the customer invoice) so everyone explains it the same way.
+PAYMENT_SCHEME_NOTE = (
+    "ECC bills every install on a 50 / 40 / 10 schedule: <strong>50%</strong> due at "
+    "contract signing, <strong>40%</strong> once the project is underway, and the final "
+    "<strong>10%</strong> at completion. Any materials added after the deposit (change "
+    "orders) are added to the remaining balance and split across the 40% and 10% invoices."
+)
+# Remit-to block printed on customer invoices. Fill in ECC's real details here.
+COMPANY_INFO = {
+    "name": "ECC Solar",
+    "address": "",
+    "city_state_zip": "",
+    "phone": "",
+    "email": "rachel@eccsolar.com",
+    "terms_days": 15,   # net terms for the Progress / Final invoices
+}
+
 # Piece 21.2: payroll pay-type calculation. A type is either a "multiplier" on
 # the employee's base wage (so it's per-employee automatically) or a "flat"
 # $/hr. Seeded once; fully editable, and each employee can override any type's
@@ -901,7 +929,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 27.2"
+VERSION = "Piece 27.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2176,6 +2204,12 @@ def init_db():
     ensure_columns(db, "jobs", ["contract_amount"])
     # Piece 21.5: source-document type (Receipt / Invoice / Bill) on ledger rows.
     ensure_columns(db, "job_transactions", ["doc_type"])
+    # Piece 27.3: generated-invoice fields on the ledger row + the BOM cutoff the
+    # deposit invoice captures (BOM added after it counts as billable extras).
+    ensure_columns(db, "job_transactions",
+                   ["invoice_number", "milestone", "due_date", "contract_snapshot",
+                    "base_amount", "extras_amount", "bom_snapshot"])
+    ensure_columns(db, "jobs", ["deposit_bom_cutoff_id"])
     # Piece 21.7: tie crew-captured field photos back to the task they document.
     ensure_columns(db, "job_files", ["task_id"])
     # Piece 26.2: link a receipt photo to its ledger transaction (bookkeeping).
@@ -2990,10 +3024,14 @@ def dashboard():
     if "Finance" in shown and _can_payroll():
         p_start, p_end = _pay_period()
         payroll_reminder = payroll_status(db, p_start, p_end)
+    # Piece 27.3: the 50/40/10 pay-scheme callout on the Sales and Finance
+    # viewports, so both explain it to customers the same way.
+    payment_scheme = (PAYMENT_SCHEME_NOTE
+                      if ("Sales" in shown or "Finance" in shown) else None)
     return render_template(
         "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
         stale_stock=stale_stock, task_groups=task_groups,
-        payroll_reminder=payroll_reminder,
+        payroll_reminder=payroll_reminder, payment_scheme=payment_scheme,
         sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
         payments=payments, pay_totals=pay_totals, show_payments=show_payments,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
@@ -3745,6 +3783,7 @@ def job_detail(job_id):
         billing=billing, txn_kinds=TXN_KINDS, txn_statuses=TXN_STATUSES,
         income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
+        invoices=invoice_schedule_view(db, job), payment_scheme=PAYMENT_SCHEME_NOTE,
     )
 
 
@@ -3808,6 +3847,155 @@ def delete_transaction(job_id, txn_id):
     db.commit()
     flash("Transaction deleted.")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+
+
+# --- Piece 27.3: 50/40/10 invoice generation -------------------------------
+def _post_deposit_bom_total(db, job_id, cutoff_id):
+    """Total (qty × unit_cost) of BOM lines added AFTER the deposit invoice —
+    i.e. rows whose id is greater than the cutoff captured when the deposit was
+    generated. These are the change-order materials billed to the customer."""
+    try:
+        cutoff_id = int(cutoff_id or 0)
+    except (ValueError, TypeError):
+        cutoff_id = 0
+    rows = db.execute(
+        "SELECT COALESCE(qty,0) AS q, COALESCE(unit_cost,0) AS c FROM job_bom"
+        " WHERE job_id = ? AND id > ?", (job_id, cutoff_id)).fetchall()
+    return round(sum((r["q"] or 0) * (r["c"] or 0) for r in rows), 2)
+
+
+def _milestone_pct(name):
+    for n, pct, _hint in INVOICE_MILESTONES:
+        if n == name:
+            return pct
+    return 0
+
+
+def _generated_invoices(db, job_id):
+    """Generated milestone invoices for a job, keyed by milestone name."""
+    return {t["milestone"]: t for t in db.execute(
+        "SELECT * FROM job_transactions WHERE job_id = ?"
+        "   AND COALESCE(milestone,'') != '' ORDER BY id", (job_id,)).fetchall()}
+
+
+def _job_cutoff(job):
+    try:
+        return int(job["deposit_bom_cutoff_id"]) if ("deposit_bom_cutoff_id" in job.keys()
+                   and job["deposit_bom_cutoff_id"]) else 0
+    except (ValueError, TypeError):
+        return 0
+
+
+def projected_invoice(db, job):
+    """The next ungenerated milestone and the amount it would bill right now.
+    Deposit = 50% of contract; Progress = 40% + 80% of post-deposit BOM extras;
+    Final = a true-up so the total billed equals contract + all added materials.
+    Returns (milestone_name, amount, extras) or (None, 0, 0)."""
+    job_id = job["id"]
+    contract = _to_float(job["contract_amount"] if "contract_amount" in job.keys() else 0) or 0.0
+    gen = _generated_invoices(db, job_id)
+    nxt = next((n for n, _p, _h in INVOICE_MILESTONES if n not in gen), None)
+    if nxt is None or contract <= 0:
+        return None, 0.0, 0.0
+    if nxt == "Deposit":
+        return "Deposit", round(0.5 * contract, 2), 0.0
+    extras = _post_deposit_bom_total(db, job_id, _job_cutoff(job))
+    if nxt == "Progress":
+        return "Progress", round(0.4 * contract + 0.8 * extras, 2), extras
+    dep = _to_float(gen["Deposit"]["amount"]) if "Deposit" in gen else 0.0
+    prog = _to_float(gen["Progress"]["amount"]) if "Progress" in gen else 0.0
+    return "Final", round((contract + extras) - dep - prog, 2), extras
+
+
+def invoice_schedule_view(db, job):
+    """Per-milestone state for the Billing tab: the generated invoice (or None)
+    for each of the three milestones, plus which one is next and its amount."""
+    gen = _generated_invoices(db, job["id"])
+    nxt, amount, extras = projected_invoice(db, job)
+    rows = [{"name": n, "pct": p, "hint": h, "txn": gen.get(n), "is_next": n == nxt}
+            for n, p, h in INVOICE_MILESTONES]
+    return {"rows": rows, "next": nxt, "next_amount": amount, "next_extras": extras,
+            "contract": _to_float(job["contract_amount"] if "contract_amount" in job.keys() else 0) or 0.0}
+
+
+@app.route("/jobs/<int:job_id>/invoice/generate", methods=["POST"])
+def generate_invoice(job_id):
+    """Generate the next 50/40/10 customer invoice from the contract + BOM."""
+    job = fetch_job(job_id)
+    db = get_db()
+    nxt, amount, extras = projected_invoice(db, job)
+    if nxt is None:
+        flash("Set a contract total first (all invoices may already be generated).", "error")
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+    if request.form.get("milestone") != nxt:
+        flash(f"The {nxt} invoice is next in the schedule.", "error")
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+    pct = _milestone_pct(nxt)
+    contract = _to_float(job["contract_amount"]) or 0.0
+    base = round(pct / 100.0 * contract, 2)
+    number = f"INV-{int(_meta_get(db, 'invoice_seq', '0') or '0') + 1:05d}"
+    _meta_set(db, "invoice_seq", int(_meta_get(db, "invoice_seq", "0") or "0") + 1)
+    today = datetime.now().date()
+    due = today if nxt == "Deposit" else today + timedelta(days=COMPANY_INFO["terms_days"])
+    bom_rows = db.execute(
+        "SELECT component_name, qty FROM job_bom WHERE job_id = ? ORDER BY id",
+        (job_id,)).fetchall()
+    bom_snapshot = json.dumps([{"name": b["component_name"], "qty": b["qty"]}
+                               for b in bom_rows])
+    desc = f"{nxt} invoice — {pct}% of contract"
+    if extras and nxt != "Deposit":
+        desc += f" + ${extras:,.2f} added materials"
+    who = current_user()
+    db.execute(
+        "INSERT INTO job_transactions"
+        " (job_id, kind, category, description, amount, txn_date, status, party,"
+        "  reference, method, doc_type, created_by, invoice_number, milestone,"
+        "  due_date, contract_snapshot, base_amount, extras_amount, bom_snapshot)"
+        " VALUES (?, 'Income', ?, ?, ?, ?, 'Outstanding', '', ?, '', 'Invoice', ?,"
+        "         ?, ?, ?, ?, ?, ?, ?)",
+        (job_id, f"{pct}% {nxt}", desc, amount, today.strftime("%Y-%m-%d"),
+         number, who["name"] if who else "", number, nxt,
+         due.strftime("%Y-%m-%d"), contract, base, round(amount - base, 2), bom_snapshot))
+    if nxt == "Deposit":
+        maxid = db.execute("SELECT COALESCE(MAX(id), 0) AS m FROM job_bom"
+                           " WHERE job_id = ?", (job_id,)).fetchone()["m"]
+        db.execute("UPDATE jobs SET deposit_bom_cutoff_id = ? WHERE id = ?",
+                   (str(maxid), job_id))
+    db.commit()
+    flash(f"{nxt} invoice {number} generated — ${amount:,.2f}.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+
+
+@app.route("/jobs/<int:job_id>/invoice/<int:txn_id>")
+def view_invoice(job_id, txn_id):
+    """Printable customer copy of a generated milestone invoice: the overall
+    contract, the amount due for this milestone, and the equipment (BOM) list —
+    no per-line pricing (the itemized expenses stay on the internal Billing tab)."""
+    job = fetch_job(job_id)
+    db = get_db()
+    inv = db.execute(
+        "SELECT * FROM job_transactions WHERE id = ? AND job_id = ?"
+        "   AND COALESCE(milestone,'') != ''", (txn_id, job_id)).fetchone()
+    if inv is None:
+        abort(404)
+    client = db.execute("SELECT * FROM clients WHERE id = ?",
+                        (job["client_id"],)).fetchone()
+    try:
+        bom = json.loads(inv["bom_snapshot"] or "[]")
+    except (ValueError, TypeError):
+        bom = []
+    gen = _generated_invoices(db, job_id)
+    schedule = []
+    for name, pct, hint in INVOICE_MILESTONES:
+        t = gen.get(name)
+        schedule.append({"name": name, "pct": pct, "hint": hint,
+                         "amount": _to_float(t["amount"]) if t else None,
+                         "status": t["status"] if t else None,
+                         "current": t is not None and t["id"] == inv["id"]})
+    return render_template(
+        "invoice.html", job=job, client=client, inv=inv, bom=bom,
+        schedule=schedule, company=COMPANY_INFO, payment_scheme=PAYMENT_SCHEME_NOTE,
+        contract=_to_float(inv["contract_snapshot"]) or 0.0)
 
 
 @app.route("/finance/quickbooks.csv")

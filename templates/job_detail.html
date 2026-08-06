@@ -542,6 +542,49 @@
        title="Only bills (A/P)">📑 Bills</a>
   </p>
 
+  {# Piece 27.3: 50/40/10 customer invoices generated from the contract + BOM. #}
+  <div style="border:1px solid var(--border); border-radius:10px; padding:0.85rem; margin:0 0 1rem; background:#f3faf5;">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:0.5rem; flex-wrap:wrap;">
+      <strong>🧾 Customer invoices · 50 / 40 / 10</strong>
+      <span class="muted" style="font-size:0.82rem;">Contract total ${{ "%.0f"|format(invoices.contract) }}</span>
+    </div>
+    <p class="muted" style="margin:0.3rem 0 0.7rem; font-size:0.84rem;">{{ payment_scheme | safe }}</p>
+    {% if invoices.contract <= 0 %}
+    <p class="muted" style="margin:0;">Set a <strong>Contract total</strong> above, then generate the 50% deposit invoice here.</p>
+    {% else %}
+    <div style="overflow-x:auto;">
+    <table style="background:var(--card);">
+      <thead><tr><th>Milestone</th><th>Invoice #</th><th style="text-align:right;">Amount</th><th>Due</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for m in invoices.rows %}
+        <tr>
+          <td><strong>{{ m.pct }}%</strong> {{ m.name }}<br><span class="muted" style="font-size:0.77rem;">{{ m.hint }}</span></td>
+          {% if m.txn %}
+          <td>{{ m.txn["invoice_number"] }}</td>
+          <td style="text-align:right; font-weight:600;">${{ "%.2f"|format(m.txn["amount"] or 0) }}
+            {% if m.txn["extras_amount"] and m.txn["extras_amount"]|float > 0 %}<br><span class="muted" style="font-size:0.74rem;">incl. ${{ "%.0f"|format(m.txn["extras_amount"]|float) }} materials</span>{% endif %}</td>
+          <td class="muted">{{ m.txn["due_date"] or "—" }}</td>
+          <td>{% if m.txn["status"] == "Paid" %}<span class="badge">Paid</span>{% else %}<span class="badge warn">Outstanding</span>{% endif %}</td>
+          <td style="white-space:nowrap;"><a href="{{ url_for('view_invoice', job_id=job['id'], txn_id=m.txn['id']) }}" target="_blank" class="btn btn-secondary" style="padding:0.15rem 0.5rem; font-size:0.78rem;">🧾 Customer copy</a></td>
+          {% elif m.is_next %}
+          <td colspan="4" class="muted">Next — bills <strong>${{ "%.2f"|format(invoices.next_amount) }}</strong>{% if invoices.next_extras and m.name != 'Deposit' %} (incl. ${{ "%.0f"|format(invoices.next_extras) }} added materials){% endif %}</td>
+          <td>
+            <form method="post" action="{{ url_for('generate_invoice', job_id=job['id']) }}" style="margin:0;">
+              <input type="hidden" name="milestone" value="{{ m.name }}">
+              <button type="submit" class="btn" style="padding:0.2rem 0.6rem; font-size:0.8rem;">Generate {{ m.pct }}%</button>
+            </form>
+          </td>
+          {% else %}
+          <td colspan="4" class="muted">— generate the previous invoice first —</td><td></td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+
   {% if billing.txns %}
   <div style="overflow-x:auto;">
   <table>
