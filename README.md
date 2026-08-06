@@ -370,5 +370,10 @@ can confirm a pull/update took effect.
   hits) and an **inventory search**; and a **stock-audit** tool (scan-and-reconcile
   against the registered assets, by category, with a saved/exportable discrepancy
   report).
+- **Piece 28.6–28.7** — packaged-exe reliability: password hashing pinned to
+  **`pbkdf2:sha256`** (works in a PyInstaller-frozen build, unlike scrypt's
+  OpenSSL dependency) with a graceful login fallback; and a **first-launch data
+  importer** that adopts an existing `job_creator.db` + `uploads` from a
+  drop-in `Solbiz-Import` folder (see `desktop/README-DESKTOP.md`).
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

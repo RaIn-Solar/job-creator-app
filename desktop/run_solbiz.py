@@ -15,6 +15,7 @@ crash never just "flashes and vanishes."
 """
 
 import os
+import shutil
 import socket
 import sys
 import threading
@@ -28,6 +29,79 @@ from pathlib import Path
 DATA_DIR = Path.home() / "Solbiz"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("SOLBIZ_DATA_DIR", str(DATA_DIR))
+
+# Where Solbiz.exe (or this launcher, when run from source) actually lives.
+# Used to look for a first-run import folder sitting next to the program.
+if getattr(sys, "frozen", False):
+    APP_DIR = Path(sys.executable).resolve().parent
+else:
+    APP_DIR = Path(__file__).resolve().parent
+
+
+def _seed_from_import():
+    """First-run only: copy an existing job_creator.db (+ uploads) into the
+    personal ~/Solbiz folder, so someone moving from the web/dev version keeps
+    all their data.
+
+    It looks, in order, at:
+      1. $SOLBIZ_IMPORT           - a folder or a .db file you point it at
+      2. <next to Solbiz.exe>/Solbiz-Import/
+      3. <next to Solbiz.exe>/job_creator.db
+      4. ~/Downloads/Solbiz-Import/
+
+    A folder may contain job_creator.db and an uploads/ folder. The import is
+    skipped entirely once ~/Solbiz/job_creator.db already exists, so it never
+    overwrites data you've started entering in the app.
+    """
+    target_db = DATA_DIR / "job_creator.db"
+    if target_db.exists():
+        return  # already set up — never clobber real data
+
+    # Resolve the source db (and, if present, the uploads folder beside it).
+    candidates = []
+    env = os.environ.get("SOLBIZ_IMPORT", "").strip()
+    if env:
+        candidates.append(Path(env))
+    candidates += [
+        APP_DIR / "Solbiz-Import",
+        APP_DIR / "job_creator.db",
+        Path.home() / "Downloads" / "Solbiz-Import",
+    ]
+
+    src_db = None
+    src_uploads = None
+    for cand in candidates:
+        try:
+            if cand.is_file() and cand.suffix == ".db":
+                src_db = cand
+                src_uploads = cand.parent / "uploads"
+                break
+            if cand.is_dir() and (cand / "job_creator.db").is_file():
+                src_db = cand / "job_creator.db"
+                src_uploads = cand / "uploads"
+                break
+        except OSError:
+            continue
+
+    if not src_db:
+        return  # nothing to import — normal fresh start
+
+    shutil.copy2(src_db, target_db)
+    imported = f"database from {src_db}"
+    if src_uploads and src_uploads.is_dir():
+        dest_uploads = DATA_DIR / "uploads"
+        if not dest_uploads.exists():
+            shutil.copytree(src_uploads, dest_uploads)
+            imported += " + uploaded files"
+
+    log = DATA_DIR / "solbiz-import.log"
+    try:
+        with open(log, "a", encoding="utf-8") as fh:
+            fh.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  imported {imported}\n")
+    except OSError:
+        pass
+    print("  Imported your existing " + imported)
+    print("  (this happens only once — future launches use ~/Solbiz)")
 
 
 def _free_port():
@@ -46,6 +120,10 @@ def main():
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from app import app, init_db
 
+    # First launch only: bring over an existing job_creator.db + uploads if the
+    # person dropped them next to the exe (see _seed_from_import). init_db()
+    # then migrates the copied database up to the current schema.
+    _seed_from_import()
     init_db()
     port = _free_port()
     url = f"http://127.0.0.1:{port}/"

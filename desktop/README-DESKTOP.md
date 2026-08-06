@@ -57,6 +57,29 @@ Rename the shortcut "Solbiz" if they like.
 
 ---
 
+## Bringing existing data into the app (first launch only)
+
+If you already have Solbiz data — a `job_creator.db` and its `uploads`
+folder from the web/dev version or from another machine — Solbiz can adopt
+it automatically the **very first time** it starts (before any account is
+created):
+
+1. Make a folder named **`Solbiz-Import`** and put your `job_creator.db`
+   inside it. If you also have an **`uploads`** folder, drop that in
+   alongside the database.
+2. Place that `Solbiz-Import` folder **next to `Solbiz.exe`** (in the same
+   extracted `Solbiz` folder), *or* in your **Downloads** folder.
+3. Start `Solbiz.exe`. The black window prints **"Imported your existing
+   database…"** and your clients, jobs, employees and logins are all there.
+
+This runs **only once** — as soon as `C:\Users\<you>\Solbiz\job_creator.db`
+exists, Solbiz uses that and never overwrites it, so re-launching is always
+safe. (Advanced: point the environment variable `SOLBIZ_IMPORT` at a `.db`
+file or a folder to import from somewhere else.) A one-line record of what
+was imported is written to `C:\Users\<you>\Solbiz\solbiz-import.log`.
+
+---
+
 ## Good to know
 
 - **Everyone's data is separate.** Each person's database and uploaded
