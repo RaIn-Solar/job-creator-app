@@ -2,7 +2,17 @@
 
 **Repo:** `rain-solar/job-creator-app` (private, proprietary — see LICENSE)
 **For:** ECC Solar (Rachel, rachel@eccsolar.com) — solar installer, statewide New Mexico
-**Current build:** **Piece 28.2** (footer shows it plainly as "Version 28.2" — the "did my pull work?" check)
+**Current build:** **Piece 28.3** (footer shows it plainly as "Version 28.3" — the "did my pull work?" check)
+
+**Piece 28.3 — Job Detail button/stage reorg.** Reorganized the header controls. The
+job-**stage dropdown** moved out of the button row into the **Pipeline stage** panel: it
+now shows as plain text (`Pipeline stage · <status>`) with an **✎** that reveals the
+`set_job_status` dropdown in place (a `stage_editor()` Jinja macro with self-contained
+inline JS; an `{% else %}` fallback card keeps the stage editable on Complete/Lost jobs
+where the panel is hidden). The button row is now left-aligned **📅 Calendar → Process
+chart → ✎ Edit job**, with **← Client profile** pushed to the far right
+(`margin-left:auto`). Verified (no select in the button row; stage text+pencil toggles the
+dropdown; Complete job keeps an editable stage line) + screenshots.
 
 **Piece 28.2 — Job Detail: bold L/P/C item labels + Billing file upload.**
 (1) In the job's **L/P/C tab**, the requirement **label is now bold** (`<strong>`) in all

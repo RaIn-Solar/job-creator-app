@@ -2,6 +2,23 @@
 {% from "_widgets.html" import job_progress %}
 {% block title %}Job #{{ job["id"] }} — {{ job["client_name"] }}{% endblock %}
 {% block content %}
+{# Piece 28.3: the pipeline stage shows as plain text with an ✎ that reveals the
+   stage dropdown in place — used in the stage panel (and the Complete/Lost card). #}
+{% macro stage_editor() %}
+<span class="stage-editor" style="display:inline-flex; align-items:center; gap:0.35rem; vertical-align:middle;">
+  <strong class="stage-label">{{ job["status"] or "Proposal" }}</strong>
+  <a class="stage-pencil" title="Change the stage" role="button" tabindex="0"
+     style="cursor:pointer; text-decoration:none; font-size:0.9rem;"
+     onclick="var w=this.closest('.stage-editor'); w.querySelector('.stage-label').style.display='none'; this.style.display='none'; w.querySelector('form').style.display='inline-flex';">✎</a>
+  <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="display:none; margin:0;">
+    <select name="status" onchange="this.form.submit()" style="padding:0.25rem;">
+      {% for s in job_statuses %}
+      <option value="{{ s }}" {% if (job["status"] or "Proposal") == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</span>
+{% endmacro %}
 <h1 style="margin-bottom:0.7rem;">{{ job["job_name"] or "Job #" ~ job["id"] }} <span class="muted">· {{ job["client_name"] }}</span></h1>
 
 <div class="card" style="padding:0.9rem 1.1rem;">
@@ -9,25 +26,18 @@
 </div>
 
 <div class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.7rem 0.9rem;">
-  <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="margin:0;"
-        title="Job status / pipeline stage">
-    <select name="status" onchange="this.form.submit()" style="padding:0.4rem;">
-      {% for s in job_statuses %}
-      <option value="{{ s }}" {% if (job["status"] or "Proposal") == s %}selected{% endif %}>{{ s }}</option>
-      {% endfor %}
-    </select>
-  </form>
-  <a href="{{ url_for('edit_job', job_id=job['id']) }}" class="btn">✎ Edit job</a>
-  <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
   <a href="{{ url_for('job_calendar_ics', job_id=job['id']) }}" class="btn btn-secondary"
      title="Download this job's due dates + install date to import into your calendar">📅 Calendar</a>
-  <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary">← Client profile</a>
+  <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
+  <a href="{{ url_for('edit_job', job_id=job['id']) }}" class="btn">✎ Edit job</a>
+  <a href="{{ url_for('client_detail', client_id=job['client_id']) }}" class="btn btn-secondary"
+     style="margin-left:auto;">← Client profile</a>
 </div>
 
 {% if stage.dept != "—" %}
 <div class="card" style="border-left:4px solid var(--brand); padding:0.9rem 1.1rem;">
   <div class="toolbar" style="margin-bottom:0.35rem;">
-    <h2 style="margin:0; font-size:1.05rem;">Pipeline stage · {{ stage.status }}</h2>
+    <h2 style="margin:0; font-size:1.05rem;">Pipeline stage · {{ stage_editor() }}</h2>
     <span class="muted" style="font-size:0.85rem;">Owned by <strong>{{ stage.dept }}</strong></span>
   </div>
   {% if stage.team %}
@@ -76,6 +86,10 @@
     </form>
     {% endif %}
   </div>
+</div>
+{% else %}
+<div class="card" style="padding:0.7rem 0.9rem;">
+  <span style="font-weight:600;">Pipeline stage · </span>{{ stage_editor() }}
 </div>
 {% endif %}
 
