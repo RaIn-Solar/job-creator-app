@@ -377,7 +377,9 @@ can confirm a pull/update took effect.
 - A pay-period summary rolls up hours + dollars per person with a QuickBooks CSV
   export.
 
-### Records & audit
+### Help & records
+- **In-app Help** (❓ Help in the top bar): tutorials & FAQ for every feature,
+  grouped by area with a contents list and expandable questions.
 - **Audit log** of all changes (create/update/delete), with password fields
   redacted and never logged in plaintext.
 - **NM directory** of authorities/utilities baked in for quick reference.
@@ -533,6 +535,11 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 30.7** — an in-app **❓ Help** page (top nav) with a first-draft set of
+  **tutorials & FAQ** covering every feature, organized by area with a contents
+  list and expandable Q&A.
+- **Piece 30.6** — the GM is exempt from the Sales "Closing" relabel (keeps the
+  Installation mode).
 - **Piece 30.5** — for anyone holding a **Sales** role, the dashboard's
   **Installation** mode is presented as **🏁 Closing** and shows Closing-stage
   work (jobs in Closing with **balance due** and the remaining close-out steps),

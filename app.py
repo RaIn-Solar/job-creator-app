@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.6"
+VERSION = "Piece 30.7"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3438,6 +3438,12 @@ def suggest_components(db, array_kw, peak_w, battery_kwh_needed):
         roles.append(_rank_role("Inverter", "unit", cands))
 
     return [r for r in roles if r["suggestions"]]
+
+
+@app.route("/help")
+def help_page():
+    """Piece 30.7: in-app tutorials / FAQ covering every feature."""
+    return render_template("help.html")
 
 
 @app.route("/")
