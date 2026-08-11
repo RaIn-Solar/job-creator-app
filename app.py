@@ -984,7 +984,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.4"
+VERSION = "Piece 29.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1105,12 +1105,20 @@ DASHBOARD_DEPARTMENTS = {
 }
 
 
+# Piece 29.5: departments that never appear as a dashboard "mode". Administration
+# has no pipeline stages of its own, so its dashboard view was redundant — the
+# department stays for role grouping/permissions, it just isn't a focus tab.
+DASHBOARD_MODE_EXCLUDE = {"Administration"}
+
+
 def user_departments(user):
-    """Departments the user belongs to (holds a role for), in config order."""
+    """Departments the user belongs to (holds a role for), in config order.
+    Excludes departments that aren't offered as a dashboard mode."""
     if user is None:
         return []
     held = {r.strip() for r in (user["roles"] or "").split(",") if r.strip()}
-    return [d for d, cfg in DASHBOARD_DEPARTMENTS.items() if held & cfg["roles"]]
+    return [d for d, cfg in DASHBOARD_DEPARTMENTS.items()
+            if held & cfg["roles"] and d not in DASHBOARD_MODE_EXCLUDE]
 # Migrate Piece 12.1 statuses to the Piece 16 phases so existing jobs survive.
 OLD_TO_NEW_STATUS = {
     "Lead": "Proposal", "Quoted": "Proposal", "Sold": "Job Prep",
