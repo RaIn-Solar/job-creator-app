@@ -238,7 +238,8 @@ can confirm a pull/update took effect.
   with the install date leading, and trims **My tasks** to on-site field work.
   For **Sales-role** users that late-stage mode reads **🏁 Closing** instead —
   Closing-stage jobs with **balance due** and remaining close-out steps — since
-  Sales owns the walkthrough / final-invoice hand-off, not the install.
+  Sales owns the walkthrough / final-invoice hand-off, not the install (the GM
+  is exempt and keeps the Installation mode).
   The **Executive** (GM) viewport opens with a **Company overview**: pipeline
   counts by stage, money-in-flight tiles (contract / collected / outstanding /
   expenses across active jobs), an attention row (approvals waiting, overdue
@@ -536,6 +537,7 @@ can confirm a pull/update took effect.
   **Installation** mode is presented as **🏁 Closing** and shows Closing-stage
   work (jobs in Closing with **balance due** and the remaining close-out steps),
   reflecting Sales's real late-pipeline role. Non-Sales users keep the
-  install-crew Installation view unchanged.
+  install-crew Installation view unchanged. **The GM is exempt** — a General
+  Manager keeps the Installation mode even if they also hold a Sales role.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

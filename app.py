@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.5"
+VERSION = "Piece 30.6"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1231,9 +1231,11 @@ def user_departments(user):
 def _viewer_modes(user):
     """The dashboard modes to offer this viewer — like user_departments, but for
     a Sales-role holder the 'Installation' mode is presented as 'Closing'
-    (Piece 30.5)."""
+    (Piece 30.5). The GM is exempt — a General Manager keeps every mode as-is,
+    including Installation (Piece 30.6)."""
     depts = user_departments(user)
-    if _holds_sales_role(user) and "Installation" in depts:
+    if (_holds_sales_role(user) and not _has_gm_role(user)
+            and "Installation" in depts):
         depts = ["Closing" if d == "Installation" else d for d in depts]
     return depts
 # Migrate Piece 12.1 statuses to the Piece 16 phases so existing jobs survive.
