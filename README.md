@@ -454,4 +454,10 @@ can confirm a pull/update took effect.
   the exact pre-Lost stage and its tasks. "Lost" was removed from the plain stage
   dropdown so every cancellation captures a reason.
 
+- **Piece 30.3** — cancelling a job now **notifies everyone involved** so far
+  (task assignees, time loggers, and the client's assigned rep) via the in-app
+  inbox, and a GM/Admin **Closed jobs** review page (Databases nav) lists
+  cancelled jobs with their reason/who/when and a one-click Reopen, plus
+  completed jobs — the way cold leads are reviewed.
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

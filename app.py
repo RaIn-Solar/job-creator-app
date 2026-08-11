@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.2"
+VERSION = "Piece 30.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1573,6 +1573,33 @@ def supervisors_or_gm_ids(db, exclude_id=None):
             "SELECT id FROM employees WHERE roles LIKE '%General Manager%'"
             " AND COALESCE(username,'') != ''").fetchall()]
     return [i for i in sups if i != exclude_id]
+
+
+def job_involved_ids(db, job, exclude_id=None):
+    """Piece 30.3: employees involved in a job so far — anyone assigned a task on
+    it, anyone who logged time to it, and the client's assigned sales rep. Only
+    those with a login (who can read an inbox); the given id is dropped."""
+    ids = set()
+    for r in db.execute("SELECT DISTINCT employee_id FROM job_tasks"
+                        " WHERE job_id = ? AND employee_id IS NOT NULL",
+                        (job["id"],)).fetchall():
+        ids.add(r["employee_id"])
+    for r in db.execute("SELECT DISTINCT employee_id FROM time_entries"
+                        " WHERE job_id = ? AND employee_id IS NOT NULL",
+                        (job["id"],)).fetchall():
+        ids.add(r["employee_id"])
+    rep = db.execute("SELECT assigned_rep_id FROM clients WHERE id = ?",
+                     (job["client_id"],)).fetchone()
+    if rep and rep["assigned_rep_id"]:
+        ids.add(rep["assigned_rep_id"])
+    ids.discard(None)
+    ids.discard(exclude_id)
+    if not ids:
+        return []
+    ph = ",".join("?" * len(ids))
+    return [r["id"] for r in db.execute(
+        f"SELECT id FROM employees WHERE id IN ({ph})"
+        " AND COALESCE(username,'') != ''", tuple(ids)).fetchall()]
 
 
 def unread_notification_count(user):
@@ -7395,8 +7422,21 @@ def cancel_job(job_id):
         (job["status"] or DEFAULT_JOB_STATUS, reason,
          datetime.now().isoformat(timespec="seconds"),
          who["name"] if who else "", job_id))
+    # Piece 30.3: tell everyone who was involved in the job up to this point.
+    recipients = job_involved_ids(db, job, exclude_id=who["id"] if who else None)
+    if recipients:
+        client = db.execute("SELECT name FROM clients WHERE id = ?",
+                            (job["client_id"],)).fetchone()
+        cname = client["name"] if client else ""
+        jobname = job["job_name"] or f"Job #{job['id']}"
+        notify_employees(
+            db, recipients,
+            f"🚫 {jobname}{(' · ' + cname) if cname else ''} was cancelled "
+            f"(Lost). Reason: “{reason}”.",
+            link=url_for("job_detail", job_id=job["id"]), kind="job_cancelled")
     db.commit()
-    flash(f"Job cancelled (Lost). Reason recorded: “{reason}”.")
+    flash(f"Job cancelled (Lost). Reason recorded: “{reason}”."
+          + (f" {len(recipients)} team member(s) notified." if recipients else ""))
     return redirect(url_for("job_detail", job_id=job_id))
 
 
@@ -7417,6 +7457,25 @@ def reopen_job(job_id):
     db.commit()
     flash(f"Job reopened at {restore}.")
     return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.route("/closed-jobs")
+@admin_required
+def closed_jobs_page():
+    """Piece 30.3: management review of closed jobs — cancelled (Lost) jobs with
+    their reason and a reopen action, plus completed jobs — the way cold leads
+    are reviewed. Gated to Admin / GM."""
+    db = get_db()
+    cancelled = db.execute(
+        "SELECT j.*, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id WHERE j.status = 'Lost'"
+        " ORDER BY (j.cancelled_at = ''), j.cancelled_at DESC, j.id DESC").fetchall()
+    completed = db.execute(
+        "SELECT j.*, c.name AS client_name FROM jobs j"
+        " JOIN clients c ON c.id = j.client_id WHERE j.status = 'Complete'"
+        " ORDER BY j.id DESC").fetchall()
+    return render_template("closed_jobs.html", cancelled=cancelled,
+                           completed=completed)
 
 
 @app.route("/jobs/<int:job_id>/install-date", methods=["POST"])

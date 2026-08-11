@@ -362,6 +362,7 @@
         <a href="/inventory">📦 Inventory</a>
         <a href="/catalog">🔌 Calculator Catalog</a>
         {% if can_payroll %}<a href="{{ url_for('finance_settings') }}">💵 Cost model &amp; finance</a>{% endif %}
+        {% if is_admin %}<a href="{{ url_for('closed_jobs_page') }}">📁 Closed jobs</a>{% endif %}
       </div>
     </details>
     {# Admin group: Log / Trash / Access. Dropdown when the user can reach 2+;
