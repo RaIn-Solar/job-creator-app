@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.4"
+VERSION = "Piece 30.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1201,6 +1201,22 @@ DASHBOARD_DEPARTMENTS = {
 # department stays for role grouping/permissions, it just isn't a focus tab.
 DASHBOARD_MODE_EXCLUDE = {"Administration"}
 
+# Piece 30.5: a virtual dashboard mode. Sales sees the pipeline's tail as
+# "Closing" (final walkthrough, final invoice, balance due) rather than the
+# install-crew "Installation" view — so for anyone holding a Sales role, their
+# Installation mode is presented as Closing (see _viewer_modes). MODE_CONFIG is
+# DASHBOARD_DEPARTMENTS plus this Closing mode, used when rendering the switcher.
+MODE_CONFIG = dict(DASHBOARD_DEPARTMENTS)
+MODE_CONFIG["Closing"] = {"icon": "🏁", "stages": ["Closing"], "roles": set()}
+SALES_ROLES = DASHBOARD_DEPARTMENTS["Sales"]["roles"]
+
+
+def _holds_sales_role(user):
+    if user is None:
+        return False
+    held = {r.strip() for r in (user["roles"] or "").split(",") if r.strip()}
+    return bool(held & SALES_ROLES)
+
 
 def user_departments(user):
     """Departments the user belongs to (holds a role for), in config order.
@@ -1210,6 +1226,16 @@ def user_departments(user):
     held = {r.strip() for r in (user["roles"] or "").split(",") if r.strip()}
     return [d for d, cfg in DASHBOARD_DEPARTMENTS.items()
             if held & cfg["roles"] and d not in DASHBOARD_MODE_EXCLUDE]
+
+
+def _viewer_modes(user):
+    """The dashboard modes to offer this viewer — like user_departments, but for
+    a Sales-role holder the 'Installation' mode is presented as 'Closing'
+    (Piece 30.5)."""
+    depts = user_departments(user)
+    if _holds_sales_role(user) and "Installation" in depts:
+        depts = ["Closing" if d == "Installation" else d for d in depts]
+    return depts
 # Migrate Piece 12.1 statuses to the Piece 16 phases so existing jobs survive.
 OLD_TO_NEW_STATUS = {
     "Lead": "Proposal", "Quoted": "Proposal", "Sold": "Job Prep",
@@ -3428,6 +3454,27 @@ def home():
                            job_status_class_json=json.dumps(JOB_STATUS_CLASS))
 
 
+def _closing_worklist(db):
+    """Jobs in the Closing stage with balance due and remaining close-out steps —
+    the Executive overview's Closing worklist, also the Sales 'Closing' mode."""
+    out = []
+    for j in db.execute(
+            "SELECT j.*, c.name AS client_name FROM jobs j"
+            " JOIN clients c ON c.id = j.client_id"
+            " WHERE j.status = 'Closing' ORDER BY j.id").fetchall():
+        b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
+        steps = db.execute(
+            "SELECT title, status FROM job_tasks WHERE job_id = ?"
+            " AND pipeline_status = 'Closing' ORDER BY sort_order, id",
+            (j["id"],)).fetchall()
+        open_steps = [s for s in steps if s["status"] != "Done"]
+        out.append({
+            "job": j, "balance": max(b["contract"] - b["collected"], 0.0),
+            "open": len(open_steps), "total": len(steps),
+            "next": open_steps[0]["title"] if open_steps else ""})
+    return out
+
+
 @app.route("/dashboard")
 def dashboard():
     """Piece 19: role-based My Dashboard — the sign-in landing. Stacks a
@@ -3438,13 +3485,16 @@ def dashboard():
         return redirect(url_for("home"))
     db = get_db()
     ensure_lead_followups(db)
-    depts = user_departments(user)
+    depts = _viewer_modes(user)   # Piece 30.5: Sales sees 'Closing', not 'Installation'
     # Mode: ?mode= sets it for the session; else the saved default; else All.
     if request.args.get("mode"):
         session["dash_mode"] = request.args.get("mode")
     saved = user["dashboard_mode"] if "dashboard_mode" in user.keys() else ""
     # No "All" view (Piece 20.8) — always focused on one role at a time.
     mode = session.get("dash_mode") or saved or (depts[0] if depts else "")
+    # A Sales-role viewer's saved/linked 'Installation' resolves to 'Closing'.
+    if mode == "Installation" and "Closing" in depts:
+        mode = "Closing"
     if mode not in depts:
         mode = depts[0] if depts else ""
     shown = [mode] if mode else []
@@ -3477,7 +3527,7 @@ def dashboard():
 
     sections = []
     for d in shown:
-        cfg = DASHBOARD_DEPARTMENTS[d]
+        cfg = MODE_CONFIG[d]
         jobs = []
         if cfg["stages"]:
             placeholders = ", ".join("?" * len(cfg["stages"]))
@@ -3528,6 +3578,11 @@ def dashboard():
                                    + counts.get("Backordered", 0))
                     procurement.append({"job": j, "counts": counts, "total": total,
                                         "outstanding": outstanding})
+
+    # Piece 30.5: Sales 'Closing' viewport — Closing-stage jobs with balance due
+    # and remaining close-out steps (reuses the Executive Closing worklist).
+    show_closing = "Closing" in shown
+    closing_jobs = _closing_worklist(db) if show_closing else []
 
     # Piece 21.6: Installation (Foreman) viewport — split the Installation /
     # Inspections jobs by install-date timing so the crew sees what's imminent.
@@ -3608,21 +3663,7 @@ def dashboard():
             " WHERE j.install_date != '' AND j.install_date BETWEEN ? AND ?"
             " AND j.status != 'Lost' ORDER BY j.install_date",
             (today_s, wk_end)).fetchall()
-        closing = []
-        for j in db.execute(
-                "SELECT j.*, c.name AS client_name FROM jobs j"
-                " JOIN clients c ON c.id = j.client_id"
-                " WHERE j.status = 'Closing' ORDER BY j.id").fetchall():
-            b = job_billing(db, j["id"], j["contract_amount"] or 0.0)
-            steps = db.execute(
-                "SELECT title, status FROM job_tasks WHERE job_id = ?"
-                " AND pipeline_status = 'Closing' ORDER BY sort_order, id",
-                (j["id"],)).fetchall()
-            open_steps = [s for s in steps if s["status"] != "Done"]
-            closing.append({
-                "job": j, "balance": max(b["contract"] - b["collected"], 0.0),
-                "open": len(open_steps), "total": len(steps),
-                "next": open_steps[0]["title"] if open_steps else ""})
+        closing = _closing_worklist(db)
         # Ready for design: Proposal jobs whose load survey is captured (the
         # step before design) but whose design isn't finalized yet — the
         # Sales → Designer hand-off queue.
@@ -3701,11 +3742,12 @@ def dashboard():
         sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
         payments=payments, pay_totals=pay_totals, show_payments=show_payments,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
-        dept_icons={d: c["icon"] for d, c in DASHBOARD_DEPARTMENTS.items()},
+        dept_icons={d: c["icon"] for d, c in MODE_CONFIG.items()},
         progress_by_job=progress_by_job, loads_by_job=loads_by_job,
         permits_by_job=permits_by_job, show_procurement=show_procurement,
         procurement=procurement, material_statuses=MATERIAL_STATUSES,
         show_install=show_install, install_buckets=install_buckets, gm=gm,
+        show_closing=show_closing, closing_jobs=closing_jobs,   # Piece 30.5
         job_status_class=JOB_STATUS_CLASS)
 
 

@@ -236,6 +236,9 @@ can confirm a pull/update took effect.
   actions), and My tasks. The **Installation** (Foreman) viewport lists installs
   **bucketed by date** — This week / Upcoming / In inspection · unscheduled —
   with the install date leading, and trims **My tasks** to on-site field work.
+  For **Sales-role** users that late-stage mode reads **🏁 Closing** instead —
+  Closing-stage jobs with **balance due** and remaining close-out steps — since
+  Sales owns the walkthrough / final-invoice hand-off, not the install.
   The **Executive** (GM) viewport opens with a **Company overview**: pipeline
   counts by stage, money-in-flight tiles (contract / collected / outstanding /
   expenses across active jobs), an attention row (approvals waiting, overdue
@@ -528,5 +531,11 @@ can confirm a pull/update took effect.
   toggle in the listing, `inventory.manage`), independent of the automatic
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
+
+- **Piece 30.5** — for anyone holding a **Sales** role, the dashboard's
+  **Installation** mode is presented as **🏁 Closing** and shows Closing-stage
+  work (jobs in Closing with **balance due** and the remaining close-out steps),
+  reflecting Sales's real late-pipeline role. Non-Sales users keep the
+  install-crew Installation view unchanged.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

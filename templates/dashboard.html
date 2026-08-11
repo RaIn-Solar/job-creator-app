@@ -262,12 +262,35 @@
 {% set proposals = s.stages == ["Proposal"] %}
 {% set is_permits = s.name == "Permits" %}
 {% set is_install = show_install and s.name == "Installation" %}
+{% set is_closing = show_closing and s.name == "Closing" %}
 <details class="card sect" open>
-  <summary>{{ s.icon }} {% if proposals %}Active Proposals{% elif is_install %}Installs · by date{% else %}{{ s.name }} · jobs in your stages
+  <summary>{{ s.icon }} {% if proposals %}Active Proposals{% elif is_install %}Installs · by date{% elif is_closing %}Closing · final walkthrough, final invoice &amp; balance due{% else %}{{ s.name }} · jobs in your stages
     <span class="sect-sub">— {{ s.stages|join(" / ") }}</span>{% endif %}
-    <span class="sect-count">{{ s.jobs|length }}</span>
+    <span class="sect-count">{% if is_closing %}{{ closing_jobs|length }}{% else %}{{ s.jobs|length }}{% endif %}</span>
   </summary>
-  {% if is_install %}
+  {% if is_closing %}
+  {# ---- Sales Closing viewport: balance due + remaining close-out steps ---- #}
+  {% if closing_jobs %}
+  <div style="overflow-x:auto;">
+  <table>
+    <thead><tr><th>Job</th><th>Client</th><th style="text-align:right;">Balance due</th><th>Steps left</th><th>Next step</th></tr></thead>
+    <tbody>
+      {% for c in closing_jobs %}
+      <tr>
+        <td><a href="{{ url_for('job_detail', job_id=c.job['id'], _anchor='billing') }}">{{ c.job["job_name"] or "Job #" ~ c.job["id"] }}</a></td>
+        <td class="muted" style="font-size:0.82rem;">{{ c.job["client_name"] }}</td>
+        <td style="text-align:right; font-weight:700; {{ 'color:#8a5a00;' if c.balance else 'color:var(--brand);' }}">${{ (c.balance)|money0 }}</td>
+        <td>{% if c.total %}<span class="badge {{ '' if c.open == 0 else 'warn' }}">{{ c.total - c.open }}/{{ c.total }} done</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td style="font-size:0.85rem;">{{ c.next or "✓ all steps done" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No jobs in Closing right now.</p>
+  {% endif %}
+  {% elif is_install %}
   {# ---- Foreman viewport: installs bucketed by install-date timing ---- #}
   {% if s.jobs %}
   {% for bucket in install_buckets %}
