@@ -522,11 +522,39 @@
              value="{{ '%.2f'|format(billing.contract) if billing.contract else '' }}"
              placeholder="0.00" style="padding:0.3rem; width:9rem;">
       <label style="margin:0; font-size:0.85rem; color:var(--muted);" title="NM gross-receipts tax added to each customer invoice. Leave 0 if the solar deduction (NMSA 7-9-112) applies.">GRT %</label>
-      <input name="grt_rate" type="number" step="0.0001" min="0"
+      <input id="grt-input" name="grt_rate" type="number" step="0.0001" min="0"
              value="{{ ('%.4f'|format(job['grt_rate']|float)).rstrip('0').rstrip('.') if 'grt_rate' in job.keys() and job['grt_rate'] else '' }}"
+             placeholder="0" style="padding:0.3rem; width:5rem;">
+      <label style="margin:0; font-size:0.85rem; color:var(--muted);" title="Round-trip miles to the site — travel charge = miles × the Finance travel rate.">Travel mi</label>
+      <input name="travel_miles" type="number" step="0.1" min="0"
+             value="{{ ('%.1f'|format(job['travel_miles']|float)).rstrip('0').rstrip('.') if 'travel_miles' in job.keys() and job['travel_miles'] else '' }}"
              placeholder="0" style="padding:0.3rem; width:5rem;">
       <button type="submit" class="btn btn-secondary" style="padding:0.3rem 0.7rem; font-size:0.85rem;">Save</button>
     </form>
+  </div>
+  {% if county_grt is not none %}
+  <p class="muted" style="margin:-0.3rem 0 0.7rem; font-size:0.83rem;">
+    County on file (<strong>{{ job["county"] }}</strong>) GRT rate:
+    <strong>{{ ('%.4f'|format(county_grt)).rstrip('0').rstrip('.') }}%</strong>
+    <a href="#" onclick="document.getElementById('grt-input').value='{{ ('%.4f'|format(county_grt)).rstrip('0').rstrip('.') }}';return false;">use this rate</a>
+    · leave GRT at 0 if the solar deduction applies.
+  </p>
+  {% endif %}
+
+  {# Piece 29.6: internal pricing breakdown (Finance only — never shown to the customer). #}
+  <div class="card" style="background:var(--bg); border:1px dashed var(--border); margin-bottom:0.9rem;">
+    <div class="toolbar" style="margin-bottom:0.4rem;">
+      <strong style="font-size:0.95rem;">🏷 Pricing breakdown <span class="muted" style="font-weight:400;">(internal — cost & margin)</span></strong>
+      <a href="{{ url_for('finance_settings') }}" class="muted" style="font-size:0.8rem;">edit rates</a>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Equipment cost</label><div style="font-weight:600;">${{ "%.2f"|format(pricing.equipment_cost) }}</div></div>
+      <div class="field"><label>Marked-up equipment price</label><div style="font-weight:600;">${{ "%.2f"|format(pricing.equipment_price) }} <span class="muted" style="font-size:0.8rem;">(+${{ "%.0f"|format(pricing.markup_amount) }} margin)</span></div></div>
+      <div class="field"><label>Travel ({{ ('%.1f'|format(pricing.travel_miles)).rstrip('0').rstrip('.') }} mi × ${{ '%.2f'|format(pricing.travel_rate) }})</label><div style="font-weight:600;">${{ "%.2f"|format(pricing.travel_charge) }}</div></div>
+      <div class="field"><label>Suggested price</label><div style="font-weight:700; color:var(--brand);">${{ "%.2f"|format(pricing.suggested) }}
+        {% if pricing.suggested and pricing.contract %}<span class="muted" style="font-size:0.8rem;">(contract ${{ "%.0f"|format(pricing.contract) }})</span>{% endif %}</div></div>
+    </div>
+    <p class="muted" style="margin:0.3rem 0 0; font-size:0.8rem;">Set the contract total from the suggested price. Change-order materials added after the deposit bill at the marked-up price automatically. The customer invoice shows only the contract total and the equipment list — never these cost/margin figures.</p>
   </div>
 
   <div class="form-grid" style="margin-bottom:0.9rem;">

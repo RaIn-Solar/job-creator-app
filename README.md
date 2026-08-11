@@ -405,4 +405,15 @@ can confirm a pull/update took effect.
   access it** — either by opening the notification or by opening the job — and
   the person who triggered the move isn't notified.
 
+- **Piece 29.5** — removed the redundant Administration dashboard mode.
+- **Piece 29.6 (Finance data)** — a **Finance Settings** page (Finance/Admin/GM)
+  holding the reference data invoices/BOM previously lacked: **NM county GRT
+  rates** (all 33 counties; a job auto-fills its GRT rate from its install
+  county, still overridable for the solar deduction), **equipment markup by
+  category** (with an optional per-BOM-line override), and a **travel $/mile
+  rate**. The job Billing tab gains a per-job **travel miles** field and an
+  internal **pricing breakdown** (equipment cost vs. marked-up price, travel,
+  suggested contract price) that never appears on the customer copy; change-order
+  materials added after the deposit now bill at the marked-up customer price.
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

@@ -419,6 +419,22 @@ CREATE TABLE IF NOT EXISTS onboarding_steps (
     active      TEXT NOT NULL DEFAULT '1',   -- '1' active, '' archived
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Piece 29.6: Finance reference data. NM gross-receipts-tax rate per county
+-- (jobs auto-fill their GRT rate from the install county), and the default
+-- equipment markup % per catalog category (turns ECC's cost into the customer
+-- price). Both are seeded once and edited on the Finance Settings page.
+CREATE TABLE IF NOT EXISTS county_tax_rates (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    county    TEXT NOT NULL UNIQUE,      -- bare county name, e.g. "Santa Fe"
+    grt_rate  REAL NOT NULL DEFAULT 0,   -- percent, e.g. 7.9375
+    updated_at TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS markup_categories (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    category   TEXT NOT NULL UNIQUE,
+    markup_pct REAL NOT NULL DEFAULT 0   -- percent added to unit cost
+);
+
 -- Piece 29.3: lightweight in-app notifications (an inbox + nav bell). Used so
 -- far to alert Supervisors/GM when a reset auto-locks an account, but general
 -- purpose. One row per recipient.

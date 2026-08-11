@@ -316,6 +316,25 @@ def seed_onboarding_steps(db):
                 " sort_order) VALUES (?, ?, ?, ?)", (title, desc, cat, order))
     db.execute("INSERT INTO meta (key, value) VALUES ('onboarding_seeded', '1')"
                " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+
+
+def seed_finance_reference(db):
+    """Piece 29.6: seed the NM county list (at 0% GRT) and a starter set of
+    equipment-markup categories (at 0%), so Finance has a table to fill in.
+    Idempotent — inserts only counties/categories not already present, so the
+    lists stay current without wiping edited rates."""
+    for c in NM_COUNTIES:
+        db.execute("INSERT OR IGNORE INTO county_tax_rates (county, grt_rate)"
+                   " VALUES (?, 0)", (c,))
+    # Categories: any already used in the component catalog, plus a default set.
+    # NOTE: init_db's connection returns tuples (no Row factory), so index by [0].
+    cats = {r[0] for r in db.execute(
+        "SELECT DISTINCT category FROM component_catalog"
+        " WHERE COALESCE(category,'') != ''").fetchall()}
+    cats.update(MARKUP_SEED_CATEGORIES)
+    for cat in sorted(cats):
+        db.execute("INSERT OR IGNORE INTO markup_categories (category, markup_pct)"
+                   " VALUES (?, 0)", (cat,))
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "first_name": "First name", "last_name": "Last name",
     "nickname": "Nickname", "roles": "Roles", "schedule": "Schedule",
@@ -536,6 +555,26 @@ COMPANY_INFO = {
 GRT_DEFAULT_RATE = 0.0
 GRT_EXEMPTION_CITE = ("NMSA 7-9-112 (3.2.247 NMAC) — NM solar-energy-system "
                       "gross-receipts deduction")
+# Piece 29.6: the 33 New Mexico counties, seeded (at 0%) into county_tax_rates
+# so Finance can enter each county's current GRT rate. A job's GRT rate
+# auto-fills from its install county. Rates change biannually — enter the
+# current NM TRD figures; they are NOT bundled to avoid shipping stale tax data.
+NM_COUNTIES = [
+    "Bernalillo", "Catron", "Chaves", "Cibola", "Colfax", "Curry", "De Baca",
+    "Doña Ana", "Eddy", "Grant", "Guadalupe", "Harding", "Hidalgo", "Lea",
+    "Lincoln", "Los Alamos", "Luna", "McKinley", "Mora", "Otero", "Quay",
+    "Rio Arriba", "Roosevelt", "Sandoval", "San Juan", "San Miguel", "Santa Fe",
+    "Sierra", "Socorro", "Taos", "Torrance", "Union", "Valencia",
+]
+# Piece 29.6: equipment-markup categories seeded (at 0%) when none exist, so the
+# per-category markup table is useful out of the box. Finance sets real margins.
+MARKUP_SEED_CATEGORIES = [
+    "Panel", "Inverter", "Battery", "Racking", "Electrical", "Monitoring",
+    "Generator", "Well Pump", "Mini Split", "Other",
+]
+# Default travel reimbursement, $ per (round-trip) mile — stored in meta as
+# 'travel_rate_per_mile' and edited on Finance Settings. 0 until Finance sets it.
+TRAVEL_RATE_DEFAULT = 0.0
 
 # Piece 21.2: payroll pay-type calculation. A type is either a "multiplier" on
 # the employee's base wage (so it's per-employee automatically) or a "flat"
@@ -984,7 +1023,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.5"
+VERSION = "Piece 29.6"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1704,6 +1743,17 @@ def pay_rates_required(view):
         if not _can_edit_pay_rates():
             flash("Only the General Manager or Payroll Manager can change pay rates.", "error")
             return redirect(url_for("payroll"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def finance_required(view):
+    """Guard finance settings/pages to Finance / Admin / GM (Piece 29.6)."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not _can_payroll():   # GM, Admin, or the Finance department
+            flash("That's limited to Finance and management.", "error")
+            return redirect(url_for("home"))
         return view(*args, **kwargs)
     return wrapped
 
@@ -2787,6 +2837,9 @@ def init_db():
         db.commit()
     seed_org_team(db)
     seed_onboarding_steps(db)  # Piece 29.2: default onboarding checklist
+    seed_finance_reference(db)  # Piece 29.6: county GRT + markup categories
+    ensure_columns(db, "jobs", ["travel_miles"])       # Piece 29.6
+    ensure_columns(db, "job_bom", ["markup_pct"])      # per-line markup override
     db.commit()
     ensure_columns(db, "inventory_items", ["status", "last_used", "stock_reviewed_on"])
     db.execute("UPDATE inventory_items SET status = 'Active'"
@@ -4288,6 +4341,8 @@ def job_detail(job_id):
         income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
         invoices=invoice_schedule_view(db, job), payment_scheme=PAYMENT_SCHEME_NOTE,
+        pricing=job_pricing(db, job),                      # Piece 29.6
+        county_grt=county_grt_rate(db, job["county"] if "county" in job.keys() else ""),
     )
 
 
@@ -4297,12 +4352,77 @@ def set_contract(job_id):
     db = get_db()
     # Piece 27.4: GRT rate is set alongside the contract (both drive invoicing).
     grt = max(_to_float(request.form.get("grt_rate")) or 0.0, 0.0)
-    db.execute("UPDATE jobs SET contract_amount = ?, grt_rate = ? WHERE id = ?",
+    # Piece 29.6: travel miles (round-trip) drive the travel charge in pricing.
+    miles = max(_to_float(request.form.get("travel_miles")) or 0.0, 0.0)
+    db.execute("UPDATE jobs SET contract_amount = ?, grt_rate = ?,"
+               " travel_miles = ? WHERE id = ?",
                (_to_float(request.form.get("contract_amount")) or 0.0,
-                str(grt), job_id))
+                str(grt), str(miles), job_id))
     db.commit()
-    flash("Contract total updated.")
+    flash("Billing details updated.")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+
+
+@app.route("/finance/settings")
+@finance_required
+def finance_settings():
+    """Piece 29.6: Finance reference data — NM county GRT rates, per-category
+    equipment markup, and the travel $/mile rate."""
+    db = get_db()
+    counties = db.execute(
+        "SELECT * FROM county_tax_rates ORDER BY county").fetchall()
+    categories = db.execute(
+        "SELECT * FROM markup_categories ORDER BY category").fetchall()
+    return render_template(
+        "finance_settings.html", counties=counties, categories=categories,
+        travel_rate=travel_rate(db))
+
+
+@app.route("/finance/settings/travel", methods=["POST"])
+@finance_required
+def finance_save_travel():
+    db = get_db()
+    rate = max(_to_float(request.form.get("travel_rate")) or 0.0, 0.0)
+    _meta_set(db, "travel_rate_per_mile", str(rate))
+    db.commit()
+    flash("Travel rate saved.")
+    return redirect(url_for("finance_settings"))
+
+
+@app.route("/finance/settings/counties", methods=["POST"])
+@finance_required
+def finance_save_counties():
+    db = get_db()
+    for c in db.execute("SELECT id FROM county_tax_rates").fetchall():
+        val = request.form.get(f"county_{c['id']}")
+        if val is not None:
+            db.execute("UPDATE county_tax_rates SET grt_rate = ?, updated_at = ?"
+                       " WHERE id = ?",
+                       (max(_to_float(val) or 0.0, 0.0),
+                        datetime.now().strftime("%Y-%m-%d"), c["id"]))
+    db.commit()
+    flash("County GRT rates saved.")
+    return redirect(url_for("finance_settings"))
+
+
+@app.route("/finance/settings/markup", methods=["POST"])
+@finance_required
+def finance_save_markup():
+    db = get_db()
+    for c in db.execute("SELECT id FROM markup_categories").fetchall():
+        val = request.form.get(f"markup_{c['id']}")
+        if val is not None:
+            db.execute("UPDATE markup_categories SET markup_pct = ? WHERE id = ?",
+                       (max(_to_float(val) or 0.0, 0.0), c["id"]))
+    # Optionally add a new category.
+    new_cat = request.form.get("new_category", "").strip()
+    if new_cat:
+        db.execute("INSERT OR IGNORE INTO markup_categories (category, markup_pct)"
+                   " VALUES (?, ?)",
+                   (new_cat, max(_to_float(request.form.get("new_markup")) or 0.0, 0.0)))
+    db.commit()
+    flash("Equipment markup saved.")
+    return redirect(url_for("finance_settings"))
 
 
 @app.route("/jobs/<int:job_id>/transactions/add", methods=["POST"])
@@ -4380,18 +4500,108 @@ def delete_transaction(job_id, txn_id):
 
 
 # --- Piece 27.3: 50/40/10 invoice generation -------------------------------
+def _norm_county(name):
+    """Normalise a county name for matching: drop a trailing 'County', lower."""
+    n = (name or "").strip()
+    if n.lower().endswith(" county"):
+        n = n[:-7].strip()
+    return n.lower()
+
+
+def county_grt_rate(db, county):
+    """The GRT rate on file for a job's install county, or None if unknown."""
+    key = _norm_county(county)
+    if not key:
+        return None
+    for r in db.execute("SELECT county, grt_rate FROM county_tax_rates").fetchall():
+        if _norm_county(r["county"]) == key:
+            return float(r["grt_rate"] or 0)
+    return None
+
+
+def markup_map(db):
+    """{category (lower): markup percent} from the finance settings."""
+    return {(r["category"] or "").strip().lower(): float(r["markup_pct"] or 0)
+            for r in db.execute(
+                "SELECT category, markup_pct FROM markup_categories").fetchall()}
+
+
+def travel_rate(db):
+    return _to_float(_meta_get(db, "travel_rate_per_mile",
+                               str(TRAVEL_RATE_DEFAULT))) or 0.0
+
+
+def _effective_markup(category, line_markup, mmap):
+    """A BOM line's markup %: its own override if set, else the category default."""
+    if line_markup not in (None, ""):
+        v = _to_float(line_markup)
+        if v is not None:
+            return max(v, 0.0)
+    return mmap.get((category or "").strip().lower(), 0.0)
+
+
+def bom_pricing(db, job_id, mmap, after_id=None):
+    """Cost and marked-up customer price for a job's BOM (optionally only rows
+    added after `after_id`, for change-order extras). Per-line markup override
+    wins over the category default."""
+    sql = ("SELECT id, component_name, category, COALESCE(qty,0) AS qty,"
+           " COALESCE(unit_cost,0) AS cost, markup_pct FROM job_bom"
+           " WHERE job_id = ?")
+    args = [job_id]
+    if after_id is not None:
+        sql += " AND id > ?"
+        args.append(int(after_id or 0))
+    sql += " ORDER BY id"
+    lines, cost_total, price_total = [], 0.0, 0.0
+    for r in db.execute(sql, args).fetchall():
+        mk = _effective_markup(r["category"],
+                               r["markup_pct"] if "markup_pct" in r.keys() else "",
+                               mmap)
+        line_cost = (r["qty"] or 0) * (r["cost"] or 0)
+        line_price = line_cost * (1 + mk / 100.0)
+        cost_total += line_cost
+        price_total += line_price
+        lines.append({"id": r["id"], "name": r["component_name"],
+                      "category": r["category"], "qty": r["qty"],
+                      "cost": r["cost"], "markup": mk,
+                      "line_cost": round(line_cost, 2),
+                      "line_price": round(line_price, 2)})
+    return {"lines": lines, "cost_total": round(cost_total, 2),
+            "price_total": round(price_total, 2)}
+
+
+def job_travel_charge(db, job):
+    miles = _to_float(job["travel_miles"] if "travel_miles" in job.keys() else 0) or 0.0
+    return round(max(miles, 0.0) * travel_rate(db), 2), max(miles, 0.0)
+
+
+def job_pricing(db, job):
+    """Internal Finance breakdown for a job: equipment cost vs marked-up price,
+    travel, a suggested contract price, and the contract Finance actually set."""
+    mmap = markup_map(db)
+    bom = bom_pricing(db, job["id"], mmap)
+    travel, miles = job_travel_charge(db, job)
+    suggested = round(bom["price_total"] + travel, 2)
+    contract = _to_float(job["contract_amount"] if "contract_amount" in job.keys()
+                         else 0) or 0.0
+    return {"equipment_cost": bom["cost_total"],
+            "equipment_price": bom["price_total"],
+            "markup_amount": round(bom["price_total"] - bom["cost_total"], 2),
+            "travel_miles": miles, "travel_rate": travel_rate(db),
+            "travel_charge": travel, "suggested": suggested,
+            "contract": contract, "lines": bom["lines"]}
+
+
 def _post_deposit_bom_total(db, job_id, cutoff_id):
-    """Total (qty × unit_cost) of BOM lines added AFTER the deposit invoice —
-    i.e. rows whose id is greater than the cutoff captured when the deposit was
-    generated. These are the change-order materials billed to the customer."""
+    """Marked-up customer price of BOM lines added AFTER the deposit invoice —
+    rows whose id is greater than the cutoff captured when the deposit was
+    generated. These change-order materials are billed at the customer price
+    (cost + markup, Piece 29.6), not raw cost."""
     try:
         cutoff_id = int(cutoff_id or 0)
     except (ValueError, TypeError):
         cutoff_id = 0
-    rows = db.execute(
-        "SELECT COALESCE(qty,0) AS q, COALESCE(unit_cost,0) AS c FROM job_bom"
-        " WHERE job_id = ? AND id > ?", (job_id, cutoff_id)).fetchall()
-    return round(sum((r["q"] or 0) * (r["c"] or 0) for r in rows), 2)
+    return bom_pricing(db, job_id, markup_map(db), after_id=cutoff_id)["price_total"]
 
 
 def _milestone_pct(name):
@@ -5508,13 +5718,16 @@ def update_bom_item(job_id, bom_id):
         flash("The component needs a name.", "error")
         return redirect(url_for("job_loads", job_id=job_id, edit_bom=bom_id))
     cost = request.form.get("unit_cost")
+    # Piece 29.6: optional per-line markup override (blank = use category default).
+    mk_raw = request.form.get("markup_pct", "")
+    markup = "" if mk_raw.strip() == "" else str(max(_to_float(mk_raw) or 0.0, 0.0))
     db.execute(
         "UPDATE job_bom SET component_name = ?, category = ?, qty = ?,"
-        " unit_cost = ?, notes = ? WHERE id = ?",
+        " unit_cost = ?, notes = ?, markup_pct = ? WHERE id = ?",
         (name, request.form.get("category", "").strip(),
          _float(request.form.get("qty"), 1) or 1,
          _float(cost, None) if cost not in (None, "") else None,
-         request.form.get("notes", "").strip(), bom_id))
+         request.form.get("notes", "").strip(), markup, bom_id))
     db.commit()
     flash("Component updated.")
     return redirect(url_for("job_loads", job_id=job_id))

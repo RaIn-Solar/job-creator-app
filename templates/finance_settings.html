@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Finance settings{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>💵 Finance settings</h1>
+  <a href="{{ url_for('dashboard', mode='Finance') }}" class="btn btn-secondary">← Finance dashboard</a>
+</div>
+<p class="muted" style="margin-top:0;">Reference data that feeds job pricing and
+customer invoices: New Mexico county tax rates, equipment markup, and the travel
+rate. Enter ECC's real figures — nothing here ships with assumed numbers.</p>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">🚚 Travel rate</h2>
+  <p class="muted" style="margin-top:0; font-size:0.88rem;">Dollars per
+    <strong>round-trip mile</strong>. A job's travel charge = its miles × this rate.</p>
+  <form method="post" action="{{ url_for('finance_save_travel') }}"
+        style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+    <div class="field" style="margin:0;">
+      <label>$ / mile</label>
+      <input name="travel_rate" type="number" step="0.01" min="0" value="{{ '%.2f'|format(travel_rate) }}" style="max-width:8rem;">
+    </div>
+    <button type="submit" class="btn">Save</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">🏷 Equipment markup by category</h2>
+  <p class="muted" style="margin-top:0; font-size:0.88rem;">Percent added to ECC's
+    cost to get the customer price. A BOM line can override its category here with
+    its own markup. Change orders (materials added after the deposit) bill at the
+    marked-up price.</p>
+  <form method="post" action="{{ url_for('finance_save_markup') }}">
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Category</th><th style="width:10rem;">Markup %</th></tr></thead>
+      <tbody>
+        {% for c in categories %}
+        <tr>
+          <td>{{ c["category"] }}</td>
+          <td><input name="markup_{{ c['id'] }}" type="number" step="0.1" min="0"
+                     value="{{ '%.1f'|format(c['markup_pct']|float) }}" style="max-width:7rem;"></td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td><input name="new_category" placeholder="+ add a category"></td>
+          <td><input name="new_markup" type="number" step="0.1" min="0" placeholder="%" style="max-width:7rem;"></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="actions"><button type="submit" class="btn">Save markup</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">🗺 NM county GRT rates</h2>
+  <p class="muted" style="margin-top:0; font-size:0.88rem;">The gross-receipts-tax
+    rate for each county's install location. A job auto-fills its GRT rate from
+    its county (still overridable — e.g. left at 0 for the solar deduction).
+    Rates change twice a year; enter the current NM&nbsp;TRD figures.</p>
+  <form method="post" action="{{ url_for('finance_save_counties') }}">
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>County</th><th style="width:9rem;">GRT %</th></tr></thead>
+      <tbody>
+        {% for c in counties %}
+        <tr>
+          <td>{{ c["county"] }}</td>
+          <td><input name="county_{{ c['id'] }}" type="number" step="0.0001" min="0"
+                     value="{{ (('%.4f'|format(c['grt_rate']|float)).rstrip('0').rstrip('.')) if c['grt_rate'] else '0' }}" style="max-width:7rem;"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="actions"><button type="submit" class="btn">Save county rates</button></div>
+  </form>
+</div>
+{% endblock %}
