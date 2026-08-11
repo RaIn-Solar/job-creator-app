@@ -215,8 +215,10 @@ can confirm a pull/update took effect.
 ### People, roles & permissions
 - **Employees** matched to the org chart, with first / last / optional nickname
   (duplicate-name guard on creation).
-- **27 roles grouped by department**; the create-employee form groups role titles
-  by department in its picker.
+- **28 roles arranged as the org chart**; the New Employee form's **Roles** picker
+  is an **indented org tree** (checkboxes) mirroring ECC's reporting structure —
+  where a role sits shows who they report to, and rows with direct reports are
+  bold. Multi-select, with an "Other role(s)" free-text field for anything off-chart.
 - **Licenses & certifications** per employee, with expiry tracking that ties into
   job requirements (a job page can show whether staff hold the licenses it needs
   and warn when a credential has lapsed).
@@ -540,6 +542,13 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 30.9** — the New Employee **Roles** picker is now an **indented org-chart
+  tree** (checkboxes) matching the finance team's outline; roles were renamed to
+  the outline's exact names (Warehouse **Assistant**, **Human Resources** Manager,
+  **Sales &amp; Marketing** / **Research &amp; Development** Manager) with a one-time
+  migration of existing employee records, and two roles (**Hiring and Performance
+  Coordinator**, **Product Portfolio Manager**) are selectable with no dashboard of
+  their own.
 - **Piece 30.8** — **Boards** (📋 in the top nav): stand-alone to-dos not tied to
   a job or client (clean the bathroom, call a vendor, …). Assign / **send** one
   to a teammate (they're notified), **log time** on it (with a running total),

@@ -1,6 +1,22 @@
 {% extends "base.html" %}
 {% block title %}{{ "Edit employee" if employee_id else "New employee" }}{% endblock %}
 {% block content %}
+<style>
+  /* Piece 30.9: org-chart role tree */
+  .role-tree, .role-sub { list-style:none; margin:0; padding:0; }
+  .role-sub { margin-left:0.6rem; padding-left:1rem; border-left:1.75px solid var(--border); }
+  .role-tree li { position:relative; }
+  .role-chk { position:relative; display:inline-flex; align-items:center; gap:0.5rem;
+    padding:0.22rem 0.5rem; margin:0.1rem 0; border-radius:7px; cursor:pointer;
+    border:1px solid transparent; }
+  .role-chk:hover { background:var(--bg); }
+  .role-chk:has(input:checked) { background:var(--bg); border-color:var(--brand); }
+  .role-sub > li > .role-chk::before { content:""; position:absolute; left:-1rem;
+    top:50%; width:0.8rem; border-top:1.75px solid var(--border); }
+  .role-lead > .role-chk span { font-weight:700; }
+  .role-chk input { width:auto; margin:0; flex:none; accent-color:var(--brand); }
+  .role-chk span { font-size:0.95rem; }
+</style>
 <div style="margin-bottom: 0.8rem;">
   {% if employee_id %}
   <a href="{{ url_for('employee_detail', employee_id=employee_id) }}" class="btn btn-secondary">← Back to {{ values["name"] or "employee" }}</a>
@@ -44,26 +60,30 @@
     <div class="field wide">
       <fieldset class="section">
         <legend>Roles</legend>
-        <p class="muted" style="margin:0 0 0.6rem; font-size:0.85rem;">Grouped by
-        department — click a department to expand its titles. Pick as many as the
-        person holds.</p>
-        {% for dept, dept_roles in role_departments.items() %}
-        {% set chosen = dept_roles | select("in", selected) | list %}
-        <details class="req-group" {% if chosen %}open{% endif %}>
-          <summary>
-            <span>{{ dept }}</span>
-            {% if chosen %}<span class="count-badge">{{ chosen|length }}</span>{% endif %}
-          </summary>
-          <div class="check-grid" style="margin:0.5rem 0 0.2rem;">
-            {% for r in dept_roles %}
-            <label class="check">
-              <input type="checkbox" name="roles" value="{{ r }}" {% if r in selected %}checked{% endif %}> {{ r }}
-            </label>
-            {% endfor %}
-          </div>
-        </details>
-        {% endfor %}
-        <div class="field" style="margin-top:0.8rem;">
+        <p class="muted" style="margin:0 0 0.6rem; font-size:0.85rem;">Select every
+        role this person holds. The tree is ECC's org chart — where a role sits shows
+        <strong>who they report to</strong>; <strong>bold</strong> rows have direct reports.</p>
+
+        {# Piece 30.9: roles as an indented org tree (recursive). #}
+        {% macro role_node(node) %}
+        <li{% if node.children %} class="role-lead"{% endif %}>
+          <label class="role-chk">
+            <input type="checkbox" name="roles" value="{{ node.role }}" {% if node.role in selected %}checked{% endif %}>
+            <span>{{ node.role }}</span>
+          </label>
+          {% if node.children %}
+          <ul class="role-sub">
+            {% for child in node.children %}{{ role_node(child) }}{% endfor %}
+          </ul>
+          {% endif %}
+        </li>
+        {% endmacro %}
+
+        <ul class="role-tree">
+          {% for node in role_tree %}{{ role_node(node) }}{% endfor %}
+        </ul>
+
+        <div class="field" style="margin-top:0.9rem;">
           <label for="roles_other">Other role(s)</label>
           <input id="roles_other" name="roles_other" value="{{ roles_other }}"
                  placeholder="comma-separated, e.g. Trainer, Safety Officer">

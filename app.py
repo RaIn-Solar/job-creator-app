@@ -241,15 +241,15 @@ ROLE_PERMISSIONS = {
     # can also grant "inventory.register" to whoever fills that role via /access.
     "Inventory Manager": {"inventory.manage", "inventory.register"},
     "Purchasing Agent": {"inventory.manage"},
-    "Warehouse Associate": {"inventory.manage"},
+    "Warehouse Assistant": {"inventory.manage"},
     "Designer": {"inventory.manage"},          # actions the stale-stock queue
-    "Sales and Marketing Manager": {"leads.manage", "clients.history"},
+    "Sales & Marketing Manager": {"leads.manage", "clients.history"},
     "Outside Sales Rep": {"leads.manage"},
     "Inside Sales Rep": {"leads.manage"},
     "Administration Manager": {"employees.manage"},
-    "HR Manager": {"employees.manage"},
+    "Human Resources Manager": {"employees.manage"},
     "Finance Manager": {"approvals", "clients.history"},
-    "Research and Development Manager": {"rules.manage", "catalog.manage"},
+    "Research & Development Manager": {"rules.manage", "catalog.manage"},
     "Process Developer": {"rules.manage", "catalog.manage"},
     "Software Developer": {"rules.manage", "catalog.manage"},
 }
@@ -357,46 +357,86 @@ EXPIRY_SOON_DAYS = 60
 # picker reads like the org chart. An employee may hold any number; roles are
 # stored comma-separated, like the job form's products. EMPLOYEE_ROLES is the
 # flat list derived from the groups, so the two never drift apart.
-ROLE_DEPARTMENTS = {
-    "Executive": ["General Manager"],
-    "Sales & Marketing": [
-        "Sales and Marketing Manager", "Marketing Associate",
-        "Inside Sales Rep", "Outside Sales Rep",
-    ],
-    "Operations": [
-        "Operations Manager", "Designer", "Inventory Manager",
-        "Purchasing Agent", "Warehouse Associate", "Permit Coordinator",
-        "Scheduling Coordinator", "Lead Installer", "Installer",
-        "Service Technician",
-    ],
-    "Administration": [
-        "Administration Manager", "Facilities Manager", "HR Manager",
-        "Payroll Manager", "Payroll Administrator", "Administrative Assistant",
-    ],
-    "Finance": ["Finance Manager", "Bookkeeper"],
-    "Research & Development": [
-        "Research and Development Manager", "Product Portfolio Manager",
-        "Process Developer", "Software Developer",
-    ],
+# Piece 30.9: the org chart as a hierarchy (matches the finance team's outline).
+# This single tree drives the New Employee "Roles" picker (rendered as an indented
+# org tree) and, flattened, the list of valid roles.
+ROLE_TREE = [
+    {"role": "General Manager", "children": [
+        {"role": "Sales & Marketing Manager", "children": [
+            {"role": "Marketing Associate"},
+            {"role": "Inside Sales Rep"},
+            {"role": "Outside Sales Rep"},
+        ]},
+        {"role": "Operations Manager", "children": [
+            {"role": "Designer"},
+            {"role": "Inventory Manager", "children": [
+                {"role": "Purchasing Agent"},
+                {"role": "Warehouse Assistant"},
+            ]},
+            {"role": "Permit Coordinator"},
+            {"role": "Scheduling Coordinator"},
+            {"role": "Lead Installer", "children": [
+                {"role": "Installer"},
+            ]},
+            {"role": "Service Technician"},
+        ]},
+        {"role": "Administration Manager", "children": [
+            {"role": "Facilities Manager"},
+            {"role": "Human Resources Manager", "children": [
+                {"role": "Hiring and Performance Coordinator"},
+                {"role": "Payroll Manager", "children": [
+                    {"role": "Payroll Administrator"},
+                ]},
+            ]},
+            {"role": "Administrative Assistant"},
+        ]},
+        {"role": "Finance Manager", "children": [
+            {"role": "Bookkeeper"},
+        ]},
+        {"role": "Research & Development Manager", "children": [
+            {"role": "Product Portfolio Manager"},
+            {"role": "Process Developer"},
+            {"role": "Software Developer"},
+        ]},
+    ]},
+]
+
+
+def _flatten_roles(nodes):
+    out = []
+    for n in nodes:
+        out.append(n["role"])
+        out.extend(_flatten_roles(n.get("children", [])))
+    return out
+
+
+EMPLOYEE_ROLES = _flatten_roles(ROLE_TREE)
+# Piece 30.9: legacy role name → current name, for a one-time migration of the
+# employees.roles text (and back-compat when reading old data).
+ROLE_RENAMES = {
+    "Sales and Marketing Manager": "Sales & Marketing Manager",
+    "Research and Development Manager": "Research & Development Manager",
+    "Warehouse Associate": "Warehouse Assistant",
+    "HR Manager": "Human Resources Manager",
 }
-EMPLOYEE_ROLES = [r for roles in ROLE_DEPARTMENTS.values() for r in roles]
 
 # Piece 16.1: ECC's org chart as a one-time employee seed (matched from the
 # provided diagram). Each person may hold many roles.
 ORG_CHART_TEAM = [
-    ("Cary", ["General Manager", "Sales and Marketing Manager",
+    ("Cary", ["General Manager", "Sales & Marketing Manager",
               "Administration Manager", "Finance Manager",
-              "Research and Development Manager", "Marketing Associate",
+              "Research & Development Manager", "Marketing Associate",
               "Inside Sales Rep", "Outside Sales Rep", "Designer",
               "Inventory Manager", "Purchasing Agent", "Scheduling Coordinator",
-              "Lead Installer", "Installer", "Service Technician", "HR Manager",
-              "Product Portfolio Manager", "Process Developer"]),
+              "Lead Installer", "Installer", "Service Technician",
+              "Human Resources Manager", "Product Portfolio Manager",
+              "Process Developer"]),
     ("Will", ["Operations Manager", "Purchasing Agent", "Scheduling Coordinator",
               "Lead Installer", "Installer", "Service Technician"]),
     ("Rachel", ["Marketing Associate", "Process Developer"]),
     ("Louie", ["Inside Sales Rep", "Outside Sales Rep", "Scheduling Coordinator",
                "Installer"]),
-    ("Trish", ["Permit Coordinator", "Purchasing Agent", "Warehouse Associate",
+    ("Trish", ["Permit Coordinator", "Purchasing Agent", "Warehouse Assistant",
                "Facilities Manager", "Administrative Assistant"]),
     ("Si", ["Purchasing Agent", "Lead Installer", "Installer",
             "Service Technician"]),
@@ -1075,7 +1115,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.8"
+VERSION = "Piece 30.9"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1172,7 +1212,7 @@ def next_stage(status):
 # whose active jobs that department needs to work.
 DASHBOARD_DEPARTMENTS = {
     "Sales": {"icon": "💬", "stages": ["Proposal"],
-              "roles": {"Sales and Marketing Manager", "Outside Sales Rep",
+              "roles": {"Sales & Marketing Manager", "Outside Sales Rep",
                         "Inside Sales Rep", "Marketing Associate"}},
     "Design": {"icon": "📐", "stages": ["Proposal"], "roles": {"Designer"}},
     "Permits": {"icon": "📋", "stages": ["Job Prep", "Inspections"],
@@ -1182,7 +1222,7 @@ DASHBOARD_DEPARTMENTS = {
                           "Payroll Administrator"}},
     "Purchasing": {"icon": "📦", "stages": ["Job Prep"],
                    "roles": {"Inventory Manager", "Purchasing Agent",
-                             "Warehouse Associate"}},
+                             "Warehouse Assistant"}},
     "Installation": {"icon": "🔧", "stages": ["Installation", "Inspections"],
                      "roles": {"Lead Installer", "Installer",
                                "Service Technician", "Scheduling Coordinator"}},
@@ -1190,7 +1230,7 @@ DASHBOARD_DEPARTMENTS = {
                    "roles": {"Operations Manager"}},
     "Administration": {"icon": "🗂️", "stages": [],
                        "roles": {"Administration Manager", "Administrative Assistant",
-                                 "Facilities Manager", "HR Manager"}},
+                                 "Facilities Manager", "Human Resources Manager"}},
     "Executive": {"icon": "⭐", "stages": STAGE_ORDER[:-1],
                   "roles": {"General Manager"}},
 }
@@ -1257,10 +1297,10 @@ TASK_STATUSES = ["To do", "In progress", "Blocked", "Done"]
 # auto-assign. The legacy generic labels (Foreman, System Designer, …) are kept
 # as aliases so tasks generated before the 24.5 lane rename still resolve.
 LANE_TO_ROLES = {
-    "Sales": ["Outside Sales Rep", "Inside Sales Rep", "Sales and Marketing Manager"],
+    "Sales": ["Outside Sales Rep", "Inside Sales Rep", "Sales & Marketing Manager"],
     "Design": ["Designer"],
     "Permits": ["Permit Coordinator"],
-    "Purchasing": ["Purchasing Agent", "Inventory Manager", "Warehouse Associate"],
+    "Purchasing": ["Purchasing Agent", "Inventory Manager", "Warehouse Assistant"],
     "Installation": ["Lead Installer", "Installer", "Scheduling Coordinator",
                      "Service Technician"],
     "Finance": ["Finance Manager", "Bookkeeper", "Payroll Manager"],
@@ -1272,7 +1312,7 @@ LANE_TO_ROLES.update({
     "Sales Rep": LANE_TO_ROLES["Sales"],
     "System Designer": LANE_TO_ROLES["Design"],
     "Permit Coordinator": LANE_TO_ROLES["Permits"],
-    "Warehouse Associate": LANE_TO_ROLES["Purchasing"],
+    "Warehouse Assistant": LANE_TO_ROLES["Purchasing"],
     "Foreman": LANE_TO_ROLES["Installation"],
     "Finance Department": LANE_TO_ROLES["Finance"],
     "General Manager": LANE_TO_ROLES["Executive"],
@@ -2886,6 +2926,18 @@ def init_db():
                    # Piece 29.0: supervisor designation + emergency access lockout.
                    + ["is_supervisor", "access_revoked", "access_revoked_at",
                       "access_revoked_by", "access_revoked_reason"])
+    # Piece 30.9: rename roles to the org-chart outline once (meta-guarded).
+    # Rewrites each employee's comma-separated roles via ROLE_RENAMES. The
+    # init_db connection returns tuples (no Row factory), so index by position.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'role_names_v2'").fetchone():
+        for rid, roles in db.execute("SELECT id, roles FROM employees").fetchall():
+            parts = [p.strip() for p in (roles or "").split(",") if p.strip()]
+            renamed = [ROLE_RENAMES.get(p, p) for p in parts]
+            if renamed != parts:
+                db.execute("UPDATE employees SET roles = ? WHERE id = ?",
+                           (", ".join(renamed), rid))
+        db.execute("INSERT INTO meta (key, value) VALUES ('role_names_v2', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     # Piece 26.8: move Cary's default dashboard to the Executive overview. Runs
     # once (meta-guarded) and only flips the old seeded 'Design' default, so it
     # won't override a choice Cary has since made himself.
@@ -9396,12 +9448,13 @@ def render_employee_form(values, employee_id=None, username="", access_level="",
         parts = values["name"].split(" ", 1)
         values["first_name"] = parts[0]
         values["last_name"] = parts[1] if len(parts) > 1 else ""
-    stored = [r.strip() for r in (values.get("roles") or "").split(",") if r.strip()]
+    stored = [ROLE_RENAMES.get(r.strip(), r.strip())
+              for r in (values.get("roles") or "").split(",") if r.strip()]
     selected = [r for r in stored if r in EMPLOYEE_ROLES]
     roles_other = ", ".join(r for r in stored if r not in EMPLOYEE_ROLES)
     return render_template(
         "employee_form.html", values=values, roles=EMPLOYEE_ROLES,
-        role_departments=ROLE_DEPARTMENTS,
+        role_tree=ROLE_TREE,
         selected=selected, roles_other=roles_other, employee_id=employee_id,
         username=username, access_level=access_level, access_levels=ACCESS_LEVELS,
         duplicate_warning=duplicate_warning,
