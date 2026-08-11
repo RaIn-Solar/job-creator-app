@@ -5,6 +5,7 @@
   <h1>👥 Employees</h1>
   {% if can('employees.manage') %}
   <div style="display:flex; gap:0.5rem;">
+    <a href="{{ url_for('onboarding_checklist') }}" class="btn btn-secondary">🚀 Onboarding checklist</a>
     <a href="{{ url_for('accounts_page') }}" class="btn btn-secondary">🔑 Accounts</a>
     <a href="{{ url_for('new_employee') }}" class="btn">＋ New employee</a>
   </div>

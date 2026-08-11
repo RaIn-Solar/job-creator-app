@@ -405,6 +405,31 @@ CREATE TABLE IF NOT EXISTS security_answers (
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Piece 29.2: new-employee onboarding. `onboarding_steps` is the company-wide
+-- checklist template (editable by anyone who can manage employees); it's seeded
+-- once with a sensible default set. Per-employee completion is tracked in
+-- `employee_onboarding` (one row per step the person has been marked on). A new
+-- step added later simply shows as "not done" for everyone until checked.
+CREATE TABLE IF NOT EXISTS onboarding_steps (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    category    TEXT DEFAULT '',       -- optional grouping (HR, Safety, IT, …)
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    active      TEXT NOT NULL DEFAULT '1',   -- '1' active, '' archived
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS employee_onboarding (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL REFERENCES employees(id),
+    step_id     INTEGER NOT NULL REFERENCES onboarding_steps(id),
+    done        TEXT NOT NULL DEFAULT '',    -- '1' complete
+    done_at     TEXT DEFAULT '',
+    done_by     TEXT DEFAULT '',
+    note        TEXT DEFAULT '',
+    UNIQUE(employee_id, step_id)
+);
+
 -- Piece 12: client-level document storage — files that belong to the
 -- client across all their jobs (contracts, correspondence, intake, photos),
 -- kept separate from a job's requirement documents. Files on disk in

@@ -383,4 +383,14 @@ can confirm a pull/update took effect.
   and shows a plain-English page pointing to it, so a crash on a teammate's
   machine can be diagnosed instead of vanishing into the console.
 
+- **Piece 29 (Employees)** — three staff-management features:
+  **emergency access lockout** (a GM or a new GM-designated *Supervisor* instantly
+  suspends all of an employee's access, reinstatable, with hierarchy guards);
+  **self-service password reset** via enrolled security questions (answers stored
+  as salted hashes; a "Forgot password?" flow lets a locked-out user set a new
+  password with no admin approval — suspended accounts excluded); and a
+  **new-employee onboarding checklist** (an editable company-wide step template,
+  seeded with sensible defaults, tracked per employee with a progress bar on the
+  profile's Onboarding tab).
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

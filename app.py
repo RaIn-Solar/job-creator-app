@@ -284,6 +284,36 @@ SECURITY_QUESTIONS = [
 ]
 SECURITY_QUESTIONS_REQUIRED = 3   # how many must be enrolled / answered
 SECURITY_RESET_MAX_ATTEMPTS = 5   # per browser session before it's cut off
+
+# Piece 29.2: default new-employee onboarding checklist (title, description,
+# category). Seeded once into onboarding_steps; fully editable afterwards.
+ONBOARDING_SEED = [
+    ("Complete new-hire paperwork", "I-9, W-4, direct-deposit and signed offer letter on file.", "HR"),
+    ("Add to payroll & benefits", "Set up in payroll; enrol in health/PTO and set the base wage.", "HR"),
+    ("Collect emergency contacts", "Emergency contact and any medical notes recorded.", "HR"),
+    ("Create Solbiz login & assign roles", "Give a username/password and set their org-chart roles and access.", "IT"),
+    ("Review licenses & certifications", "Record any electrical/PV/EPA licenses with expiry dates.", "HR"),
+    ("Safety orientation", "Ladder, fall-protection and PPE basics; site-safety expectations.", "Safety"),
+    ("Electrical & jobsite safety review", "OSHA-10 / lockout-tagout / arc-flash awareness as applicable.", "Safety"),
+    ("Vehicle & driving policy", "Company-vehicle assignment, driving record and fuel-card rules.", "Operations"),
+    ("Tool issue & barcode-tag training", "Issue tools; show how to scan/register inventory tags.", "Operations"),
+    ("Walk through job workflow & Work Bag", "How jobs flow through the pipeline and how to use the field Work Bag.", "Operations"),
+    ("Assign a mentor & first-week schedule", "Pair with an experienced installer and set the first-week plan.", "Operations"),
+]
+
+
+def seed_onboarding_steps(db):
+    """Populate the default onboarding checklist once (meta-guarded), so every
+    install has a starting template that HR can then tailor."""
+    if db.execute("SELECT 1 FROM meta WHERE key = 'onboarding_seeded'").fetchone():
+        return
+    if db.execute("SELECT COUNT(*) FROM onboarding_steps").fetchone()[0] == 0:
+        for order, (title, desc, cat) in enumerate(ONBOARDING_SEED):
+            db.execute(
+                "INSERT INTO onboarding_steps (title, description, category,"
+                " sort_order) VALUES (?, ?, ?, ?)", (title, desc, cat, order))
+    db.execute("INSERT INTO meta (key, value) VALUES ('onboarding_seeded', '1')"
+               " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "first_name": "First name", "last_name": "Last name",
     "nickname": "Nickname", "roles": "Roles", "schedule": "Schedule",
@@ -952,7 +982,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.1"
+VERSION = "Piece 29.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1414,6 +1444,22 @@ def security_questions_enrolled(employee_id):
         " ORDER BY sort_order, id", (employee_id,)).fetchall()
 
 
+def onboarding_overview(db, employee_id):
+    """Piece 29.2: each active checklist step joined with this employee's
+    completion, plus (done, total) counts. New steps show as not-done."""
+    rows = db.execute(
+        "SELECT s.id AS step_id, s.title, s.description, s.category,"
+        " COALESCE(eo.done,'') AS done, COALESCE(eo.done_at,'') AS done_at,"
+        " COALESCE(eo.done_by,'') AS done_by, COALESCE(eo.note,'') AS note"
+        " FROM onboarding_steps s"
+        " LEFT JOIN employee_onboarding eo"
+        "   ON eo.step_id = s.id AND eo.employee_id = ?"
+        " WHERE s.active = '1'"
+        " ORDER BY s.sort_order, s.id", (employee_id,)).fetchall()
+    done = sum(1 for r in rows if r["done"] == "1")
+    return rows, done, len(rows)
+
+
 def can_revoke_target(actor, target):
     """May `actor` emergency-revoke `target`? Guards the hierarchy: nobody
     revokes themselves; a GM can act on anyone else; a Supervisor can act on
@@ -1479,6 +1525,13 @@ VIEW_PERMISSION = {
     "delete_credential": "employees.manage",
     "upload_employee_file": "employees.manage",
     "delete_employee_file": "employees.manage",
+    # Piece 29.2: onboarding checklist management + per-employee progress.
+    "onboarding_checklist": "employees.manage",
+    "onboarding_step_add": "employees.manage",
+    "onboarding_step_edit": "employees.manage",
+    "onboarding_step_delete": "employees.manage",
+    "onboarding_step_move": "employees.manage",
+    "employee_onboarding_toggle": "employees.manage",
     "audit_log_page": "audit.view",
     # Piece 24.6: inventory editing is scoped to inventory.manage (viewing the
     # catalog stays open to any signed-in user).
@@ -2574,6 +2627,8 @@ def init_db():
         )
         db.commit()
     seed_org_team(db)
+    seed_onboarding_steps(db)  # Piece 29.2: default onboarding checklist
+    db.commit()
     ensure_columns(db, "inventory_items", ["status", "last_used", "stock_reviewed_on"])
     db.execute("UPDATE inventory_items SET status = 'Active'"
                " WHERE COALESCE(status, '') = ''")
@@ -8402,6 +8457,8 @@ def employee_detail(employee_id):
         " WHERE t.employee_id = ?"
         " ORDER BY (t.status = 'Done'), (t.due_date = ''), t.due_date, t.id",
         (employee_id,)).fetchall()
+    onboarding_rows, onboarding_done, onboarding_total = onboarding_overview(
+        db, employee_id)  # Piece 29.2
     # Piece 25.0: in-place edit — ?edit_credential pre-fills the add form.
     edit_credential = None
     if request.args.get("edit_credential", type=int):
@@ -8417,6 +8474,8 @@ def employee_detail(employee_id):
         today=datetime.now().strftime("%Y-%m-%d"),
         access_revoked=is_access_revoked(employee),  # Piece 29.0
         can_revoke_this=can_revoke_target(current_user(), employee),
+        onboarding=onboarding_rows, onboarding_done=onboarding_done,  # Piece 29.2
+        onboarding_total=onboarding_total,
     )
 
 
@@ -8509,6 +8568,122 @@ def reinstate_employee_access(employee_id):
     return redirect(url_for("employee_detail", employee_id=employee_id))
 
 
+@app.route("/onboarding")
+@admin_required
+def onboarding_checklist():
+    """Piece 29.2: the company-wide new-hire checklist template editor."""
+    db = get_db()
+    steps = db.execute(
+        "SELECT * FROM onboarding_steps WHERE active = '1'"
+        " ORDER BY sort_order, id").fetchall()
+    edit_id = request.args.get("edit", type=int)
+    return render_template("onboarding_steps.html", steps=steps, edit_id=edit_id)
+
+
+@app.route("/onboarding/steps/add", methods=["POST"])
+@admin_required
+def onboarding_step_add():
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("Give the onboarding step a title.", "error")
+        return redirect(url_for("onboarding_checklist"))
+    db = get_db()
+    nxt = db.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM onboarding_steps").fetchone()[0]
+    db.execute(
+        "INSERT INTO onboarding_steps (title, description, category, sort_order)"
+        " VALUES (?, ?, ?, ?)",
+        (title, request.form.get("description", "").strip(),
+         request.form.get("category", "").strip(), nxt))
+    db.commit()
+    flash("Onboarding step added.")
+    return redirect(url_for("onboarding_checklist"))
+
+
+@app.route("/onboarding/steps/<int:step_id>/edit", methods=["POST"])
+@admin_required
+def onboarding_step_edit(step_id):
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("Give the onboarding step a title.", "error")
+        return redirect(url_for("onboarding_checklist"))
+    db = get_db()
+    db.execute(
+        "UPDATE onboarding_steps SET title = ?, description = ?, category = ?"
+        " WHERE id = ?",
+        (title, request.form.get("description", "").strip(),
+         request.form.get("category", "").strip(), step_id))
+    db.commit()
+    flash("Onboarding step updated.")
+    return redirect(url_for("onboarding_checklist"))
+
+
+@app.route("/onboarding/steps/<int:step_id>/delete", methods=["POST"])
+@admin_required
+def onboarding_step_delete(step_id):
+    # Archive (keep past completion history intact) rather than hard-delete.
+    db = get_db()
+    db.execute("UPDATE onboarding_steps SET active = '' WHERE id = ?", (step_id,))
+    db.commit()
+    flash("Onboarding step removed from the checklist.")
+    return redirect(url_for("onboarding_checklist"))
+
+
+@app.route("/onboarding/steps/<int:step_id>/move", methods=["POST"])
+@admin_required
+def onboarding_step_move(step_id):
+    db = get_db()
+    ids = [r["id"] for r in db.execute(
+        "SELECT id FROM onboarding_steps WHERE active = '1'"
+        " ORDER BY sort_order, id").fetchall()]
+    if step_id in ids:
+        i = ids.index(step_id)
+        j = i - 1 if request.form.get("dir") == "up" else i + 1
+        if 0 <= j < len(ids):
+            ids[i], ids[j] = ids[j], ids[i]
+            for order, sid in enumerate(ids):
+                db.execute("UPDATE onboarding_steps SET sort_order = ? WHERE id = ?",
+                           (order, sid))
+            db.commit()
+    return redirect(url_for("onboarding_checklist"))
+
+
+@app.route("/employees/<int:employee_id>/onboarding/<int:step_id>/toggle",
+           methods=["POST"])
+@admin_required
+def employee_onboarding_toggle(employee_id, step_id):
+    """Check / uncheck one onboarding step for one employee, stamping who and
+    when. An optional note rides along with the toggle."""
+    db = get_db()
+    if not db.execute("SELECT 1 FROM employees WHERE id = ?",
+                      (employee_id,)).fetchone():
+        abort(404)
+    if not db.execute("SELECT 1 FROM onboarding_steps WHERE id = ?",
+                      (step_id,)).fetchone():
+        abort(404)
+    row = db.execute(
+        "SELECT * FROM employee_onboarding WHERE employee_id = ? AND step_id = ?",
+        (employee_id, step_id)).fetchone()
+    now_done = not (row and row["done"] == "1")
+    who = current_user()
+    stamp = datetime.now().isoformat(timespec="seconds") if now_done else ""
+    by = (who["name"] if who else "") if now_done else ""
+    note = request.form.get("note", "").strip()
+    if row:
+        db.execute(
+            "UPDATE employee_onboarding SET done = ?, done_at = ?, done_by = ?,"
+            " note = ? WHERE id = ?",
+            ("1" if now_done else "", stamp, by, note, row["id"]))
+    else:
+        db.execute(
+            "INSERT INTO employee_onboarding (employee_id, step_id, done, done_at,"
+            " done_by, note) VALUES (?, ?, ?, ?, ?, ?)",
+            (employee_id, step_id, "1" if now_done else "", stamp, by, note))
+    db.commit()
+    return redirect(url_for("employee_detail", employee_id=employee_id,
+                            _anchor="onboarding"))
+
+
 @app.route("/employees/<int:employee_id>/delete", methods=["GET", "POST"])
 @admin_required
 def delete_employee(employee_id):
@@ -8544,6 +8719,8 @@ def delete_employee(employee_id):
         db.execute("UPDATE lead_followups SET rep_id = NULL WHERE rep_id = ?", (employee_id,))
         db.execute("DELETE FROM permission_grants WHERE employee_id = ?", (employee_id,))
         db.execute("DELETE FROM password_requests WHERE employee_id = ?", (employee_id,))
+        db.execute("DELETE FROM security_answers WHERE employee_id = ?", (employee_id,))
+        db.execute("DELETE FROM employee_onboarding WHERE employee_id = ?", (employee_id,))
         for f in db.execute("SELECT stored_name FROM employee_files"
                             " WHERE employee_id = ?", (employee_id,)).fetchall():
             (employee_upload_dir(employee_id) / f["stored_name"]).unlink(missing_ok=True)
