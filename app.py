@@ -937,7 +937,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 28.9"
+VERSION = "Piece 29.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1361,6 +1361,45 @@ def _has_grant(user, perm):
         (user["id"], perm, today)).fetchone() is not None
 
 
+def _is_supervisor(user):
+    """Piece 29.0: a Supervisor is a non-GM given the emergency access-control
+    power (revoke / reinstate a teammate's access). The GM designates them."""
+    if user is None:
+        return False
+    return str(user["is_supervisor"] if "is_supervisor" in user.keys() else "") == "1"
+
+
+def can_control_access():
+    """Who may emergency-revoke or reinstate access: the GM (always) or a
+    designated Supervisor. Open mode (no accounts yet) can't lock anyone out."""
+    if not accounts_exist():
+        return False
+    user = current_user()
+    return _has_gm_role(user) or _is_supervisor(user)
+
+
+def is_access_revoked(user):
+    """True while this employee's access is under an emergency lockout."""
+    if user is None:
+        return False
+    val = user["access_revoked"] if "access_revoked" in user.keys() else ""
+    return str(val or "") == "1"
+
+
+def can_revoke_target(actor, target):
+    """May `actor` emergency-revoke `target`? Guards the hierarchy: nobody
+    revokes themselves; a GM can act on anyone else; a Supervisor can act on
+    ordinary employees but not on a GM or a fellow Supervisor (no peer/
+    upward lockouts)."""
+    if actor is None or target is None or actor["id"] == target["id"]:
+        return False
+    if _has_gm_role(actor):
+        return True
+    if not _is_supervisor(actor):
+        return False
+    return not _has_gm_role(target) and not _is_supervisor(target)
+
+
 def has_permission(perm):
     """Central access check. GM ⇒ everything. 'delete' is GM-or-granted only
     (never automatic for Admin). Other tools: Admin ⇒ yes, else a live grant.
@@ -1541,6 +1580,8 @@ def inject_auth():
             "is_admin": _is_admin(), "is_gm": is_gm(), "can": has_permission,
             "can_payroll": _can_payroll(),
             "can_edit_pay_rates": _can_edit_pay_rates(),
+            "can_control_access": can_control_access(),  # Piece 29.0
+            "is_supervisor": _is_supervisor(user),
             "pending_submissions": pending}
 
 
@@ -1829,11 +1870,21 @@ def require_login():
             nxt = request.path if request.method == "GET" else None
             return redirect(url_for("login", next=nxt))
         session["last_active"] = datetime.now().isoformat(timespec="seconds")
-    if current_user() is None:
+    user = current_user()
+    if user is None:
         if request.path.startswith("/api/"):
             return jsonify({"error": "not signed in"}), 401
         nxt = request.path if request.method == "GET" else None
         return redirect(url_for("login", next=nxt))
+    # Piece 29.0: an emergency access lockout takes effect immediately — sign
+    # the person out mid-session and hold them at the login wall.
+    if is_access_revoked(user):
+        session.clear()
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "access revoked"}), 403
+        flash("Your access has been suspended. Contact a manager to restore it.",
+              "error")
+        return redirect(url_for("login"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1856,6 +1907,12 @@ def login():
             flash("This account's password can't be verified on this machine "
                   "(hashing backend unavailable). Ask a manager to reset it, or "
                   "reset the local database.", "error")
+            return render_template("login.html", next=request.args.get("next", ""))
+        if ok and is_access_revoked(user):
+            # Piece 29.0: correct credentials, but access is under an emergency
+            # lockout — refuse the sign-in without hinting the password was wrong.
+            flash("Your access has been suspended. Contact a manager to restore it.",
+                  "error")
             return render_template("login.html", next=request.args.get("next", ""))
         if ok:
             session["user_id"] = user["id"]
@@ -2264,7 +2321,10 @@ def init_db():
     db.execute("UPDATE job_tasks SET updated_at = COALESCE(NULLIF(created_at,''),"
                " datetime('now')) WHERE COALESCE(updated_at,'') = ''")
     ensure_columns(db, "employees", EMPLOYEE_FIELDS + EMPLOYEE_AUTH_FIELDS
-                   + ["dashboard_mode", "base_wage"])  # Piece 21.2: hourly base wage
+                   + ["dashboard_mode", "base_wage"]  # Piece 21.2: hourly base wage
+                   # Piece 29.0: supervisor designation + emergency access lockout.
+                   + ["is_supervisor", "access_revoked", "access_revoked_at",
+                      "access_revoked_by", "access_revoked_reason"])
     # Piece 26.8: move Cary's default dashboard to the Executive overview. Runs
     # once (meta-guarded) and only flips the old seeded 'Design' default, so it
     # won't override a choice Cary has since made himself.
@@ -7955,7 +8015,7 @@ def read_employee_form():
 
 
 def render_employee_form(values, employee_id=None, username="", access_level="",
-                         duplicate_warning=None):
+                         duplicate_warning=None, is_supervisor=""):
     """Render the shared new/edit form, splitting stored roles back into
     the known checkbox roles and any free-typed extras. Legacy fallback: an
     existing employee with no first/last gets its `name` split into the fields."""
@@ -7973,6 +8033,7 @@ def render_employee_form(values, employee_id=None, username="", access_level="",
         selected=selected, roles_other=roles_other, employee_id=employee_id,
         username=username, access_level=access_level, access_levels=ACCESS_LEVELS,
         duplicate_warning=duplicate_warning,
+        supervisor_checked=(str(is_supervisor or "") == "1"),
     )
 
 
@@ -8138,6 +8199,10 @@ def new_employee():
             [values[f] for f in EMPLOYEE_FIELDS],
         )
         _apply_employee_auth(db, cur.lastrowid)
+        if is_gm():  # only the GM designates Supervisors (Piece 29.0)
+            db.execute("UPDATE employees SET is_supervisor = ? WHERE id = ?",
+                       ("1" if request.form.get("is_supervisor") else "",
+                        cur.lastrowid))
         db.commit()
         flash(f"Employee added: {values['name']}")
         return redirect(url_for("employee_detail", employee_id=cur.lastrowid))
@@ -8192,6 +8257,8 @@ def employee_detail(employee_id):
         assigned_tasks=assigned_tasks, task_statuses=TASK_STATUSES,
         edit_credential=edit_credential,
         today=datetime.now().strftime("%Y-%m-%d"),
+        access_revoked=is_access_revoked(employee),  # Piece 29.0
+        can_revoke_this=can_revoke_target(current_user(), employee),
     )
 
 
@@ -8215,6 +8282,10 @@ def edit_employee(employee_id):
             [values[f] for f in EMPLOYEE_FIELDS] + [employee_id],
         )
         _apply_employee_auth(db, employee_id)
+        if is_gm():  # only the GM designates Supervisors (Piece 29.0)
+            db.execute("UPDATE employees SET is_supervisor = ? WHERE id = ?",
+                       ("1" if request.form.get("is_supervisor") else "",
+                        employee_id))
         db.commit()
         flash(f"Employee updated: {values['name']}")
         return redirect(url_for("employee_detail", employee_id=employee_id))
@@ -8222,7 +8293,62 @@ def edit_employee(employee_id):
     return render_employee_form(
         values, employee_id=employee_id,
         username=employee["username"] or "",
-        access_level=employee["access_level"] or "")
+        access_level=employee["access_level"] or "",
+        is_supervisor=(employee["is_supervisor"]
+                       if "is_supervisor" in employee.keys() else ""))
+
+
+@app.route("/employees/<int:employee_id>/revoke-access", methods=["POST"])
+def revoke_employee_access(employee_id):
+    """Piece 29.0: emergency lockout. A GM or Supervisor instantly suspends all
+    of this person's access — they're signed out and can't sign back in until
+    reinstated. The account, login and data are left intact."""
+    db = get_db()
+    target = db.execute("SELECT * FROM employees WHERE id = ?",
+                        (employee_id,)).fetchone()
+    if target is None:
+        abort(404)
+    actor = current_user()
+    if not can_control_access() or not can_revoke_target(actor, target):
+        flash("You can't suspend this person's access.", "error")
+        return redirect(url_for("employee_detail", employee_id=employee_id))
+    if not (target["username"] or ""):
+        flash(f"{target['name']} has no login to suspend.", "error")
+        return redirect(url_for("employee_detail", employee_id=employee_id))
+    if is_access_revoked(target):
+        flash(f"{target['name']}'s access is already suspended.")
+        return redirect(url_for("employee_detail", employee_id=employee_id))
+    reason = request.form.get("reason", "").strip()
+    db.execute(
+        "UPDATE employees SET access_revoked = '1', access_revoked_at = ?,"
+        " access_revoked_by = ?, access_revoked_reason = ? WHERE id = ?",
+        (datetime.now().isoformat(timespec="seconds"),
+         actor["name"] if actor else "", reason, employee_id))
+    db.commit()
+    flash(f"⛔ Emergency lockout applied — {target['name']} is signed out and "
+          "can't sign in until reinstated.")
+    return redirect(url_for("employee_detail", employee_id=employee_id))
+
+
+@app.route("/employees/<int:employee_id>/reinstate-access", methods=["POST"])
+def reinstate_employee_access(employee_id):
+    """Piece 29.0: lift an emergency lockout, restoring the person's access."""
+    db = get_db()
+    target = db.execute("SELECT * FROM employees WHERE id = ?",
+                        (employee_id,)).fetchone()
+    if target is None:
+        abort(404)
+    actor = current_user()
+    if not can_control_access() or not can_revoke_target(actor, target):
+        flash("You can't change this person's access.", "error")
+        return redirect(url_for("employee_detail", employee_id=employee_id))
+    db.execute(
+        "UPDATE employees SET access_revoked = '', access_revoked_at = '',"
+        " access_revoked_by = '', access_revoked_reason = '' WHERE id = ?",
+        (employee_id,))
+    db.commit()
+    flash(f"✓ Access reinstated — {target['name']} can sign in again.")
+    return redirect(url_for("employee_detail", employee_id=employee_id))
 
 
 @app.route("/employees/<int:employee_id>/delete", methods=["GET", "POST"])

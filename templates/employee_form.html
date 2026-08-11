@@ -106,6 +106,14 @@
             <input id="password" name="password" type="password" autocomplete="new-password">
           </div>
         </div>
+        {% if is_gm %}
+        <label style="display:flex; gap:0.5rem; align-items:flex-start; margin-top:0.7rem; cursor:pointer;">
+          <input type="checkbox" name="is_supervisor" value="1" style="margin-top:0.2rem;" {% if supervisor_checked %}checked{% endif %}>
+          <span>🛡 <strong>Supervisor</strong> — can emergency-revoke and reinstate
+            other employees' access.
+            <span class="muted" style="display:block; font-size:0.82rem;">Only General Managers can grant this. Supervisors can't lock out a GM or another Supervisor.</span></span>
+        </label>
+        {% endif %}
       </fieldset>
     </div>
     {% endif %}

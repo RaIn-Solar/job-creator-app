@@ -29,7 +29,9 @@ or edit their record.</p>
       {% for e in employees %}
       {% set s = summary.get(e["id"]) %}
       <tr>
-        <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a>{% if e["nickname"] %} <span class="muted" style="font-size:0.85rem;">“{{ e["nickname"] }}”</span>{% endif %}</td>
+        <td><a href="{{ url_for('employee_detail', employee_id=e['id']) }}">{{ e["name"] }}</a>{% if e["nickname"] %} <span class="muted" style="font-size:0.85rem;">“{{ e["nickname"] }}”</span>{% endif %}
+          {% if e["is_supervisor"] == "1" %} <span class="badge" title="Supervisor">🛡</span>{% endif %}
+          {% if e["access_revoked"] == "1" %} <span class="badge danger" title="Access suspended">⛔ suspended</span>{% endif %}</td>
         <td>
           {% for r in (e["roles"] or "").split(",") if r.strip() %}
           <span class="badge">{{ r.strip() }}</span>

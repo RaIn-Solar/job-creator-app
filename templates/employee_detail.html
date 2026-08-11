@@ -6,7 +6,9 @@
   <a href="{{ url_for('employees_page') }}" class="btn btn-secondary">← Back to employees</a>
 </div>
 <div class="toolbar">
-  <h1>{{ employee["name"] }}{% if employee["nickname"] %} <span class="muted" style="font-size:1rem;">“{{ employee["nickname"] }}”</span>{% endif %}</h1>
+  <h1>{{ employee["name"] }}{% if employee["nickname"] %} <span class="muted" style="font-size:1rem;">“{{ employee["nickname"] }}”</span>{% endif %}
+    {% if employee["is_supervisor"] == "1" %}<span class="badge" title="Can emergency-revoke access" style="vertical-align:middle;">🛡 Supervisor</span>{% endif %}
+    {% if access_revoked %}<span class="badge danger" style="vertical-align:middle;">⛔ Access suspended</span>{% endif %}</h1>
   <div style="display:flex; gap:0.5rem;">
     {% if can('employees.manage') %}
     <a href="{{ url_for('edit_employee', employee_id=employee['id']) }}" class="btn">Edit</a>
@@ -14,6 +16,41 @@
     {% endif %}
   </div>
 </div>
+
+{# Piece 29.0: emergency access lockout — GM / Supervisor only #}
+{% if access_revoked %}
+<div class="card" style="border-left:4px solid #9a1c1c; background:#fbe9e9;">
+  <h2 style="margin:0 0 0.3rem; font-size:1.05rem; color:#9a1c1c;">⛔ Access is suspended</h2>
+  <p style="margin:0 0 0.5rem;">{{ employee["name"] }} is signed out and cannot sign in.
+    {% if employee["access_revoked_by"] %}<br><span class="muted" style="font-size:0.85rem;">By {{ employee["access_revoked_by"] }}{% if employee["access_revoked_at"] %} on {{ employee["access_revoked_at"][:16].replace("T"," ") }}{% endif %}{% if employee["access_revoked_reason"] %} — “{{ employee["access_revoked_reason"] }}”{% endif %}</span>{% endif %}
+  </p>
+  {% if can_control_access and can_revoke_this %}
+  <form method="post" action="{{ url_for('reinstate_employee_access', employee_id=employee['id']) }}"
+        onsubmit="return confirm('Reinstate access for this employee?');" style="margin:0;">
+    <button type="submit" class="btn">✓ Reinstate access</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin:0; font-size:0.85rem;">Only a General Manager or Supervisor can reinstate this.</p>
+  {% endif %}
+</div>
+{% elif can_control_access and can_revoke_this and employee["username"] %}
+<details class="card" style="border-left:4px solid #d97706;">
+  <summary style="cursor:pointer; font-weight:600; color:#92400e;">⛔ Emergency access control</summary>
+  <p class="muted" style="margin:0.5rem 0; font-size:0.85rem;">
+    Instantly suspend <strong>all</strong> of {{ employee["name"] }}'s access. They're
+    signed out and can't sign back in until a GM or Supervisor reinstates them. Their
+    account, login and data stay intact.</p>
+  <form method="post" action="{{ url_for('revoke_employee_access', employee_id=employee['id']) }}"
+        onsubmit="return confirm('Emergency-suspend ALL access for this employee now?');"
+        style="margin:0; display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+    <div class="field" style="margin:0; flex:1; min-width:14rem;">
+      <label style="font-size:0.85rem;">Reason (optional, logged)</label>
+      <input name="reason" placeholder="e.g. offboarding, lost device, security hold">
+    </div>
+    <button type="submit" class="btn" style="background:#9a1c1c;">⛔ Revoke all access</button>
+  </form>
+</details>
+{% endif %}
 
 <div class="tab-bar">
   <button class="tab-btn" data-tab="details">Details</button>
