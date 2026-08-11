@@ -984,7 +984,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.3"
+VERSION = "Piece 29.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1464,6 +1464,48 @@ def unread_notification_count(user):
             " AND COALESCE(is_read,'') != '1'", (user["id"],)).fetchone()[0]
     except Exception:
         return 0
+
+
+def department_employee_ids(db, dept_names):
+    """Piece 29.4: the signed-in employees whose roles place them in any of the
+    given departments (used to notify the team a job just turned over to)."""
+    roles = set()
+    for d in dept_names:
+        roles |= DASHBOARD_DEPARTMENTS.get(d, {}).get("roles", set())
+    if not roles:
+        return []
+    ids = []
+    for e in db.execute(
+            "SELECT id, roles FROM employees WHERE COALESCE(username,'') != ''"
+            " AND COALESCE(access_revoked,'') != '1'").fetchall():
+        held = {r.strip() for r in (e["roles"] or "").split(",") if r.strip()}
+        if held & roles:
+            ids.append(e["id"])
+    return ids
+
+
+def notify_stage_turnover(db, job, new_status, exclude_id=None):
+    """Piece 29.4: when a job turns over to a pipeline stage, notify the
+    department(s) that own that stage. The recipient's copy clears once they
+    open it (or open the job). The person who triggered the move is skipped."""
+    own = STATUS_OWNERSHIP.get(new_status)
+    if not own:
+        return
+    team = own.get("team", [])
+    depts = [dept for _label, dept in team]
+    recipients = [i for i in department_employee_ids(db, depts) if i != exclude_id]
+    if not recipients:
+        return
+    client = db.execute("SELECT name FROM clients WHERE id = ?",
+                        (job["client_id"],)).fetchone()
+    cname = client["name"] if client else ""
+    jobname = job["job_name"] or f"Job #{job['id']}"
+    labels = ", ".join(dict.fromkeys(label for label, _dept in team))
+    notify_employees(
+        db, recipients,
+        f"📋 {jobname}{(' · ' + cname) if cname else ''} turned over to "
+        f"{new_status}{(' — ' + labels + ' up next') if labels else ''}.",
+        link=url_for("job_detail", job_id=job["id"]), kind="stage")
 
 
 def security_questions_enrolled(employee_id):
@@ -2179,21 +2221,21 @@ def notifications_page():
     return render_template("notifications.html", items=items)
 
 
-@app.route("/notifications/read-all", methods=["POST"])
-def notifications_read_all():
+@app.route("/notifications/clear-all", methods=["POST"])
+def notifications_clear_all():
     user = current_user()
     if user is None:
         return redirect(url_for("login"))
     db = get_db()
-    db.execute("UPDATE notifications SET is_read = '1' WHERE recipient_id = ?",
-               (user["id"],))
+    db.execute("DELETE FROM notifications WHERE recipient_id = ?", (user["id"],))
     db.commit()
     return redirect(url_for("notifications_page"))
 
 
 @app.route("/notifications/<int:note_id>/open")
 def notification_open(note_id):
-    """Mark one notification read and follow its link (or back to the inbox)."""
+    """Piece 29.4: accessing a notification CLEARS it for that user (deletes
+    their copy), then follows its link (or returns to the inbox)."""
     user = current_user()
     if user is None:
         return redirect(url_for("login"))
@@ -2203,11 +2245,11 @@ def notification_open(note_id):
         (note_id, user["id"])).fetchone()
     if note is None:
         abort(404)
-    db.execute("UPDATE notifications SET is_read = '1' WHERE id = ?", (note_id,))
-    db.commit()
     dest = note["link"] or url_for("notifications_page")
     if not (dest.startswith("/") and not dest.startswith("//")):
         dest = url_for("notifications_page")
+    db.execute("DELETE FROM notifications WHERE id = ?", (note_id,))
+    db.commit()
     return redirect(dest)
 
 
@@ -3972,6 +4014,13 @@ def new_job(client_id):
                        " converted_at = datetime('now') WHERE id = ?", (client_id,))
             db.execute("UPDATE lead_followups SET status = 'Converted'"
                        " WHERE client_id = ? AND status = 'Open'", (client_id,))
+        # Piece 29.4: a new job turns over to Proposal — alert Sales & Design.
+        new_job_row = {"id": cur.lastrowid, "client_id": client_id,
+                       "job_name": values["job_name"]}
+        actor = current_user()
+        notify_stage_turnover(db, new_job_row,
+                              values.get("status") or DEFAULT_JOB_STATUS,
+                              exclude_id=actor["id"] if actor else None)
         db.commit()
         flash(f"Job created under {client['name']}: {values['job_name']}")
         return redirect(url_for("job_detail", job_id=cur.lastrowid))
@@ -4119,6 +4168,15 @@ def fetch_job(job_id):
 def job_detail(job_id):
     job = fetch_job(job_id)
     db = get_db()
+    # Piece 29.4: reaching the job clears this user's stage-turnover alerts for
+    # it — the notification has served its purpose once they're looking at it.
+    me = current_user()
+    if me is not None:
+        cleared = db.execute(
+            "DELETE FROM notifications WHERE recipient_id = ? AND kind = 'stage'"
+            " AND link = ?", (me["id"], url_for("job_detail", job_id=job_id)))
+        if cleared.rowcount:
+            db.commit()
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
     groups = group_rules(match_rules(job, rules))
     versions = db.execute(
@@ -6733,6 +6791,14 @@ def set_job_status(job_id):
             if not info["ready"]:
                 warn = " · ".join(info["pending"])
         db.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
+        # Piece 29.4: on a forward turnover, alert the stage's department(s).
+        moved_forward = (status != cur and status in STAGE_ORDER
+                         and (cur not in STAGE_ORDER
+                              or STAGE_ORDER.index(status) > STAGE_ORDER.index(cur)))
+        if moved_forward:
+            actor = current_user()
+            notify_stage_turnover(db, job, status,
+                                  exclude_id=actor["id"] if actor else None)
         db.commit()
         if warn:
             flash(f"Advanced to {status} with {cur} still pending: {warn}.", "error")
@@ -6758,6 +6824,9 @@ def set_install_date(job_id):
         if stage_info(db, job, groups, filed)["permits_ok"]:
             db.execute("UPDATE jobs SET status = 'Installation' WHERE id = ?", (job_id,))
             advanced = True
+            actor = current_user()  # Piece 29.4: alert the Installation team
+            notify_stage_turnover(db, job, "Installation",
+                                  exclude_id=actor["id"] if actor else None)
     db.commit()
     if advanced:
         flash("Install date set and all permits filed — advanced to Installation.")

@@ -398,5 +398,11 @@ can confirm a pull/update took effect.
   **auto-locks the account** (the same emergency lockout) and posts an in-app
   **notification** to all Supervisors — or the GM(s) if there are none. Adds a
   lightweight notifications inbox with a nav 🔔 bell + unread badge.
+- **Piece 29.4** — **pipeline-turnover notifications**: whenever a job advances
+  to a new stage (from Proposal onward — new jobs, manual stage changes, and the
+  install-date auto-advance), the department(s) that own the new stage are
+  notified in their inbox. Each recipient's copy **clears the first time they
+  access it** — either by opening the notification or by opening the job — and
+  the person who triggered the move isn't notified.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.
