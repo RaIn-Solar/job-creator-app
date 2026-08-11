@@ -541,11 +541,13 @@
   </p>
   {% endif %}
 
-  {# Piece 29.6: internal pricing breakdown (Finance only — never shown to the customer). #}
+  {# Piece 29.6/29.7: internal pricing breakdown — Finance, Sales & Design only,
+     never shown to the customer. #}
+  {% if can_see_pricing %}
   <div class="card" style="background:var(--bg); border:1px dashed var(--border); margin-bottom:0.9rem;">
     <div class="toolbar" style="margin-bottom:0.4rem;">
       <strong style="font-size:0.95rem;">🏷 Pricing breakdown <span class="muted" style="font-weight:400;">(internal — cost & margin)</span></strong>
-      <a href="{{ url_for('finance_settings') }}" class="muted" style="font-size:0.8rem;">edit rates</a>
+      {% if can_payroll %}<a href="{{ url_for('finance_settings') }}" class="muted" style="font-size:0.8rem;">edit rates</a>{% endif %}
     </div>
     <div class="form-grid">
       <div class="field"><label>Equipment cost</label><div style="font-weight:600;">${{ "%.2f"|format(pricing.equipment_cost) }}</div></div>
@@ -556,6 +558,7 @@
     </div>
     <p class="muted" style="margin:0.3rem 0 0; font-size:0.8rem;">Set the contract total from the suggested price. Change-order materials added after the deposit bill at the marked-up price automatically. The customer invoice shows only the contract total and the equipment list — never these cost/margin figures.</p>
   </div>
+  {% endif %}
 
   <div class="form-grid" style="margin-bottom:0.9rem;">
     <div class="field"><label>Contract total</label><div style="font-weight:700; font-size:1.05rem;">${{ "%.2f"|format(billing.contract) }}</div></div>

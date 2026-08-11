@@ -1023,7 +1023,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.6"
+VERSION = "Piece 29.7"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1713,6 +1713,18 @@ def _can_payroll():
     if user is None:
         return True
     return is_gm() or _is_admin() or "Finance" in user_departments(user)
+
+
+def _can_see_pricing():
+    """Piece 29.7: who may see the internal cost/margin pricing breakdown —
+    Finance, Admin, GM, and (because they price and design jobs) Sales & Design.
+    Deliberately NOT the whole company: it exposes cost and margin."""
+    user = current_user()
+    if user is None:
+        return True
+    if is_gm() or _is_admin():
+        return True
+    return bool({"Finance", "Sales", "Design"} & set(user_departments(user)))
 
 
 def _can_edit_pay_rates():
@@ -4343,6 +4355,7 @@ def job_detail(job_id):
         invoices=invoice_schedule_view(db, job), payment_scheme=PAYMENT_SCHEME_NOTE,
         pricing=job_pricing(db, job),                      # Piece 29.6
         county_grt=county_grt_rate(db, job["county"] if "county" in job.keys() else ""),
+        can_see_pricing=_can_see_pricing(),                # Piece 29.7
     )
 
 
