@@ -454,6 +454,23 @@ CREATE TABLE IF NOT EXISTS cost_model_lines (
     active      TEXT NOT NULL DEFAULT '1'
 );
 
+-- Piece 29.9: a job's estimate — quantities against the cost-model lines for
+-- the non-equipment sections (Equipment Non-Inventory, Labor, Travel, Adders).
+-- Each row is a snapshot (item/unit/cost/markup copied from the cost model when
+-- added, then adjustable for this job) with the job-specific qty. Equipment
+-- Inventory is priced from the job's BOM, not here; overhead is applied on top.
+CREATE TABLE IF NOT EXISTS job_estimate_lines (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id      INTEGER NOT NULL REFERENCES jobs(id),
+    section     TEXT NOT NULL,
+    item        TEXT NOT NULL,
+    unit        TEXT DEFAULT '',
+    qty         REAL NOT NULL DEFAULT 0,
+    unit_cost   REAL NOT NULL DEFAULT 0,
+    markup_pct  REAL NOT NULL DEFAULT 0,
+    sort_order  INTEGER NOT NULL DEFAULT 0
+);
+
 -- Piece 29.3: lightweight in-app notifications (an inbox + nav bell). Used so
 -- far to alert Supervisors/GM when a reset auto-locks an account, but general
 -- purpose. One row per recipient.

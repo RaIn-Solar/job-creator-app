@@ -427,4 +427,13 @@ can confirm a pull/update took effect.
   Trips line is the per-mile travel rate. The page shows a default "standard
   job" rollup, and the NM county GRT table stays alongside.
 
+- **Piece 29.9 (Per-job estimate)** — a job **Estimate** tab (Finance/Sales/
+  Design) builds the price against the cost model: one-click **prefill** pulls
+  the default Labor / Travel / Adders / Non-Inventory lines, quantities are set
+  per line, and equipment comes from the job BOM. It sums to a subtotal, applies
+  **Overhead (G&A)**, and shows a **suggested price** that a button pushes to the
+  contract total. `job_pricing` now = BOM equipment + estimate lines + overhead
+  (travel moved from a flat per-job field into the estimate's Travel lines);
+  catalog categories gained `mc4` so every BOM line maps to an equipment markup.
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

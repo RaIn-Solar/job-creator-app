@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.8"
+VERSION = "Piece 29.9"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1313,9 +1313,11 @@ TITLE_STATUS_KEYWORDS = [
 LOAD_USAGE_TYPES = ["Always-on", "Daily", "Occasional", "Seasonal"]
 LOAD_ERAS = ["Modern", "Vintage"]
 ROOM_TYPES = ["standard", "scenario"]
+# Piece 29.9: kept identical to the Cost Model's Equipment Inventory items so a
+# BOM line's category always matches an equipment-markup rate.
 COMPONENT_CATEGORIES = [
     "Battery", "Breaker", "Breaker Panel", "Charge Controller", "Controls",
-    "Electrical", "Enclosure", "Generator", "Inverter", "Monitoring",
+    "Electrical", "Enclosure", "Generator", "Inverter", "mc4", "Monitoring",
     "Office Supplies", "Optimizer", "Pumping", "PV Module", "Racking", "Wire",
 ]
 # system_type presets auto-fill sizing fields on the job page; system_type
@@ -4408,6 +4410,7 @@ def job_detail(job_id):
         pricing=job_pricing(db, job),                      # Piece 29.6
         county_grt=county_grt_rate(db, job["county"] if "county" in job.keys() else ""),
         can_see_pricing=_can_see_pricing(),                # Piece 29.7
+        estimate_sections=ESTIMATE_SECTIONS,               # Piece 29.9
     )
 
 
@@ -4417,14 +4420,125 @@ def set_contract(job_id):
     db = get_db()
     # Piece 27.4: GRT rate is set alongside the contract (both drive invoicing).
     grt = max(_to_float(request.form.get("grt_rate")) or 0.0, 0.0)
-    # Piece 29.6: travel miles (round-trip) drive the travel charge in pricing.
-    miles = max(_to_float(request.form.get("travel_miles")) or 0.0, 0.0)
-    db.execute("UPDATE jobs SET contract_amount = ?, grt_rate = ?,"
-               " travel_miles = ? WHERE id = ?",
+    db.execute("UPDATE jobs SET contract_amount = ?, grt_rate = ? WHERE id = ?",
                (_to_float(request.form.get("contract_amount")) or 0.0,
-                str(grt), str(miles), job_id))
+                str(grt), job_id))
     db.commit()
     flash("Billing details updated.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
+
+
+# ---------------------------------------------------------- per-job estimate
+def _estimate_guard(job_id):
+    """Estimate editing is limited to who can see pricing (Finance/Sales/Design)."""
+    fetch_job(job_id)
+    if not _can_see_pricing():
+        flash("Pricing is limited to Finance, Sales and Design.", "error")
+        return False
+    return True
+
+
+@app.route("/jobs/<int:job_id>/estimate/prefill", methods=["POST"])
+def estimate_prefill(job_id):
+    """Copy the cost-model default lines (non-equipment sections) into this
+    job's estimate, so the estimator starts from ECC's template. Skips sections
+    already present, so it won't duplicate."""
+    if not _estimate_guard(job_id):
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    db = get_db()
+    have = {r["section"] for r in db.execute(
+        "SELECT DISTINCT section FROM job_estimate_lines WHERE job_id = ?",
+        (job_id,)).fetchall()}
+    nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1"
+                     " FROM job_estimate_lines WHERE job_id = ?", (job_id,)).fetchone()[0]
+    added = 0
+    for r in db.execute(
+            "SELECT * FROM cost_model_lines WHERE active = '1'"
+            " ORDER BY sort_order, id").fetchall():
+        if r["section"] not in ESTIMATE_SECTIONS or r["section"] in have:
+            continue
+        db.execute(
+            "INSERT INTO job_estimate_lines (job_id, section, item, unit, qty,"
+            " unit_cost, markup_pct, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (job_id, r["section"], r["item"], r["unit"] or "",
+             r["default_qty"] or 0, r["unit_cost"] or 0, r["markup_pct"] or 0, nxt))
+        nxt += 1
+        added += 1
+    db.commit()
+    flash(f"Added {added} line(s) from the cost model." if added
+          else "Those sections are already on the estimate.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+
+
+@app.route("/jobs/<int:job_id>/estimate/add", methods=["POST"])
+def estimate_add_line(job_id):
+    if not _estimate_guard(job_id):
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    section = request.form.get("section", "")
+    item = request.form.get("item", "").strip()
+    if section not in ESTIMATE_SECTIONS or not item:
+        flash("Pick a section and name the line.", "error")
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    db = get_db()
+    nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1"
+                     " FROM job_estimate_lines WHERE job_id = ?", (job_id,)).fetchone()[0]
+    db.execute(
+        "INSERT INTO job_estimate_lines (job_id, section, item, unit, qty,"
+        " unit_cost, markup_pct, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (job_id, section, item, request.form.get("unit", "").strip(),
+         max(_to_float(request.form.get("qty")) or 0.0, 0.0),
+         max(_to_float(request.form.get("cost")) or 0.0, 0.0),
+         max(_to_float(request.form.get("markup")) or 0.0, 0.0), nxt))
+    db.commit()
+    flash(f"Added “{item}”.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+
+
+@app.route("/jobs/<int:job_id>/estimate/save", methods=["POST"])
+def estimate_save(job_id):
+    if not _estimate_guard(job_id):
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    db = get_db()
+    for r in db.execute("SELECT id FROM job_estimate_lines WHERE job_id = ?",
+                        (job_id,)).fetchall():
+        i = r["id"]
+        if f"qty_{i}" not in request.form:
+            continue
+        db.execute(
+            "UPDATE job_estimate_lines SET qty = ?, unit_cost = ?, markup_pct = ?"
+            " WHERE id = ? AND job_id = ?",
+            (max(_to_float(request.form.get(f"qty_{i}")) or 0.0, 0.0),
+             max(_to_float(request.form.get(f"cost_{i}")) or 0.0, 0.0),
+             max(_to_float(request.form.get(f"markup_{i}")) or 0.0, 0.0), i, job_id))
+    db.commit()
+    flash("Estimate saved.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+
+
+@app.route("/jobs/<int:job_id>/estimate/<int:line_id>/delete", methods=["POST"])
+def estimate_delete_line(job_id, line_id):
+    if not _estimate_guard(job_id):
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    db = get_db()
+    db.execute("DELETE FROM job_estimate_lines WHERE id = ? AND job_id = ?",
+               (line_id, job_id))
+    db.commit()
+    flash("Line removed.")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+
+
+@app.route("/jobs/<int:job_id>/estimate/to-contract", methods=["POST"])
+def estimate_to_contract(job_id):
+    """Set the contract total to the estimate's suggested price."""
+    job = fetch_job(job_id)
+    if not _estimate_guard(job_id):
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="estimate"))
+    db = get_db()
+    suggested = job_pricing(db, job)["suggested"]
+    db.execute("UPDATE jobs SET contract_amount = ? WHERE id = ?",
+               (suggested, job_id))
+    db.commit()
+    flash(f"Contract total set to the suggested price — ${suggested:,.2f}.")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="billing"))
 
 
@@ -4722,8 +4836,8 @@ def job_pricing(db, job):
     travel, a suggested contract price, and the contract Finance actually set."""
     mmap = markup_map(db)
     bom = bom_pricing(db, job["id"], mmap)
-    travel, miles = job_travel_charge(db, job)
-    subtotal = round(bom["price_total"] + travel, 2)
+    est = estimate_pricing(db, job["id"])             # Piece 29.9: the job estimate
+    subtotal = round(bom["price_total"] + est["total"], 2)
     ov = overhead_pct(db)                              # G&A on the whole subtotal
     overhead_amt = round(subtotal * ov / 100.0, 2)
     suggested = round(subtotal + overhead_amt, 2)
@@ -4732,10 +4846,36 @@ def job_pricing(db, job):
     return {"equipment_cost": bom["cost_total"],
             "equipment_price": bom["price_total"],
             "markup_amount": round(bom["price_total"] - bom["cost_total"], 2),
-            "travel_miles": miles, "travel_rate": travel_rate(db),
-            "travel_charge": travel, "subtotal": subtotal,
-            "overhead_pct": ov, "overhead_amount": overhead_amt,
+            "estimate_by_section": est["by_section"],
+            "estimate_total": est["total"], "estimate_lines": est["lines"],
+            "subtotal": subtotal, "overhead_pct": ov, "overhead_amount": overhead_amt,
             "suggested": suggested, "contract": contract, "lines": bom["lines"]}
+
+
+# Piece 29.9: the cost-model sections that make up a per-job estimate (Equipment
+# Inventory is priced from the BOM; Overhead is applied on top, not entered).
+ESTIMATE_SECTIONS = ["Equipment Non-Inventory", "Labor", "Travel", "Adders"]
+
+
+def estimate_lines(db, job_id):
+    return db.execute(
+        "SELECT * FROM job_estimate_lines WHERE job_id = ?"
+        " ORDER BY sort_order, id", (job_id,)).fetchall()
+
+
+def estimate_pricing(db, job_id):
+    """Per-section and total for a job's estimate lines: qty × cost × (1+markup)."""
+    by_section = {s: 0.0 for s in ESTIMATE_SECTIONS}
+    lines = []
+    for r in estimate_lines(db, job_id):
+        lt = (r["qty"] or 0) * (r["unit_cost"] or 0) * (1 + (r["markup_pct"] or 0) / 100.0)
+        by_section[r["section"]] = by_section.get(r["section"], 0.0) + lt
+        d = dict(r)
+        d["line_total"] = round(lt, 2)
+        lines.append(d)
+    by_section = {k: round(v, 2) for k, v in by_section.items()}
+    return {"by_section": by_section, "total": round(sum(by_section.values()), 2),
+            "lines": lines}
 
 
 def _post_deposit_bom_total(db, job_id, cutoff_id):
