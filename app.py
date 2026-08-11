@@ -15,6 +15,7 @@ then open http://127.0.0.1:5000 in your browser.
 import json
 import math
 import os
+import random
 import re
 import sqlite3
 import sys
@@ -282,8 +283,9 @@ SECURITY_QUESTIONS = [
     "What is your favorite sports team?",
     "What was your childhood nickname?",
 ]
-SECURITY_QUESTIONS_REQUIRED = 3   # how many must be enrolled / answered
-SECURITY_RESET_MAX_ATTEMPTS = 5   # per browser session before it's cut off
+SECURITY_QUESTIONS_REQUIRED = 3   # how many must be enrolled
+SECURITY_QUESTIONS_ASK = 2        # how many (randomly chosen) to answer on reset
+SECURITY_RESET_MAX_ATTEMPTS = 5   # wrong tries before the account auto-locks
 
 # Piece 29.2: default new-employee onboarding checklist (title, description,
 # category). Seeded once into onboarding_steps; fully editable afterwards.
@@ -982,7 +984,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.2"
+VERSION = "Piece 29.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1431,10 +1433,37 @@ def is_access_revoked(user):
     return str(val or "") == "1"
 
 
-def _normalize_answer(text):
-    """Normalise a security answer so trivial differences (case, surrounding
-    or repeated spaces) don't cause a false mismatch."""
-    return " ".join((text or "").strip().lower().split())
+def notify_employees(db, recipient_ids, message, link="", kind=""):
+    """Piece 29.3: drop an in-app notification to each recipient employee id."""
+    for rid in dict.fromkeys(recipient_ids):   # de-dupe, preserve order
+        db.execute(
+            "INSERT INTO notifications (recipient_id, message, link, kind)"
+            " VALUES (?, ?, ?, ?)", (rid, message, link, kind))
+
+
+def supervisors_or_gm_ids(db, exclude_id=None):
+    """Recipients for a supervisor-level alert: everyone flagged Supervisor
+    (with a login); if there are none, fall back to the General Manager(s).
+    Any exclude_id (e.g. the affected employee) is dropped."""
+    sups = [r["id"] for r in db.execute(
+        "SELECT id FROM employees WHERE is_supervisor = '1'"
+        " AND COALESCE(username,'') != ''").fetchall()]
+    if not sups:
+        sups = [r["id"] for r in db.execute(
+            "SELECT id FROM employees WHERE roles LIKE '%General Manager%'"
+            " AND COALESCE(username,'') != ''").fetchall()]
+    return [i for i in sups if i != exclude_id]
+
+
+def unread_notification_count(user):
+    if user is None:
+        return 0
+    try:
+        return get_db().execute(
+            "SELECT COUNT(*) FROM notifications WHERE recipient_id = ?"
+            " AND COALESCE(is_read,'') != '1'", (user["id"],)).fetchone()[0]
+    except Exception:
+        return 0
 
 
 def security_questions_enrolled(employee_id):
@@ -1663,6 +1692,7 @@ def inject_auth():
             "can_edit_pay_rates": _can_edit_pay_rates(),
             "can_control_access": can_control_access(),  # Piece 29.0
             "is_supervisor": _is_supervisor(user),
+            "unread_notifications": unread_notification_count(user),  # Piece 29.3
             "pending_submissions": pending}
 
 
@@ -2022,26 +2052,56 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _lock_account_after_failed_reset(db, user):
+    """Piece 29.3: too many wrong reset answers auto-locks the account (the same
+    emergency lockout a GM/Supervisor applies) and notifies the Supervisors —
+    or the GM(s) if there are none — so a human reviews it."""
+    db.execute(
+        "UPDATE employees SET access_revoked = '1', access_revoked_at = ?,"
+        " access_revoked_by = ?, access_revoked_reason = ? WHERE id = ?",
+        (datetime.now().isoformat(timespec="seconds"), "System (auto-lock)",
+         "Too many failed password-reset attempts", user["id"]))
+    recipients = supervisors_or_gm_ids(db, exclude_id=user["id"])
+    notify_employees(
+        db, recipients,
+        f"🔒 {user['name']}'s account was auto-locked after "
+        f"{SECURITY_RESET_MAX_ATTEMPTS} failed password-reset attempts. "
+        "Review and reinstate their access if appropriate.",
+        link=url_for("employee_detail", employee_id=user["id"]),
+        kind="security")
+    db.commit()
+
+
+def _clear_reset_session():
+    for k in ("pwreset_uid", "pwreset_attempts", "pwreset_ask"):
+        session.pop(k, None)
+
+
 @app.route("/forgot", methods=["GET", "POST"])
 def forgot_password():
-    """Piece 29.1: step 1 of self-service reset — identify the account. If it
-    has security questions enrolled (and isn't suspended), move to the answer
-    step; otherwise send them to a manager, without confirming whether the
-    username exists."""
+    """Piece 29.1/29.3: step 1 of self-service reset — identify the account. If
+    it has security questions enrolled (and isn't suspended), pick a random
+    subset to ask and move to the answer step; otherwise send them to a manager,
+    without confirming whether the username exists."""
     if current_user() is not None:
         return redirect(url_for("home"))
     generic = ("If that account has security questions set up, you'll be asked "
-               "them next. If not, ask a manager to reset your password.")
+               "some of them next. If not, ask a manager to reset your password.")
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         user = get_db().execute(
             "SELECT * FROM employees WHERE LOWER(username) = LOWER(?)"
             " AND COALESCE(username,'') != ''", (username,)).fetchone()
+        enrolled = security_questions_enrolled(user["id"]) if user else []
         # Only proceed for a real, active login that has questions enrolled.
         if (user and user["password_hash"] and not is_access_revoked(user)
-                and security_questions_enrolled(user["id"])):
+                and enrolled):
+            ids = [q["id"] for q in enrolled]
+            # Randomly choose which questions to ask this time (2 of 3).
+            ask = random.sample(ids, min(SECURITY_QUESTIONS_ASK, len(ids)))
             session["pwreset_uid"] = user["id"]
             session["pwreset_attempts"] = 0
+            session["pwreset_ask"] = ask
             return redirect(url_for("forgot_password_verify"))
         flash(generic)
         return redirect(url_for("forgot_password"))
@@ -2050,39 +2110,44 @@ def forgot_password():
 
 @app.route("/forgot/verify", methods=["GET", "POST"])
 def forgot_password_verify():
-    """Piece 29.1: step 2 — answer the enrolled questions and set a new
-    password directly (no admin approval). Wrong answers are rate-limited per
-    session; a suspended account can't reset here."""
+    """Piece 29.1/29.3: step 2 — answer the randomly-chosen questions (matched
+    exactly, case-sensitive) and set a new password directly. Too many wrong
+    tries auto-locks the account and notifies a supervisor."""
     if current_user() is not None:
         return redirect(url_for("home"))
     uid = session.get("pwreset_uid")
-    if not uid:
+    ask = session.get("pwreset_ask") or []
+    if not uid or not ask:
         return redirect(url_for("forgot_password"))
     db = get_db()
     user = db.execute("SELECT * FROM employees WHERE id = ?", (uid,)).fetchone()
-    questions = security_questions_enrolled(uid) if user else []
-    if not user or not questions or is_access_revoked(user):
-        session.pop("pwreset_uid", None)
-        flash("That reset link is no longer valid. Ask a manager for help.", "error")
+    enrolled = {q["id"]: q for q in security_questions_enrolled(uid)} if user else {}
+    # The chosen questions, in the order they were picked.
+    questions = [enrolled[i] for i in ask if i in enrolled]
+    if not user or is_access_revoked(user) or len(questions) != len(ask):
+        _clear_reset_session()
+        flash("That reset is no longer valid. Ask a manager for help.", "error")
         return redirect(url_for("login"))
     if request.method == "POST":
-        if session.get("pwreset_attempts", 0) >= SECURITY_RESET_MAX_ATTEMPTS:
-            session.pop("pwreset_uid", None)
-            flash("Too many incorrect attempts. Ask a manager to reset your "
-                  "password.", "error")
-            return redirect(url_for("login"))
-        all_ok = True
-        for q in questions:
-            given = _normalize_answer(request.form.get(f"answer_{q['id']}", ""))
-            if not given or not check_password_hash(q["answer_hash"], given):
-                all_ok = False
+        # Case-sensitive exact match, like a password.
+        all_ok = all(
+            check_password_hash(q["answer_hash"],
+                                request.form.get(f"answer_{q['id']}", ""))
+            for q in questions)
         new = request.form.get("new_password", "")
         confirm = request.form.get("confirm_password", "")
         if not all_ok:
             session["pwreset_attempts"] = session.get("pwreset_attempts", 0) + 1
+            if session["pwreset_attempts"] >= SECURITY_RESET_MAX_ATTEMPTS:
+                _lock_account_after_failed_reset(db, user)
+                _clear_reset_session()
+                flash("Too many incorrect answers — for security this account "
+                      "has been locked and a supervisor notified. They can "
+                      "reinstate your access.", "error")
+                return redirect(url_for("login"))
             left = SECURITY_RESET_MAX_ATTEMPTS - session["pwreset_attempts"]
-            flash("One or more answers were incorrect."
-                  + (f" {left} attempt(s) left." if left > 0 else ""), "error")
+            flash(f"One or more answers were incorrect. {left} attempt(s) left "
+                  "before the account is locked.", "error")
             return render_template("forgot_verify.html", questions=questions)
         if len(new) < PASSWORD_MIN_LEN:
             flash(f"New password must be at least {PASSWORD_MIN_LEN} characters.",
@@ -2093,15 +2158,57 @@ def forgot_password_verify():
             return render_template("forgot_verify.html", questions=questions)
         db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
                    (generate_password_hash(new, method="pbkdf2:sha256"), uid))
-        # Any pending admin-approval request is now moot.
         db.execute("DELETE FROM password_requests WHERE employee_id = ?"
                    " AND status = 'Pending'", (uid,))
         db.commit()
-        session.pop("pwreset_uid", None)
-        session.pop("pwreset_attempts", None)
+        _clear_reset_session()
         flash("✓ Password reset. Sign in with your new password.")
         return redirect(url_for("login"))
     return render_template("forgot_verify.html", questions=questions)
+
+
+@app.route("/notifications")
+def notifications_page():
+    """Piece 29.3: the signed-in user's in-app inbox."""
+    user = current_user()
+    if user is None:
+        return redirect(url_for("login"))
+    items = get_db().execute(
+        "SELECT * FROM notifications WHERE recipient_id = ?"
+        " ORDER BY (COALESCE(is_read,'') = '1'), id DESC", (user["id"],)).fetchall()
+    return render_template("notifications.html", items=items)
+
+
+@app.route("/notifications/read-all", methods=["POST"])
+def notifications_read_all():
+    user = current_user()
+    if user is None:
+        return redirect(url_for("login"))
+    db = get_db()
+    db.execute("UPDATE notifications SET is_read = '1' WHERE recipient_id = ?",
+               (user["id"],))
+    db.commit()
+    return redirect(url_for("notifications_page"))
+
+
+@app.route("/notifications/<int:note_id>/open")
+def notification_open(note_id):
+    """Mark one notification read and follow its link (or back to the inbox)."""
+    user = current_user()
+    if user is None:
+        return redirect(url_for("login"))
+    db = get_db()
+    note = db.execute(
+        "SELECT * FROM notifications WHERE id = ? AND recipient_id = ?",
+        (note_id, user["id"])).fetchone()
+    if note is None:
+        abort(404)
+    db.execute("UPDATE notifications SET is_read = '1' WHERE id = ?", (note_id,))
+    db.commit()
+    dest = note["link"] or url_for("notifications_page")
+    if not (dest.startswith("/") and not dest.startswith("//")):
+        dest = url_for("notifications_page")
+    return redirect(dest)
 
 
 @app.route("/sw.js")
@@ -2135,7 +2242,8 @@ def account():
     return render_template("account.html", user=user, pending=pending,
                            security_questions=SECURITY_QUESTIONS,
                            enrolled=enrolled,
-                           questions_required=SECURITY_QUESTIONS_REQUIRED)
+                           questions_required=SECURITY_QUESTIONS_REQUIRED,
+                           questions_answered=SECURITY_QUESTIONS_ASK)
 
 
 @app.route("/account/password", methods=["POST"])
@@ -2198,7 +2306,9 @@ def save_security_questions():
     for i in range(SECURITY_QUESTIONS_REQUIRED):
         q = request.form.get(f"question_{i}", "").strip()
         a = request.form.get(f"answer_{i}", "")
-        if not q or not _normalize_answer(a):
+        # Answers are matched exactly (case-sensitive, like a password); only a
+        # wholly blank answer is rejected.
+        if not q or not a.strip():
             flash(f"Fill in all {SECURITY_QUESTIONS_REQUIRED} questions and "
                   "answers.", "error")
             return redirect(url_for("account"))
@@ -2215,8 +2325,7 @@ def save_security_questions():
             "INSERT INTO security_answers (employee_id, question, answer_hash,"
             " sort_order) VALUES (?, ?, ?, ?)",
             (user["id"], q,
-             generate_password_hash(_normalize_answer(a), method="pbkdf2:sha256"),
-             order))
+             generate_password_hash(a, method="pbkdf2:sha256"), order))
     db.commit()
     flash("✓ Security questions saved — you can now reset your own password if "
           "you're ever locked out.")

@@ -66,8 +66,10 @@
   </h2>
   <p class="muted" style="margin-top:0;">Pick {{ questions_required }} questions and
     give answers only you know. If you ever forget your password, answering these on
-    the sign-in page lets you set a new one yourself — no waiting on an admin. Answers
-    are stored scrambled (hashed) and aren't case-sensitive.
+    the sign-in page lets you set a new one yourself — no waiting on an admin. You'll
+    be asked {{ questions_answered }} of your {{ questions_required }} questions at
+    random. Answers are stored scrambled (hashed) and are <strong>case-sensitive</strong>
+    (type them exactly as you do here, capitals and spaces included).
     {% if enrolled %}<br><strong>You're set up.</strong> Re-saving replaces your current questions.{% endif %}</p>
   <form method="post" action="{{ url_for('save_security_questions') }}">
     {% for i in range(questions_required) %}

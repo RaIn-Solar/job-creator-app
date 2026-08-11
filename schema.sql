@@ -419,6 +419,18 @@ CREATE TABLE IF NOT EXISTS onboarding_steps (
     active      TEXT NOT NULL DEFAULT '1',   -- '1' active, '' archived
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Piece 29.3: lightweight in-app notifications (an inbox + nav bell). Used so
+-- far to alert Supervisors/GM when a reset auto-locks an account, but general
+-- purpose. One row per recipient.
+CREATE TABLE IF NOT EXISTS notifications (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient_id INTEGER NOT NULL REFERENCES employees(id),
+    message      TEXT NOT NULL,
+    link         TEXT DEFAULT '',
+    kind         TEXT DEFAULT '',
+    is_read      TEXT NOT NULL DEFAULT '',   -- '1' once read
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS employee_onboarding (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL REFERENCES employees(id),

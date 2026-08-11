@@ -392,5 +392,11 @@ can confirm a pull/update took effect.
   **new-employee onboarding checklist** (an editable company-wide step template,
   seeded with sensible defaults, tracked per employee with a progress bar on the
   profile's Onboarding tab).
+- **Piece 29.3** — password-reset hardening: security answers are now
+  **case-sensitive** (matched exactly, like a password); each reset asks a
+  **random 2 of the 3** enrolled questions; and hitting the wrong-answer limit
+  **auto-locks the account** (the same emergency lockout) and posts an in-app
+  **notification** to all Supervisors — or the GM(s) if there are none. Adds a
+  lightweight notifications inbox with a nav 🔔 bell + unread badge.
 
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.
