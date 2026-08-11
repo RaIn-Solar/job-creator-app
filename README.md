@@ -72,9 +72,12 @@ can confirm a pull/update took effect.
     above the shorthand + source link, above the scenarios it applies to.
 - **Verbatim source text** is an editable per-rule field for capturing the exact
   wording from the code/source, surfaced on the L/P/C Directory.
-- **Verification callouts**: requirements sourced from the NM reference set that
-  couldn't be fully confirmed carry a visible **⚠ Verify / ⚠ Unverified** chip,
-  with a legend, so field staff know what to confirm before relying on it.
+- **Verification callouts**: a rule can carry a visible **⚠ Verify / ⚠ Unverified**
+  chip (with a legend) so field staff know what to confirm before relying on it.
+  This is an **explicit, editable field** in the Rules Editor (a dropdown:
+  none / Verify / Unverified) — a human can add or remove the callout on any
+  rule/compliance note at will; existing rules were backfilled from the original
+  NM reference-set convention.
 - **NM reference data** (statewide licensing, all 33 counties' AHJ contacts,
   every utility's interconnection contacts) is kept reconciled against the
   verified July 2026 reference set.
@@ -135,6 +138,24 @@ can confirm a pull/update took effect.
 - **Per-job progress widget** — a segmented progress bar (one per job) that shows
   at a glance where the job sits in the pipeline, with the **next step called
   out**. Appears on the dashboard, client pages, and each job's header.
+- **Pipeline-turnover notifications**: whenever a job advances to a new stage
+  (from Proposal onward — new jobs, manual stage changes, and the install-date
+  auto-advance), the department(s) that **own the new stage** are notified in
+  their in-app inbox. Each recipient's copy **clears the first time they access
+  it** (opening the notification or the job); the person who made the move isn't
+  notified, and backward moves don't fire.
+- **Job cancellation (Lost) with a reason**: a "Cancel this job" control marks it
+  **Lost** with a **required reason** recorded in the audit log (who/when), and
+  remembers the stage it was at. A cancelled job's **open tasks are hidden** from
+  My Tasks, the task board, and the Work Bag so they stop nagging the crew —
+  nothing is deleted. **Everyone involved so far** (task assignees, time loggers,
+  the assigned rep) is notified. A **↩ Reopen** action restores the exact prior
+  stage and its tasks. ("Lost" is removed from the plain stage dropdown so every
+  cancellation captures a reason.)
+- **Closed jobs review** (🗄 Databases → Closed jobs, GM/Admin): a management view
+  of **cancelled** jobs — client, reason, who/when, prior stage, contract — each
+  with a one-click Reopen, plus a list of **completed** jobs (mirrors the
+  cold-leads review).
 - **Task generation** from a job's process, with each step auto-assigned to the
   role-holder responsible for it.
 - **Default task deadlines**: every generated task defaults to **7 days after the
@@ -194,6 +215,19 @@ can confirm a pull/update took effect.
 - **Licenses & certifications** per employee, with expiry tracking that ties into
   job requirements (a job page can show whether staff hold the licenses it needs
   and warn when a credential has lapsed).
+- **New-employee onboarding checklist**: an editable, company-wide step template
+  (seeded with sensible defaults; add / edit / reorder / archive), tracked
+  per employee on their profile's **Onboarding** tab with a progress bar and
+  who/when stamps. Managers check steps off; everyone else sees status read-only.
+- **Emergency access lockout**: a GM — or a new GM-designated **Supervisor** —
+  can instantly suspend **all** of an employee's access (they're signed out
+  mid-session and blocked at login until reinstated); the account, login and
+  data stay intact and a **↩ reinstate** restores it. Hierarchy guards: nobody
+  locks out themselves, and a Supervisor can't lock out a GM or a fellow
+  Supervisor. The roster flags suspended / supervisor at a glance.
+- **In-app notifications**: a nav **🔔 inbox** with an unread badge. Used for
+  pipeline turnovers, job cancellations, and security auto-locks; each
+  notification **clears when the recipient accesses it**.
 - **Role-based "My Dashboard"** — the sign-in landing, one role view at a time
   (mode switch for people who hold multiple roles); each person's **default view
   is remembered** (e.g. the GM defaults to the Executive overview). Every section
@@ -222,7 +256,10 @@ can confirm a pull/update took effect.
 - **Stock ledger & stale-stock notice**: every stock change (received / used /
   count / adjust) flows through a single ledger that keeps each item's on-hand
   balance; items that go unused past a threshold surface a **stale-stock** notice
-  on the Designer's dashboard.
+  on the Designer's dashboard. Items can also be **manually marked stale at will**
+  (a 🕰 toggle in the inventory listing) regardless of the automatic rule —
+  hand-flagged items show a **Stale** badge and join the review queue/count, and
+  Keep or Discontinue clears the mark.
 - **Barcode / asset registry**: generate and print **Code 128** labels, register
   serial numbers for **consumables** (hardware, components) and **non-consumables**
   (tools, PPE, trucks), and **scan** them in/out — including **phone-camera
@@ -238,10 +275,10 @@ can confirm a pull/update took effect.
   and **duplicate scans** — with an **exportable CSV** of the whole reconciliation.
   Every scan is logged per session and past audits are kept for reference.
 - **Nav grouping**: the reference/data pages — **Client Profiles, Rules Editor,
-  L/P/C Directory, Inventory, Calculator Catalog** — are consolidated under a
-  single **🗄 Databases** dropdown in the header; **Employees + Payroll** sit under
-  a **👥 Team** dropdown; and **Log / Trash / Access** sit under a **🔧 Admin**
-  dropdown.
+  L/P/C Directory, Inventory, Calculator Catalog**, plus **Cost model & finance**
+  and **Closed jobs** — are consolidated under a single **🗄 Databases** dropdown
+  in the header; **Employees + Payroll** sit under a **👥 Team** dropdown; and
+  **Log / Trash / Access** sit under a **🔧 Admin** dropdown.
   Each grouped dropdown shows only the items the user may reach and collapses to a
   plain link when only one applies. Keeps the top bar tidy.
 - **Permissions**: the General Manager (identified by the GM role) has unfettered
@@ -252,10 +289,17 @@ can confirm a pull/update took effect.
   Deleted items go to a **trash can** for review; permanent purge stays GM-only.
 - **Employee offboarding**: admins can remove an employee with a confirm prompt
   that requires a reason for the audit log.
-- **Logins**: per-user accounts with hashed passwords. **Usernames are
-  case-insensitive** (passwords stay case-sensitive); the Accounts page scans for
-  case-duplicate usernames. Sessions **auto-log-out after 12 hours of
-  inactivity** (a sliding window that renews on each request).
+- **Logins**: per-user accounts with hashed passwords (**pbkdf2:sha256**, which
+  also works in the packaged desktop build). **Usernames are case-insensitive**
+  (passwords stay case-sensitive); the Accounts page scans for case-duplicate
+  usernames. Sessions **auto-log-out after 12 hours of inactivity** (a sliding
+  window that renews on each request).
+- **Self-service password reset**: an employee can enrol **security questions**
+  on their account page (answers stored as salted hashes, **case-sensitive**). A
+  **"Forgot password?"** flow on the sign-in page asks a **random 2 of the 3**
+  and lets them set a new password **with no admin approval**. Wrong answers are
+  rate-limited; hitting the limit **auto-locks the account** and notifies the
+  Supervisor(s) (or the GM if none). Suspended accounts can't reset here.
 
 ### Finance & billing
 - **Per-job billing ledger** (💵 Billing tab): set the contract total and record
@@ -289,6 +333,26 @@ can confirm a pull/update took effect.
   solar deduction), citing **NMSA 7-9-112** when exempt. The **50/40/10 pay-scheme
   callout** also shows on the Sales and Finance dashboards so both explain it the
   same way.
+- **Cost Model Defaults** (🗄 Databases → Cost model & finance, Finance/Admin/GM):
+  ECC's estimating template behind job pricing — six editable sections
+  (**Equipment Inventory, Equipment Non-Inventory, Labor, Travel, Adders,
+  Overhead**), each line **qty × cost × (1 + markup)**, seeded with the finance
+  team's real figures and add/edit/delete-able. Equipment-Inventory markups price
+  the job BOM; **Overhead (G&A)** applies on the whole subtotal. The page also
+  holds the **NM county GRT rate table** (all 33 counties; a job auto-fills its
+  GRT from its install county, overridable for the solar deduction) and shows a
+  default "standard job" rollup.
+- **Per-job estimate** (📐 Estimate tab, Finance/Sales/Design): builds a job's
+  price against the cost model — one-click **prefill** pulls the default Labor /
+  Travel / Adders / Non-Inventory lines, quantities are set per line, equipment
+  comes from the BOM, Overhead applies on top, and a **suggested price** can be
+  pushed straight to the contract total.
+- **Pricing breakdown** (on the Billing tab): an internal cost-vs-margin summary
+  (marked-up equipment, estimate sections, overhead, suggested price) visible to
+  **Finance, Sales & Design** only — never on the customer copy. Change-order
+  materials added after the deposit bill at the **marked-up customer price**.
+- **Money formatting**: dollar amounts show a **thousands separator** everywhere
+  (a comma appears for amounts ≥ $1,000).
 - **Payroll**: employees **log their own hours** from the 🎒 Work Bag (by date,
   job, and **pay type** — usually captured right on the task they finished);
   supervisors **review and approve** them before they count. The pay schema is
