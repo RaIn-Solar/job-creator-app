@@ -201,6 +201,11 @@ can confirm a pull/update took effect.
 - **Grouped task board**: the cross-job task board and the dashboard's **My
   Tasks** are **grouped under each job** (a banner per job with its tasks as
   bullets beneath) so everything for a job reads at a glance.
+- **Boards** (📋 in the top nav): stand-alone **to-dos not tied to a job or
+  client** (clean the bathroom, call a vendor, …). Each can be **sent to a
+  teammate** (who's notified), carries a **time log** (hours + notes, with a
+  running total) and a **notes log** you add to over time, and has a
+  priority / due date / status. Filter by Mine / All / Unassigned.
 - **Offline cold-start (service worker)**: the app caches visited pages and
   serves them — or an offline page — without a signal, so the Work Bag works in
   the field even on a fresh load.
@@ -535,6 +540,11 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 30.8** — **Boards** (📋 in the top nav): stand-alone to-dos not tied to
+  a job or client (clean the bathroom, call a vendor, …). Assign / **send** one
+  to a teammate (they're notified), **log time** on it (with a running total),
+  keep a **notes log** you can add to over time, set priority/due/status, and
+  filter by Mine / All / Unassigned.
 - **Piece 30.7** — an in-app **❓ Help** page (top nav) with a first-draft set of
   **tutorials & FAQ** covering every feature, organized by area with a contents
   list and expandable Q&A.

@@ -474,6 +474,39 @@ CREATE TABLE IF NOT EXISTS job_estimate_lines (
 -- Piece 29.3: lightweight in-app notifications (an inbox + nav bell). Used so
 -- far to alert Supervisors/GM when a reset auto-locks an account, but general
 -- purpose. One row per recipient.
+-- Piece 30.8: "Boards" — standalone to-dos not tied to any job or client
+-- (clean the bathroom, call X, …). Each can be assigned to a team member, carry
+-- a running notes log, and log time spent.
+CREATE TABLE IF NOT EXISTS boards (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    title        TEXT NOT NULL,
+    details      TEXT DEFAULT '',
+    assigned_to  INTEGER REFERENCES employees(id),   -- NULL = unassigned
+    status       TEXT NOT NULL DEFAULT 'To do',       -- To do / In progress / Blocked / Done
+    priority     TEXT DEFAULT '',                     -- '' / Low / Normal / High
+    due_date     TEXT DEFAULT '',
+    created_by   TEXT DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT DEFAULT '',
+    completed_by TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS board_notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id   INTEGER NOT NULL REFERENCES boards(id),
+    author     TEXT DEFAULT '',
+    note       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS board_time (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id    INTEGER NOT NULL REFERENCES boards(id),
+    employee_id INTEGER REFERENCES employees(id),
+    who         TEXT DEFAULT '',
+    hours       REAL NOT NULL DEFAULT 0,
+    work_date   TEXT DEFAULT '',
+    note        TEXT DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS notifications (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     recipient_id INTEGER NOT NULL REFERENCES employees(id),

@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.7"
+VERSION = "Piece 30.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -3444,6 +3444,233 @@ def suggest_components(db, array_kw, peak_w, battery_kwh_needed):
 def help_page():
     """Piece 30.7: in-app tutorials / FAQ covering every feature."""
     return render_template("help.html")
+
+
+# ---------------------------------------------------------- Boards (Piece 30.8)
+BOARD_PRIORITIES = ["", "Low", "Normal", "High"]
+
+
+def _notify_board_assignee(db, board_id, title, assignee_id, actor):
+    """Tell a teammate a to-do was sent to them (skip self / login-less)."""
+    if not assignee_id or (actor and actor["id"] == assignee_id):
+        return
+    row = db.execute("SELECT COALESCE(username,'') AS u FROM employees WHERE id = ?",
+                     (assignee_id,)).fetchone()
+    if not row or not row["u"]:
+        return
+    notify_employees(
+        db, [assignee_id],
+        f"📋 To-do sent to you: “{title}”"
+        + (f" — from {actor['name']}" if actor else "") + ".",
+        link=url_for("board_detail", board_id=board_id), kind="board")
+
+
+@app.route("/boards")
+def boards_page():
+    """The Boards list — standalone to-dos not tied to a job or client.
+    Filter by assignee (mine / unassigned / a person / all) and open vs. all."""
+    db = get_db()
+    me = current_user()
+    who = request.args.get("who", "mine" if me else "all")
+    show = request.args.get("show", "open")
+    sql = ("SELECT b.*, e.name AS assignee_name FROM boards b"
+           " LEFT JOIN employees e ON e.id = b.assigned_to WHERE 1 = 1")
+    params = []
+    if who == "mine" and me:
+        sql += " AND b.assigned_to = ?"
+        params.append(me["id"])
+    elif who == "unassigned":
+        sql += " AND b.assigned_to IS NULL"
+    elif who.isdigit():
+        sql += " AND b.assigned_to = ?"
+        params.append(int(who))
+    if show == "open":
+        sql += " AND b.status != 'Done'"
+    sql += (" ORDER BY (b.status = 'Done'), (b.due_date = ''), b.due_date,"
+            " b.id DESC")
+    boards = db.execute(sql, params).fetchall()
+    employees = db.execute(
+        "SELECT id, name FROM employees ORDER BY name").fetchall()
+    open_count = db.execute(
+        "SELECT COUNT(*) FROM boards WHERE status != 'Done'").fetchone()[0]
+    return render_template("boards.html", boards=boards, employees=employees,
+                           who=who, show=show, task_statuses=TASK_STATUSES,
+                           priorities=BOARD_PRIORITIES, open_count=open_count,
+                           today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/boards/new", methods=["POST"])
+def board_new():
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("A board needs a title.", "error")
+        return redirect(url_for("boards_page"))
+    db = get_db()
+    me = current_user()
+    assignee = request.form.get("assigned_to", "")
+    assignee_id = int(assignee) if assignee.isdigit() else None
+    priority = request.form.get("priority", "")
+    priority = priority if priority in BOARD_PRIORITIES else ""
+    cur = db.execute(
+        "INSERT INTO boards (title, details, assigned_to, priority, due_date,"
+        " created_by) VALUES (?, ?, ?, ?, ?, ?)",
+        (title, request.form.get("details", "").strip(), assignee_id, priority,
+         request.form.get("due_date", "").strip(), me["name"] if me else ""))
+    _notify_board_assignee(db, cur.lastrowid, title, assignee_id, me)
+    db.commit()
+    flash(f"Board added: {title}"
+          + (" — sent to a teammate." if assignee_id and (not me or me["id"] != assignee_id) else ""))
+    return redirect(url_for("board_detail", board_id=cur.lastrowid))
+
+
+@app.route("/boards/<int:board_id>")
+def board_detail(board_id):
+    db = get_db()
+    board = db.execute(
+        "SELECT b.*, e.name AS assignee_name FROM boards b"
+        " LEFT JOIN employees e ON e.id = b.assigned_to WHERE b.id = ?",
+        (board_id,)).fetchone()
+    if board is None:
+        abort(404)
+    notes = db.execute(
+        "SELECT * FROM board_notes WHERE board_id = ? ORDER BY id DESC",
+        (board_id,)).fetchall()
+    times = db.execute(
+        "SELECT * FROM board_time WHERE board_id = ? ORDER BY id DESC",
+        (board_id,)).fetchall()
+    total_hours = db.execute(
+        "SELECT COALESCE(SUM(hours), 0) FROM board_time WHERE board_id = ?",
+        (board_id,)).fetchone()[0]
+    employees = db.execute(
+        "SELECT id, name FROM employees ORDER BY name").fetchall()
+    return render_template("board_detail.html", board=board, notes=notes,
+                           times=times, total_hours=total_hours,
+                           employees=employees, task_statuses=TASK_STATUSES,
+                           priorities=BOARD_PRIORITIES,
+                           today=datetime.now().strftime("%Y-%m-%d"))
+
+
+@app.route("/boards/<int:board_id>/edit", methods=["POST"])
+def board_edit(board_id):
+    db = get_db()
+    if db.execute("SELECT 1 FROM boards WHERE id = ?", (board_id,)).fetchone() is None:
+        abort(404)
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("A board needs a title.", "error")
+        return redirect(url_for("board_detail", board_id=board_id))
+    priority = request.form.get("priority", "")
+    priority = priority if priority in BOARD_PRIORITIES else ""
+    db.execute(
+        "UPDATE boards SET title = ?, details = ?, priority = ?, due_date = ?"
+        " WHERE id = ?",
+        (title, request.form.get("details", "").strip(), priority,
+         request.form.get("due_date", "").strip(), board_id))
+    db.commit()
+    flash("Board updated.")
+    return redirect(url_for("board_detail", board_id=board_id))
+
+
+@app.route("/boards/<int:board_id>/status", methods=["POST"])
+def board_status(board_id):
+    status = request.form.get("status", "")
+    if status not in TASK_STATUSES:
+        return redirect(url_for("board_detail", board_id=board_id))
+    db = get_db()
+    who = current_user()
+    if status == "Done":
+        db.execute("UPDATE boards SET status = ?, completed_at = ?, completed_by = ?"
+                   " WHERE id = ?",
+                   (status, datetime.now().isoformat(timespec="seconds"),
+                    who["name"] if who else "", board_id))
+    else:
+        db.execute("UPDATE boards SET status = ?, completed_at = '',"
+                   " completed_by = '' WHERE id = ?", (status, board_id))
+    db.commit()
+    nxt = request.form.get("next", "")
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
+    return redirect(url_for("board_detail", board_id=board_id))
+
+
+@app.route("/boards/<int:board_id>/assign", methods=["POST"])
+def board_assign(board_id):
+    """Send a to-do to another team member (or unassign)."""
+    db = get_db()
+    board = db.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
+    if board is None:
+        abort(404)
+    assignee = request.form.get("assigned_to", "")
+    assignee_id = int(assignee) if assignee.isdigit() else None
+    db.execute("UPDATE boards SET assigned_to = ? WHERE id = ?",
+               (assignee_id, board_id))
+    me = current_user()
+    if assignee_id and assignee_id != (board["assigned_to"] or None):
+        _notify_board_assignee(db, board_id, board["title"], assignee_id, me)
+    db.commit()
+    flash("To-do sent." if assignee_id else "Board unassigned.")
+    return redirect(url_for("board_detail", board_id=board_id))
+
+
+@app.route("/boards/<int:board_id>/note", methods=["POST"])
+def board_note(board_id):
+    note = request.form.get("note", "").strip()
+    if not note:
+        return redirect(url_for("board_detail", board_id=board_id))
+    db = get_db()
+    if db.execute("SELECT 1 FROM boards WHERE id = ?", (board_id,)).fetchone() is None:
+        abort(404)
+    who = current_user()
+    db.execute("INSERT INTO board_notes (board_id, author, note) VALUES (?, ?, ?)",
+               (board_id, who["name"] if who else "", note))
+    db.commit()
+    flash("Note added.")
+    return redirect(url_for("board_detail", board_id=board_id))
+
+
+@app.route("/boards/<int:board_id>/time", methods=["POST"])
+def board_time_add(board_id):
+    hours = _to_float(request.form.get("hours"))
+    db = get_db()
+    if db.execute("SELECT 1 FROM boards WHERE id = ?", (board_id,)).fetchone() is None:
+        abort(404)
+    if not hours or hours <= 0:
+        flash("Enter the hours worked (a positive number).", "error")
+        return redirect(url_for("board_detail", board_id=board_id))
+    who = current_user()
+    db.execute(
+        "INSERT INTO board_time (board_id, employee_id, who, hours, work_date, note)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (board_id, who["id"] if who else None, who["name"] if who else "",
+         round(hours, 2),
+         request.form.get("work_date", "").strip()
+         or datetime.now().strftime("%Y-%m-%d"),
+         request.form.get("note", "").strip()))
+    db.commit()
+    flash(f"Logged {hours:g} h.")
+    return redirect(url_for("board_detail", board_id=board_id))
+
+
+@app.route("/boards/<int:board_id>/delete", methods=["POST"])
+def board_delete(board_id):
+    db = get_db()
+    board = db.execute("SELECT * FROM boards WHERE id = ?", (board_id,)).fetchone()
+    if board is None:
+        abort(404)
+    me = current_user()
+    # The creator, the current assignee, or a GM/Admin may remove a board.
+    allowed = (is_gm() or _is_admin()
+               or (me and board["assigned_to"] == me["id"])
+               or (me and (board["created_by"] or "") == me["name"]))
+    if not allowed:
+        flash("Only the creator, assignee, or a manager can delete this board.", "error")
+        return redirect(url_for("board_detail", board_id=board_id))
+    db.execute("DELETE FROM board_notes WHERE board_id = ?", (board_id,))
+    db.execute("DELETE FROM board_time WHERE board_id = ?", (board_id,))
+    db.execute("DELETE FROM boards WHERE id = ?", (board_id,))
+    db.commit()
+    flash("Board deleted.")
+    return redirect(url_for("boards_page"))
 
 
 @app.route("/")

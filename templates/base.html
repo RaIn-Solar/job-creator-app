@@ -338,8 +338,9 @@
     {% endif %}
     {% if current_user %}<a href="/dashboard" style="margin-left:auto; font-size:0.9rem; font-weight:500;">🏠 My Dashboard</a>{% endif %}
     {% if current_user or not login_active %}
-    {# Order (left→right): Tasks · Work Bag · Approvals · Team · Databases · Admin #}
+    {# Order (left→right): Tasks · Boards · Work Bag · Approvals · Team · Databases · Admin #}
     <a href="/tasks" style="{% if not current_user %}margin-left:auto; {% endif %}font-size:0.9rem; font-weight:500;">✅ Tasks</a>
+    <a href="{{ url_for('boards_page') }}" style="font-size:0.9rem; font-weight:500;">📋 Boards</a>
     <a href="/work-bag" style="font-size:0.9rem; font-weight:500;">🎒 Work Bag</a>
     {% if can('approvals') %}<a href="/submissions" style="font-size:0.9rem; font-weight:500;">🕗 Approvals{% if pending_submissions %} ({{ pending_submissions }}){% endif %}</a>{% endif %}
     {% if can_payroll %}
