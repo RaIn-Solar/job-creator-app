@@ -441,4 +441,10 @@ can confirm a pull/update took effect.
   across all templates; the **cost-model editor** moved out of the job Estimate
   tab into the **Databases** nav dropdown ("Cost model & finance").
 
+- **Piece 30.1** — the rule **⚠ Verify / ⚠ Unverified** callout is now an
+  explicit, human-editable field (a dropdown in the Rules Editor) instead of
+  being inferred from caution words in the notes. Existing rules were backfilled
+  from the old convention; a person can now add or remove the callout on any
+  rule/compliance note directly.
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

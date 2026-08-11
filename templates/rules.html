@@ -48,6 +48,15 @@ To look up what applies to a given job type instead of editing, use the read-onl
       </select>
     </div>
     <div class="field">
+      <label for="verify_status">Verification callout</label>
+      <select id="verify_status" name="verify_status">
+        {% set cur_vs = (er['verify_status'] if er and 'verify_status' in er.keys() else '') or '' %}
+        <option value="" {% if cur_vs == '' %}selected{% endif %}>— none —</option>
+        <option value="verify" {% if cur_vs == 'verify' %}selected{% endif %}>⚠ Verify (confirm before relying on it)</option>
+        <option value="unverified" {% if cur_vs == 'unverified' %}selected{% endif %}>⚠ Unverified (couldn’t confirm online)</option>
+      </select>
+    </div>
+    <div class="field">
       <label for="field_name2">AND this field (optional)</label>
       <select id="field_name2" name="field_name2">
         <option value="">— no second condition —</option>

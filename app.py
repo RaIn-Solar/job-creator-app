@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.0"
+VERSION = "Piece 30.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -2873,6 +2873,9 @@ def init_db():
     # Piece 26.9: verbatim source text for a rule (esp. compliance) — the exact
     # wording from the code/source, shown above the shorthand in the L/P/C Directory.
     ensure_columns(db, "resource_rules", ["source_text"])
+    # Piece 30.1: the ⚠ Verify / ⚠ Unverified callout is an explicit editable
+    # field now (was inferred from caution words in the notes).
+    ensure_columns(db, "resource_rules", ["verify_status"])
     # Piece 27.1: sample client/job seed removed for production. A fresh
     # database now starts with NO clients, jobs, tasks, or sample employees
     # — only the reference databases (staff roster, inventory, calculator
@@ -2896,6 +2899,16 @@ def init_db():
         " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (str(seed_version),),
     )
+    # Piece 30.1: one-time backfill of verify_status from the old text convention,
+    # so existing callouts persist as explicit values that a human can now edit.
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'rule_verify_backfilled'").fetchone():
+        for rid, notes, label in db.execute(
+                "SELECT id, notes, label FROM resource_rules").fetchall():
+            db.execute("UPDATE resource_rules SET verify_status = ? WHERE id = ?",
+                       (_infer_verify_from_text(notes, label), rid))
+        db.execute("INSERT INTO meta (key, value) VALUES"
+                   " ('rule_verify_backfilled', '1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     db.commit()
     # Piece 9: appliance + component catalogs seed once, the same way the
     # sample clients above do — not via the rule-style batch system, since
@@ -3029,15 +3042,35 @@ def _instance_label(rule):
     return f"{fv} + {fv2}" if fv2 else fv
 
 
-def _rule_alert(rule):
-    """Surface the reference set's caution callouts (⚠ VERIFY / ⚠ UNVERIFIED)
-    that live inside a rule's notes so they render as a chip instead of hiding
-    in prose. Returns (kind, short_label) or (None, None)."""
-    text = ((rule["notes"] or "") + " " + (rule["label"] or "")).lower()
+# Piece 30.1: the verification callout is an explicit, human-editable field on
+# each rule (verify_status) rather than magic words in the notes. Labels:
+VERIFY_LABELS = {"verify": "⚠ Verify", "unverified": "⚠ Unverified"}
+
+
+def _infer_verify_from_text(notes, label):
+    """One-time backfill helper: read the old convention (caution words in the
+    notes/label) into the new explicit verify_status field."""
+    text = ((notes or "") + " " + (label or "")).lower()
     if "unverified" in text:
-        return ("unverified", "⚠ Unverified")
+        return "unverified"
     if "verify" in text or "confirm" in text:
-        return ("verify", "⚠ Verify")
+        return "verify"
+    return ""
+
+
+def _clean_verify_status(raw):
+    """Validate a submitted verify_status to '', 'verify', or 'unverified'."""
+    v = (raw or "").strip().lower()
+    return v if v in VERIFY_LABELS else ""
+
+
+def _rule_alert(rule):
+    """The rule's verification callout, from its explicit verify_status field.
+    Returns (kind, short_label) or (None, None)."""
+    vs = (rule["verify_status"] if "verify_status" in rule.keys() else "") or ""
+    vs = vs.strip().lower()
+    if vs in VERIFY_LABELS:
+        return (vs, VERIFY_LABELS[vs])
     return (None, None)
 
 
@@ -8772,8 +8805,8 @@ def add_rule():
         "INSERT INTO resource_rules"
         " (field_name, field_value, match_type, category, label, url, phone, notes,"
         "  field_name2, field_value2, match_type2, link_text, allowed_formats,"
-        "  source_text)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "  source_text, verify_status)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (field_name, field_value,
          "contains" if field_name == "products" else "equals",
          request.form.get("category", "Compliance"),
@@ -8785,7 +8818,8 @@ def add_rule():
          "contains" if field_name2 == "products" else "equals",
          request.form.get("link_text", "").strip(),
          ",".join(sorted(_parse_formats(request.form.get("allowed_formats")))),
-         request.form.get("source_text", "").strip()),
+         request.form.get("source_text", "").strip(),
+         _clean_verify_status(request.form.get("verify_status"))),
     )
     db.commit()
     flash(f"Rule added: {label}")
@@ -8815,7 +8849,7 @@ def update_rule(rule_id):
         "UPDATE resource_rules SET field_name = ?, field_value = ?, match_type = ?,"
         " category = ?, label = ?, url = ?, phone = ?, notes = ?, field_name2 = ?,"
         " field_value2 = ?, match_type2 = ?, link_text = ?, allowed_formats = ?,"
-        " source_text = ? WHERE id = ?",
+        " source_text = ?, verify_status = ? WHERE id = ?",
         (field_name, field_value,
          "contains" if field_name == "products" else "equals",
          request.form.get("category", "Compliance"), label,
@@ -8827,6 +8861,7 @@ def update_rule(rule_id):
          request.form.get("link_text", "").strip(),
          ",".join(sorted(_parse_formats(request.form.get("allowed_formats")))),
          request.form.get("source_text", "").strip(),
+         _clean_verify_status(request.form.get("verify_status")),
          rule_id))
     db.commit()
     flash(f"Rule updated: {label}")
