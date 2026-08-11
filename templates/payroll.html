@@ -78,7 +78,7 @@
         {% endfor %}
         <td style="text-align:right; color:#8a5a00;">{{ "%.1f"|format(r.ot_hours) if r.ot_hours else "—" }}</td>
         <td style="text-align:right; font-weight:600;">{{ "%.1f"|format(r.hours) }}</td>
-        <td style="text-align:right; font-weight:600; color:var(--brand);">${{ "%.2f"|format(r.pay) }}</td>
+        <td style="text-align:right; font-weight:600; color:var(--brand);">${{ (r.pay)|money }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -88,7 +88,7 @@
         {% for t in types %}<td></td>{% endfor %}
         <td style="text-align:right; color:#8a5a00;">{{ "%.1f"|format(totals.ot_hours) if totals.ot_hours else "—" }}</td>
         <td style="text-align:right;">{{ "%.1f"|format(totals.hours) }}</td>
-        <td style="text-align:right; color:var(--brand);">${{ "%.2f"|format(totals.pay) }}</td>
+        <td style="text-align:right; color:var(--brand);">${{ (totals.pay)|money }}</td>
       </tr>
     </tfoot>
   </table>

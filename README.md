@@ -436,4 +436,9 @@ can confirm a pull/update took effect.
   (travel moved from a flat per-job field into the estimate's Travel lines);
   catalog categories gained `mc4` so every BOM line maps to an equipment markup.
 
+- **Piece 30.0** — dollar amounts show a **thousands separator** everywhere
+  (comma for amounts ≥ $1,000) via `money` / `money0` Jinja filters applied
+  across all templates; the **cost-model editor** moved out of the job Estimate
+  tab into the **Databases** nav dropdown ("Cost model & finance").
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

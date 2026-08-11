@@ -94,14 +94,14 @@
         <tr class="{{ 'cur' if s.current else '' }}">
           <td>{{ s.name }} <span class="muted">— {{ s.hint }}</span></td>
           <td>{{ s.pct }}%</td>
-          <td class="r">{% if s.amount is not none %}${{ "%.2f"|format(s.amount) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="r">{% if s.amount is not none %}${{ (s.amount)|money }}{% else %}<span class="muted">—</span>{% endif %}</td>
           <td>{% if s.amount is none %}<span class="muted">not yet billed</span>{% elif s.status == "Paid" %}Paid{% else %}Due{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
       <tfoot>
         <tr><td colspan="2" style="font-weight:700;">Contract total</td>
-          <td class="r" style="font-weight:700;">${{ "%.2f"|format(contract) }}</td><td></td></tr>
+          <td class="r" style="font-weight:700;">${{ (contract)|money }}</td><td></td></tr>
       </tfoot>
     </table>
 
@@ -110,20 +110,20 @@
         <div class="muted" style="font-size:0.8rem; text-align:left;">This invoice — {{ inv["milestone"] }} ({{ inv["category"] }})</div>
         <table style="margin-top:0.3rem;">
           <tr><td style="border:none; padding:0.15rem 0;">Subtotal</td>
-              <td class="r" style="border:none; padding:0.15rem 0;">${{ "%.2f"|format(inv["amount"]|float) }}</td></tr>
+              <td class="r" style="border:none; padding:0.15rem 0;">${{ (inv["amount"]|float)|money }}</td></tr>
           {% if inv["extras_amount"] and inv["extras_amount"]|float > 0 %}
-          <tr><td class="muted" style="border:none; padding:0 0 0.15rem; font-size:0.78rem;">${{ "%.2f"|format(inv["base_amount"]|float) }} contract + ${{ "%.2f"|format(inv["extras_amount"]|float) }} added materials</td><td style="border:none;"></td></tr>
+          <tr><td class="muted" style="border:none; padding:0 0 0.15rem; font-size:0.78rem;">${{ (inv["base_amount"]|float)|money }} contract + ${{ (inv["extras_amount"]|float)|money }} added materials</td><td style="border:none;"></td></tr>
           {% endif %}
           <tr><td style="border:none; padding:0.15rem 0;">
               NM Gross Receipts Tax{% if grt_rate > 0 %} ({{ ('%.4f'|format(grt_rate)).rstrip('0').rstrip('.') }}%){% endif %}</td>
-              <td class="r" style="border:none; padding:0.15rem 0;">${{ "%.2f"|format(grt_amount) }}</td></tr>
+              <td class="r" style="border:none; padding:0.15rem 0;">${{ (grt_amount)|money }}</td></tr>
           {% if grt_rate <= 0 %}
           <tr><td colspan="2" class="muted" style="border:none; padding:0 0 0.15rem; font-size:0.74rem; text-align:left;">Solar deduction applied — {{ grt_cite }}</td></tr>
           {% endif %}
         </table>
         <div style="border-top:1px solid var(--border); margin-top:0.35rem; padding-top:0.35rem;">
           <div class="muted" style="font-size:0.8rem;">Amount due</div>
-          <div class="amt">${{ "%.2f"|format((inv["amount"]|float) + grt_amount) }}</div>
+          <div class="amt">${{ ((inv["amount"]|float) + grt_amount)|money }}</div>
         </div>
       </div>
     </div>

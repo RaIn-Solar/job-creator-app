@@ -302,8 +302,8 @@
         <div style="font-weight:600; font-size:0.9rem; line-height:1.25;">{{ s.name }}</div>
         <div class="muted" style="font-size:0.78rem; margin:0.2rem 0;">{{ s.why }}</div>
         <div style="font-size:0.82rem; margin-bottom:0.4rem;">
-          <strong>{{ s.qty }}</strong> {{ role.unit }}{% if s.unit_cost %} · ${{ "%.0f"|format(s.unit_cost) }} ea
-          · ${{ "%.0f"|format(s.qty * s.unit_cost) }} line{% endif %}</div>
+          <strong>{{ s.qty }}</strong> {{ role.unit }}{% if s.unit_cost %} · ${{ (s.unit_cost)|money0 }} ea
+          · ${{ (s.qty * s.unit_cost)|money0 }} line{% endif %}</div>
         <input type="hidden" name="name" value="{{ s.name }}">
         <input type="hidden" name="category" value="{{ s.category }}">
         <input type="hidden" name="qty" value="{{ s.qty }}">
@@ -351,8 +351,8 @@
         <td>{{ b["component_name"] }}</td>
         <td class="muted">{{ b["category"] }}</td>
         <td>{{ b["qty"] }}</td>
-        <td>{% if b["unit_cost"] %}${{ "%.0f"|format(b["unit_cost"]) }}{% endif %}</td>
-        <td>{% if b["unit_cost"] %}${{ "%.0f"|format((b["qty"] or 0) * (b["unit_cost"] or 0)) }}{% endif %}</td>
+        <td>{% if b["unit_cost"] %}${{ (b["unit_cost"])|money0 }}{% endif %}</td>
+        <td>{% if b["unit_cost"] %}${{ ((b["qty"] or 0) * (b["unit_cost"] or 0))|money0 }}{% endif %}</td>
         <td class="muted">{{ b["notes"] }}</td>
         <td style="white-space:nowrap;">
           {% if not locked %}
@@ -369,7 +369,7 @@
       {% endif %}
       {% endfor %}
     </tbody>
-    <tfoot><tr><td colspan="4" style="text-align:right; font-weight:600;">Total</td><td style="font-weight:600;">${{ "%.0f"|format(bom_total) }}</td><td colspan="2"></td></tr></tfoot>
+    <tfoot><tr><td colspan="4" style="text-align:right; font-weight:600;">Total</td><td style="font-weight:600;">${{ (bom_total)|money0 }}</td><td colspan="2"></td></tr></tfoot>
   </table>
   {% else %}
   <p class="empty">No components added yet.</p>

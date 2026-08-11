@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.9"
+VERSION = "Piece 30.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1356,6 +1356,24 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB per upload
 # (session["last_active"]) is the authority.
 SESSION_MAX_HOURS = 12
 app.permanent_session_lifetime = timedelta(hours=SESSION_MAX_HOURS)
+
+
+# Piece 30.0: money formatting with a thousands separator (comma shows for
+# amounts >= 1,000). `money` → 2 decimals, `money0` → whole dollars.
+@app.template_filter("money")
+def _fmt_money(v):
+    try:
+        return "{:,.2f}".format(float(v or 0))
+    except (ValueError, TypeError):
+        return v
+
+
+@app.template_filter("money0")
+def _fmt_money0(v):
+    try:
+        return "{:,.0f}".format(float(v or 0))
+    except (ValueError, TypeError):
+        return v
 
 
 @app.context_processor
@@ -5498,7 +5516,7 @@ def add_receipt():
         "INSERT INTO job_files (job_id, rule_label, stored_name, original_name, txn_id)"
         " VALUES (?, 'Receipt', ?, ?, ?)", (job_id, stored, friendly, txn_id))
     db.commit()
-    flash(f"Receipt saved: ${total:.2f}{(' · ' + vendor) if vendor else ''}.")
+    flash(f"Receipt saved: ${total:,.2f}{(' · ' + vendor) if vendor else ''}.")
     return _workbag_redirect(anchor="receipts")
 
 

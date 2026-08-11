@@ -15,11 +15,11 @@ markups price the actual job BOM; the other sections are default estimate lines.
   <h2 style="margin-top:0; font-size:1.05rem;">Default job rollup</h2>
   <div class="form-grid">
     {% for s, tot in rollup.section_totals.items() %}
-    <div class="field"><label>{{ s }}</label><div style="font-weight:600;">${{ "%.2f"|format(tot) }}</div></div>
+    <div class="field"><label>{{ s }}</label><div style="font-weight:600;">${{ (tot)|money }}</div></div>
     {% endfor %}
-    <div class="field"><label>Subtotal</label><div style="font-weight:700;">${{ "%.2f"|format(rollup.subtotal) }}</div></div>
-    <div class="field"><label>Overhead (G&amp;A {{ ('%.2f'|format(rollup.overhead_pct)).rstrip('0').rstrip('.') }}%)</label><div style="font-weight:600;">${{ "%.2f"|format(rollup.overhead_amount) }}</div></div>
-    <div class="field"><label>Total</label><div style="font-weight:800; color:var(--brand); font-size:1.1rem;">${{ "%.2f"|format(rollup.total) }}</div></div>
+    <div class="field"><label>Subtotal</label><div style="font-weight:700;">${{ (rollup.subtotal)|money }}</div></div>
+    <div class="field"><label>Overhead (G&amp;A {{ ('%.2f'|format(rollup.overhead_pct)).rstrip('0').rstrip('.') }}%)</label><div style="font-weight:600;">${{ (rollup.overhead_amount)|money }}</div></div>
+    <div class="field"><label>Total</label><div style="font-weight:800; color:var(--brand); font-size:1.1rem;">${{ (rollup.total)|money }}</div></div>
   </div>
   <p class="muted" style="margin:0.3rem 0 0; font-size:0.8rem;">Equipment Inventory isn't
     in this rollup — it prices each job's real BOM. Overhead applies to every job's subtotal

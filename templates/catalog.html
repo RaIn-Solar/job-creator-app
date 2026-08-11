@@ -136,7 +136,7 @@ applies everywhere immediately.</p>
         <td><span class="badge">{{ c["category"] }}</span></td>
         <td class="muted">{{ c["manufacturer"] }} {{ c["model"] }}</td>
         <td class="muted">{{ c["specs"] or "" }}</td>
-        <td>{% if c["cost"] %}${{ "%.0f"|format(c["cost"]) }}{% endif %}</td>
+        <td>{% if c["cost"] %}${{ (c["cost"])|money0 }}{% endif %}</td>
         <td style="white-space:nowrap;">
           {% if can('catalog.manage') %}
           <a href="{{ url_for('catalog_page', edit_component=c['id'], _anchor='components') }}"

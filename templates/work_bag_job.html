@@ -120,7 +120,7 @@ Everything is saved on this device, so it keeps working offline.</p>
         <td class="muted">{{ r["txn_date"] or "—" }}</td>
         <td>{{ r["party"] or "—" }}{% if r["reference"] %}<br><span class="muted" style="font-size:0.78rem;">#{{ r["reference"] }}</span>{% endif %}</td>
         <td class="muted">{{ r["category"] or "—" }}</td>
-        <td style="text-align:right;">${{ "%.2f"|format(r["amount"] or 0) }}</td>
+        <td style="text-align:right;">${{ (r["amount"] or 0)|money }}</td>
         <td>{% if r["file_id"] %}<a href="{{ url_for('view_file', job_id=job['id'], file_id=r['file_id']) }}" target="_blank">📎 view</a>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}

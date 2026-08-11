@@ -79,8 +79,8 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
         <td style="white-space:nowrap;">{{ it["model"] or "—" }}</td>
         <td class="muted" style="white-space:nowrap;">{{ it["vendor_name"] or "—" }}{% if it["vendor_number"] %}<br><span style="font-size:0.75rem;">#{{ it["vendor_number"] }}</span>{% endif %}</td>
         <td style="text-align:right; white-space:nowrap;">
-          {% if it["cost"] is not none %}${{ "%.2f"|format(it["cost"]) }}{% else %}<span class="muted">—</span>{% endif %}
-          {% if it["web_price"] is not none %}<br><span class="muted" style="font-size:0.72rem;" title="web-verified {{ it['price_checked_on'] }}">web ${{ "%.2f"|format(it["web_price"]) }}</span>{% endif %}
+          {% if it["cost"] is not none %}${{ (it["cost"])|money }}{% else %}<span class="muted">—</span>{% endif %}
+          {% if it["web_price"] is not none %}<br><span class="muted" style="font-size:0.72rem;" title="web-verified {{ it['price_checked_on'] }}">web ${{ (it["web_price"])|money }}</span>{% endif %}
         </td>
         <td style="white-space:nowrap;">
           {% if it["purchase_url"] %}<a class="inv-ico" href="{{ it['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / buy">🛒</a>{% endif %}
@@ -115,7 +115,7 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
         <td class="muted">{{ t["category"] or "—" }}</td>
         <td>{{ t["make"] or "—" }}</td>
         <td>{{ t["model"] or "—" }}</td>
-        <td style="text-align:right; white-space:nowrap;">{% if t["cost"] is not none %}${{ "%.2f"|format(t["cost"]) }}{% if t["notes"] and "approx" in t["notes"]|lower %}<span class="muted" title="approximate — verify at listing"> ~</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td style="text-align:right; white-space:nowrap;">{% if t["cost"] is not none %}${{ (t["cost"])|money }}{% if t["notes"] and "approx" in t["notes"]|lower %}<span class="muted" title="approximate — verify at listing"> ~</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if t["purchase_url"] %}<a class="inv-ico" href="{{ t['purchase_url'] }}" target="_blank" rel="noopener" title="Purchase / listing">🛒</a>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_tool_edit', tool_id=t['id']) }}" title="Edit">✎</a>{% endif %}</td>
       </tr>

@@ -348,7 +348,6 @@
       <div class="navdrop-menu">
         <a href="/employees">👥 Employees</a>
         <a href="/payroll">💵 Payroll</a>
-        <a href="{{ url_for('finance_settings') }}">⚙️ Finance settings</a>
       </div>
     </details>
     {% else %}
@@ -362,6 +361,7 @@
         <a href="/directory">📖 L/P/C Directory</a>
         <a href="/inventory">📦 Inventory</a>
         <a href="/catalog">🔌 Calculator Catalog</a>
+        {% if can_payroll %}<a href="{{ url_for('finance_settings') }}">💵 Cost model &amp; finance</a>{% endif %}
       </div>
     </details>
     {# Admin group: Log / Trash / Access. Dropdown when the user can reach 2+;
