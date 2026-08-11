@@ -391,6 +391,20 @@ CREATE TABLE IF NOT EXISTS password_requests (
     resolved_by  TEXT DEFAULT ''
 );
 
+-- Piece 29.1: self-service password reset. Each employee may enrol a few
+-- security questions; the answer is stored only as a salted hash (normalised
+-- to lower-case/trimmed before hashing). Answering them correctly lets the
+-- person set a new password themselves from the login page, with no admin
+-- approval. One row per question; replacing the set deletes and re-inserts.
+CREATE TABLE IF NOT EXISTS security_answers (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id  INTEGER NOT NULL REFERENCES employees(id),
+    question     TEXT NOT NULL,
+    answer_hash  TEXT NOT NULL,
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Piece 12: client-level document storage — files that belong to the
 -- client across all their jobs (contracts, correspondence, intake, photos),
 -- kept separate from a job's requirement documents. Files on disk in

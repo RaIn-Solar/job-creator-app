@@ -54,8 +54,45 @@
     </div>
     <div class="actions"><button type="submit" class="btn">Submit for approval</button></div>
   </form>
-  <p class="muted" style="margin-bottom:0; font-size:0.85rem;">Forgot your
-  password and can't sign in? An admin can reset it directly from your
-  employee profile.</p>
+  <p class="muted" style="margin-bottom:0; font-size:0.85rem;">Locked out and
+  can't sign in? Set up the security questions below, and you can reset your own
+  password from the sign-in page. An admin can also reset it from your profile.</p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0; font-size:1.1rem;">🔑 Security questions
+    {% if enrolled %}<span class="badge" style="vertical-align:middle;">✓ set up</span>
+    {% else %}<span class="badge warn" style="vertical-align:middle;">not set up</span>{% endif %}
+  </h2>
+  <p class="muted" style="margin-top:0;">Pick {{ questions_required }} questions and
+    give answers only you know. If you ever forget your password, answering these on
+    the sign-in page lets you set a new one yourself — no waiting on an admin. Answers
+    are stored scrambled (hashed) and aren't case-sensitive.
+    {% if enrolled %}<br><strong>You're set up.</strong> Re-saving replaces your current questions.{% endif %}</p>
+  <form method="post" action="{{ url_for('save_security_questions') }}">
+    {% for i in range(questions_required) %}
+    <div class="form-grid" style="align-items:end;">
+      <div class="field wide">
+        <label for="question_{{ i }}">Question {{ i + 1 }}</label>
+        <select id="question_{{ i }}" name="question_{{ i }}" required>
+          <option value="">— choose a question —</option>
+          {% for q in security_questions %}
+          <option value="{{ q }}"{% if enrolled and enrolled[i] and enrolled[i]["question"] == q %} selected{% endif %}>{{ q }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field wide">
+        <label for="answer_{{ i }}">Your answer</label>
+        <input id="answer_{{ i }}" name="answer_{{ i }}" required autocomplete="off"
+               placeholder="{% if enrolled %}enter to re-confirm{% endif %}">
+      </div>
+    </div>
+    {% endfor %}
+    <div class="field" style="max-width:22rem;">
+      <label for="sq_current_password">Confirm with your current password</label>
+      <input id="sq_current_password" name="current_password" type="password" required autocomplete="current-password">
+    </div>
+    <div class="actions"><button type="submit" class="btn">Save security questions</button></div>
+  </form>
 </div>
 {% endblock %}

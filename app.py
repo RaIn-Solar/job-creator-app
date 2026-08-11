@@ -269,6 +269,21 @@ def permissions_from_roles(user):
         out |= ROLE_PERMISSIONS.get(role, set())
     return out
 PASSWORD_MIN_LEN = 6
+# Piece 29.1: self-service password reset. A menu of security questions to
+# choose from (plus a free-typed "own question" option in the form). Enrolling
+# a few lets someone reset their own password from the login page.
+SECURITY_QUESTIONS = [
+    "What was the name of your first pet?",
+    "What street did you grow up on?",
+    "What is your mother's maiden name?",
+    "What was the make of your first vehicle?",
+    "What city were you born in?",
+    "What was the name of your first school?",
+    "What is your favorite sports team?",
+    "What was your childhood nickname?",
+]
+SECURITY_QUESTIONS_REQUIRED = 3   # how many must be enrolled / answered
+SECURITY_RESET_MAX_ATTEMPTS = 5   # per browser session before it's cut off
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "first_name": "First name", "last_name": "Last name",
     "nickname": "Nickname", "roles": "Roles", "schedule": "Schedule",
@@ -937,7 +952,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.0"
+VERSION = "Piece 29.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1384,6 +1399,19 @@ def is_access_revoked(user):
         return False
     val = user["access_revoked"] if "access_revoked" in user.keys() else ""
     return str(val or "") == "1"
+
+
+def _normalize_answer(text):
+    """Normalise a security answer so trivial differences (case, surrounding
+    or repeated spaces) don't cause a false mismatch."""
+    return " ".join((text or "").strip().lower().split())
+
+
+def security_questions_enrolled(employee_id):
+    """The security questions this employee has set up (for the reset flow)."""
+    return get_db().execute(
+        "SELECT * FROM security_answers WHERE employee_id = ?"
+        " ORDER BY sort_order, id", (employee_id,)).fetchall()
 
 
 def can_revoke_target(actor, target):
@@ -1856,7 +1884,8 @@ def require_login():
     # The service worker and its offline fallback must load without a session
     # (the whole point is offline / pre-auth cold-start).
     if request.endpoint in ("login", "static", "service_worker",
-                            "offline_page", None):
+                            "offline_page", "forgot_password",
+                            "forgot_password_verify", None):
         return
     # Piece 24.8: drop a sign-in idle past the limit; otherwise slide the
     # inactivity window forward so active users stay signed in.
@@ -1940,6 +1969,88 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/forgot", methods=["GET", "POST"])
+def forgot_password():
+    """Piece 29.1: step 1 of self-service reset — identify the account. If it
+    has security questions enrolled (and isn't suspended), move to the answer
+    step; otherwise send them to a manager, without confirming whether the
+    username exists."""
+    if current_user() is not None:
+        return redirect(url_for("home"))
+    generic = ("If that account has security questions set up, you'll be asked "
+               "them next. If not, ask a manager to reset your password.")
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        user = get_db().execute(
+            "SELECT * FROM employees WHERE LOWER(username) = LOWER(?)"
+            " AND COALESCE(username,'') != ''", (username,)).fetchone()
+        # Only proceed for a real, active login that has questions enrolled.
+        if (user and user["password_hash"] and not is_access_revoked(user)
+                and security_questions_enrolled(user["id"])):
+            session["pwreset_uid"] = user["id"]
+            session["pwreset_attempts"] = 0
+            return redirect(url_for("forgot_password_verify"))
+        flash(generic)
+        return redirect(url_for("forgot_password"))
+    return render_template("forgot.html")
+
+
+@app.route("/forgot/verify", methods=["GET", "POST"])
+def forgot_password_verify():
+    """Piece 29.1: step 2 — answer the enrolled questions and set a new
+    password directly (no admin approval). Wrong answers are rate-limited per
+    session; a suspended account can't reset here."""
+    if current_user() is not None:
+        return redirect(url_for("home"))
+    uid = session.get("pwreset_uid")
+    if not uid:
+        return redirect(url_for("forgot_password"))
+    db = get_db()
+    user = db.execute("SELECT * FROM employees WHERE id = ?", (uid,)).fetchone()
+    questions = security_questions_enrolled(uid) if user else []
+    if not user or not questions or is_access_revoked(user):
+        session.pop("pwreset_uid", None)
+        flash("That reset link is no longer valid. Ask a manager for help.", "error")
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        if session.get("pwreset_attempts", 0) >= SECURITY_RESET_MAX_ATTEMPTS:
+            session.pop("pwreset_uid", None)
+            flash("Too many incorrect attempts. Ask a manager to reset your "
+                  "password.", "error")
+            return redirect(url_for("login"))
+        all_ok = True
+        for q in questions:
+            given = _normalize_answer(request.form.get(f"answer_{q['id']}", ""))
+            if not given or not check_password_hash(q["answer_hash"], given):
+                all_ok = False
+        new = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        if not all_ok:
+            session["pwreset_attempts"] = session.get("pwreset_attempts", 0) + 1
+            left = SECURITY_RESET_MAX_ATTEMPTS - session["pwreset_attempts"]
+            flash("One or more answers were incorrect."
+                  + (f" {left} attempt(s) left." if left > 0 else ""), "error")
+            return render_template("forgot_verify.html", questions=questions)
+        if len(new) < PASSWORD_MIN_LEN:
+            flash(f"New password must be at least {PASSWORD_MIN_LEN} characters.",
+                  "error")
+            return render_template("forgot_verify.html", questions=questions)
+        if new != confirm:
+            flash("New password and confirmation don't match.", "error")
+            return render_template("forgot_verify.html", questions=questions)
+        db.execute("UPDATE employees SET password_hash = ? WHERE id = ?",
+                   (generate_password_hash(new, method="pbkdf2:sha256"), uid))
+        # Any pending admin-approval request is now moot.
+        db.execute("DELETE FROM password_requests WHERE employee_id = ?"
+                   " AND status = 'Pending'", (uid,))
+        db.commit()
+        session.pop("pwreset_uid", None)
+        session.pop("pwreset_attempts", None)
+        flash("✓ Password reset. Sign in with your new password.")
+        return redirect(url_for("login"))
+    return render_template("forgot_verify.html", questions=questions)
+
+
 @app.route("/sw.js")
 def service_worker():
     """Piece 24.9: the service worker, served from root so it controls the whole
@@ -1967,7 +2078,11 @@ def account():
     pending = get_db().execute(
         "SELECT * FROM password_requests WHERE employee_id = ? AND status = 'Pending'"
         " ORDER BY id DESC LIMIT 1", (user["id"],)).fetchone()
-    return render_template("account.html", user=user, pending=pending)
+    enrolled = security_questions_enrolled(user["id"])
+    return render_template("account.html", user=user, pending=pending,
+                           security_questions=SECURITY_QUESTIONS,
+                           enrolled=enrolled,
+                           questions_required=SECURITY_QUESTIONS_REQUIRED)
 
 
 @app.route("/account/password", methods=["POST"])
@@ -2009,6 +2124,49 @@ def cancel_password_change():
                " WHERE employee_id = ? AND status = 'Pending'", (user["id"],))
     db.commit()
     flash("Password request cancelled.")
+    return redirect(url_for("account"))
+
+
+@app.route("/account/security-questions", methods=["POST"])
+def save_security_questions():
+    """Piece 29.1: enrol (or replace) the signed-in user's security questions
+    for self-service password reset. Answers are normalised and stored only as
+    salted hashes. Requires SECURITY_QUESTIONS_REQUIRED distinct questions with
+    non-blank answers; verifying the current password guards enrolment."""
+    user = current_user()
+    if user is None:
+        return redirect(url_for("home"))
+    current = request.form.get("current_password", "")
+    if not user["password_hash"] or not check_password_hash(
+            user["password_hash"], current):
+        flash("Enter your current password to save security questions.", "error")
+        return redirect(url_for("account"))
+    pairs, seen = [], set()
+    for i in range(SECURITY_QUESTIONS_REQUIRED):
+        q = request.form.get(f"question_{i}", "").strip()
+        a = request.form.get(f"answer_{i}", "")
+        if not q or not _normalize_answer(a):
+            flash(f"Fill in all {SECURITY_QUESTIONS_REQUIRED} questions and "
+                  "answers.", "error")
+            return redirect(url_for("account"))
+        key = q.lower()
+        if key in seen:
+            flash("Please choose a different question for each answer.", "error")
+            return redirect(url_for("account"))
+        seen.add(key)
+        pairs.append((q, a))
+    db = get_db()
+    db.execute("DELETE FROM security_answers WHERE employee_id = ?", (user["id"],))
+    for order, (q, a) in enumerate(pairs):
+        db.execute(
+            "INSERT INTO security_answers (employee_id, question, answer_hash,"
+            " sort_order) VALUES (?, ?, ?, ?)",
+            (user["id"], q,
+             generate_password_hash(_normalize_answer(a), method="pbkdf2:sha256"),
+             order))
+    db.commit()
+    flash("✓ Security questions saved — you can now reset your own password if "
+          "you're ever locked out.")
     return redirect(url_for("account"))
 
 
