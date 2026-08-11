@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.1"
+VERSION = "Piece 30.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1413,6 +1413,7 @@ ACTION_LABELS = {
     "set_task_status": "Change task status", "set_task_assignee": "Reassign task",
     "set_task_due": "Change task due date", "set_ui_mode": "Change sizing view mode",
     "update_sizing": "Update system sizing",
+    "cancel_job": "Cancel job (mark Lost)", "reopen_job": "Reopen job",
 }
 # Endpoints whose POSTs are not user data changes worth logging.
 AUDIT_SKIP_ENDPOINTS = set()
@@ -2936,6 +2937,10 @@ def init_db():
     seed_onboarding_steps(db)  # Piece 29.2: default onboarding checklist
     seed_finance_reference(db)  # Piece 29.6: county GRT + markup categories
     ensure_columns(db, "jobs", ["travel_miles"])       # Piece 29.6
+    # Piece 30.2: cancellation (Lost) metadata — reason, who/when, and the stage
+    # to restore on reopen.
+    ensure_columns(db, "jobs", ["cancel_reason", "cancelled_at", "cancelled_by",
+                                "pre_lost_status"])
     ensure_columns(db, "job_bom", ["markup_pct"])      # per-line markup override
     db.commit()
     ensure_columns(db, "inventory_items", ["status", "last_used", "stock_reviewed_on"])
@@ -3419,7 +3424,7 @@ def dashboard():
         "SELECT t.*, j.job_name, j.id AS job_id, c.name AS client_name"
         " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
         " JOIN clients c ON c.id = j.client_id"
-        " WHERE t.employee_id = ? AND t.status != 'Done'"
+        " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Lost'"
         " ORDER BY (t.due_date = ''), t.due_date, j.id", (user["id"],)).fetchall()
     # Piece 21.6: on the Installation (Foreman) viewport, My tasks is the crew's
     # punch list — trim it to on-site field work, dropping office/scheduling
@@ -7333,6 +7338,11 @@ def delete_component_catalog(component_id):
 def set_job_status(job_id):
     job = fetch_job(job_id)
     status = request.form.get("status", "")
+    if status == "Lost":
+        # Piece 30.2: cancelling goes through the reason flow, never the plain
+        # stage dropdown.
+        flash("Use “Cancel job” to mark a job Lost (a reason is required).", "error")
+        return redirect(url_for("job_detail", job_id=job_id))
     if status in JOB_STATUSES:
         db = get_db()
         # Flexible guardrail: if advancing to the next stage before the current
@@ -7360,6 +7370,52 @@ def set_job_status(job_id):
         db.commit()
         if warn:
             flash(f"Advanced to {status} with {cur} still pending: {warn}.", "error")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/cancel", methods=["POST"])
+def cancel_job(job_id):
+    """Piece 30.2: cancel a job — mark it Lost with a required reason (captured
+    in the audit log), remembering the current stage so it can be reopened.
+    The job's open tasks stop showing in My Tasks / the board / Work Bag while
+    it's Lost, but nothing is deleted."""
+    job = fetch_job(job_id)
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        flash("A reason is required to cancel a job.", "error")
+        return redirect(url_for("job_detail", job_id=job_id))
+    if (job["status"] or "") == "Lost":
+        flash("This job is already cancelled.")
+        return redirect(url_for("job_detail", job_id=job_id))
+    db = get_db()
+    who = current_user()
+    db.execute(
+        "UPDATE jobs SET pre_lost_status = ?, status = 'Lost', cancel_reason = ?,"
+        " cancelled_at = ?, cancelled_by = ? WHERE id = ?",
+        (job["status"] or DEFAULT_JOB_STATUS, reason,
+         datetime.now().isoformat(timespec="seconds"),
+         who["name"] if who else "", job_id))
+    db.commit()
+    flash(f"Job cancelled (Lost). Reason recorded: “{reason}”.")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.route("/jobs/<int:job_id>/reopen", methods=["POST"])
+def reopen_job(job_id):
+    """Piece 30.2: reopen a cancelled job — restore the stage it was at before
+    it was marked Lost (its tasks reappear) and clear the cancellation info."""
+    job = fetch_job(job_id)
+    if (job["status"] or "") != "Lost":
+        flash("Only a cancelled (Lost) job can be reopened.", "error")
+        return redirect(url_for("job_detail", job_id=job_id))
+    prev = (job["pre_lost_status"] if "pre_lost_status" in job.keys() else "") or ""
+    restore = prev if prev in STAGE_ORDER else DEFAULT_JOB_STATUS
+    db = get_db()
+    db.execute(
+        "UPDATE jobs SET status = ?, cancel_reason = '', cancelled_at = '',"
+        " cancelled_by = '', pre_lost_status = '' WHERE id = ?", (restore, job_id))
+    db.commit()
+    flash(f"Job reopened at {restore}.")
     return redirect(url_for("job_detail", job_id=job_id))
 
 
@@ -8057,7 +8113,8 @@ def tasks_dashboard():
            " e.name AS assignee_name FROM job_tasks t"
            " JOIN jobs j ON j.id = t.job_id"
            " JOIN clients c ON c.id = j.client_id"
-           " LEFT JOIN employees e ON e.id = t.employee_id WHERE 1 = 1")
+           " LEFT JOIN employees e ON e.id = t.employee_id"
+           " WHERE j.status != 'Lost'")   # Piece 30.2: hide cancelled-job tasks
     params = []
     if who == "unassigned":
         sql += " AND t.employee_id IS NULL"
@@ -8116,7 +8173,7 @@ def _my_tasks_rows(db, employee_id):
         " c.name AS client_name"
         " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
         " JOIN clients c ON c.id = j.client_id"
-        " WHERE t.employee_id = ?"
+        " WHERE t.employee_id = ? AND j.status != 'Lost'"   # Piece 30.2
         " ORDER BY (t.status = 'Done'), (j.install_date = ''), j.install_date,"
         " j.id, (t.due_date = ''), t.due_date, t.id",
         (employee_id,)).fetchall()

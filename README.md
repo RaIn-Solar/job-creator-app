@@ -447,4 +447,11 @@ can confirm a pull/update took effect.
   from the old convention; a person can now add or remove the callout on any
   rule/compliance note directly.
 
+- **Piece 30.2** — proper **job cancellation**: a "Cancel this job" control marks
+  it Lost with a **required reason** (recorded in the audit log with who/when),
+  and a cancelled job's open tasks are **hidden** from My Tasks, the task board
+  and the Work Bag so they stop nagging the crew. A **Reopen** action restores
+  the exact pre-Lost stage and its tasks. "Lost" was removed from the plain stage
+  dropdown so every cancellation captures a reason.
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

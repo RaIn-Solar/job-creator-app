@@ -12,7 +12,7 @@
      onclick="var w=this.closest('.stage-editor'); w.querySelector('.stage-label').style.display='none'; this.style.display='none'; w.querySelector('form').style.display='inline-flex';">✎</a>
   <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="display:none; margin:0;">
     <select name="status" onchange="this.form.submit()" style="padding:0.25rem;">
-      {% for s in job_statuses %}
+      {% for s in job_statuses if s != 'Lost' %}
       <option value="{{ s }}" {% if (job["status"] or "Proposal") == s %}selected{% endif %}>{{ s }}</option>
       {% endfor %}
     </select>
@@ -34,6 +34,24 @@
      style="margin-left:auto;">← Client profile</a>
 </div>
 
+{% if job["status"] == "Lost" %}
+{# Piece 30.2: a cancelled job — reason, who/when, and a Reopen action. #}
+<div class="card" style="border-left:4px solid #9a1c1c; background:#fbe9e9; padding:0.9rem 1.1rem;">
+  <div class="toolbar" style="margin-bottom:0.35rem;">
+    <h2 style="margin:0; font-size:1.05rem; color:#9a1c1c;">🚫 Job cancelled (Lost)</h2>
+    <form method="post" action="{{ url_for('reopen_job', job_id=job['id']) }}" style="margin:0;"
+          onsubmit="return confirm('Reopen this job? Its tasks will show again.');">
+      <button type="submit" class="btn">↩ Reopen job</button>
+    </form>
+  </div>
+  {% if job["cancel_reason"] %}<p style="margin:0.2rem 0;">Reason: “{{ job["cancel_reason"] }}”</p>{% endif %}
+  <p class="muted" style="margin:0; font-size:0.85rem;">
+    {% if job["cancelled_by"] %}Cancelled by {{ job["cancelled_by"] }}{% endif %}
+    {% if job["cancelled_at"] %} on {{ job["cancelled_at"][:16].replace("T"," ") }}{% endif %}
+    {% if job["pre_lost_status"] %} · reopens at {{ job["pre_lost_status"] }}{% endif %}.
+    Its open tasks are hidden from My Tasks, the task board and the Work Bag while it's cancelled.</p>
+</div>
+{% else %}
 {% if stage.dept != "—" %}
 <div class="card" style="border-left:4px solid var(--brand); padding:0.9rem 1.1rem;">
   <div class="toolbar" style="margin-bottom:0.35rem;">
@@ -91,6 +109,23 @@
 <div class="card" style="padding:0.7rem 0.9rem;">
   <span style="font-weight:600;">Pipeline stage · </span>{{ stage_editor() }}
 </div>
+{% endif %}
+{# Piece 30.2: cancel this job (requires a reason; recorded in the audit log). #}
+<details class="card" style="border-left:4px solid #d97706; padding:0.6rem 0.9rem;">
+  <summary style="cursor:pointer; font-weight:600; color:#92400e;">🚫 Cancel this job</summary>
+  <p class="muted" style="margin:0.5rem 0; font-size:0.85rem;">Marks the job <strong>Lost</strong>
+    and hides its open tasks from everyone's My Tasks, the task board and the Work Bag. Nothing is
+    deleted — you can reopen it later at the same stage.</p>
+  <form method="post" action="{{ url_for('cancel_job', job_id=job['id']) }}"
+        onsubmit="return confirm('Cancel this job (mark it Lost)?');"
+        style="margin:0; display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+    <div class="field" style="margin:0; flex:1; min-width:16rem;">
+      <label style="font-size:0.85rem;">Reason (required, logged)</label>
+      <input name="reason" required placeholder="e.g. customer went with another installer">
+    </div>
+    <button type="submit" class="btn" style="background:#9a1c1c;">🚫 Cancel job</button>
+  </form>
+</details>
 {% endif %}
 
 {% set req_total = groups | map(attribute=1) | map('length') | sum %}
