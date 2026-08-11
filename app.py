@@ -1075,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 30.3"
+VERSION = "Piece 30.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1763,6 +1763,7 @@ VIEW_PERMISSION = {
     "inventory_stale": "inventory.manage",
     "inventory_stale_keep": "inventory.manage",
     "inventory_stale_discontinue": "inventory.manage",
+    "inventory_toggle_stale": "inventory.manage",   # Piece 30.4
     # Piece 26.0/26.1: registering & printing tags is the warehouse manager's
     # job; scanning to load a truck is open to any signed-in worker (Installers
     # included) so a crew can load in parallel — those routes are NOT listed here.
@@ -2971,6 +2972,7 @@ def init_db():
     ensure_columns(db, "job_bom", ["markup_pct"])      # per-line markup override
     db.commit()
     ensure_columns(db, "inventory_items", ["status", "last_used", "stock_reviewed_on"])
+    ensure_columns(db, "inventory_items", ["stale_flag"])   # Piece 30.4: manual "stale" mark
     db.execute("UPDATE inventory_items SET status = 'Active'"
                " WHERE COALESCE(status, '') = ''")
     seed_inventory(db)
@@ -6259,14 +6261,19 @@ def stale_stock_items(db):
     ('kept') within that window. Items never used aren't flagged yet (no usage
     history to judge; they surface once the ledger has real runway)."""
     win = f"-{STALE_MONTHS} months"
+    # Piece 30.4: an item is stale if it was manually flagged (stale_flag), OR it
+    # meets the automatic rule (zero on hand + unused 6+ months, not recently kept).
     return db.execute(
         "SELECT i.*, v.name AS vendor_name FROM inventory_items i"
         " LEFT JOIN inventory_vendors v ON v.id = i.vendor_id"
-        " WHERE i.active = 1 AND i.status = 'Active' AND COALESCE(i.available, 0) <= 0"
-        "   AND COALESCE(i.last_used, '') != '' AND date(i.last_used) <= date('now', ?)"
-        "   AND (COALESCE(i.stock_reviewed_on, '') = ''"
-        "        OR date(i.stock_reviewed_on) <= date('now', ?))"
-        " ORDER BY i.last_used", (win, win)).fetchall()
+        " WHERE i.active = 1 AND i.status = 'Active' AND ("
+        "   COALESCE(i.stale_flag, '') = '1'"
+        "   OR (COALESCE(i.available, 0) <= 0"
+        "       AND COALESCE(i.last_used, '') != '' AND date(i.last_used) <= date('now', ?)"
+        "       AND (COALESCE(i.stock_reviewed_on, '') = ''"
+        "            OR date(i.stock_reviewed_on) <= date('now', ?)))"
+        " ) ORDER BY (COALESCE(i.stale_flag,'') = '1') DESC, i.last_used",
+        (win, win)).fetchall()
 
 
 @app.route("/inventory")
@@ -6487,10 +6494,10 @@ def inventory_stale():
 def inventory_stale_keep(item_id):
     """Dismiss a stale-stock flag: mark reviewed today (re-checks in 6 months)."""
     db = get_db()
-    db.execute("UPDATE inventory_items SET stock_reviewed_on = date('now')"
-               " WHERE id = ?", (item_id,))
+    db.execute("UPDATE inventory_items SET stock_reviewed_on = date('now'),"
+               " stale_flag = '' WHERE id = ?", (item_id,))   # clears a manual mark too
     db.commit()
-    flash("Kept active — will re-check in 6 months.")
+    flash("Kept active — cleared the stale mark (auto re-checks in 6 months).")
     return redirect(url_for("inventory_stale"))
 
 
@@ -6500,10 +6507,31 @@ def inventory_stale_discontinue(item_id):
     """Soft-retire a stale item: mark Discontinued (keeps the record)."""
     db = get_db()
     db.execute("UPDATE inventory_items SET status = 'Discontinued',"
-               " stock_reviewed_on = date('now') WHERE id = ?", (item_id,))
+               " stock_reviewed_on = date('now'), stale_flag = '' WHERE id = ?",
+               (item_id,))
     db.commit()
     flash("Marked Discontinued.")
     return redirect(url_for("inventory_stale"))
+
+
+@app.route("/inventory/<int:item_id>/toggle-stale", methods=["POST"])
+@admin_required
+def inventory_toggle_stale(item_id):
+    """Piece 30.4: manually flag (or unflag) an inventory item as stale, from the
+    inventory listing — independent of the automatic zero-on-hand/unused rule.
+    Flagged items show a Stale badge and appear in the stale review queue."""
+    db = get_db()
+    row = db.execute("SELECT stale_flag, description, make, model FROM inventory_items"
+                     " WHERE id = ?", (item_id,)).fetchone()
+    if row is None:
+        abort(404)
+    now_stale = (row["stale_flag"] or "") != "1"
+    db.execute("UPDATE inventory_items SET stale_flag = ? WHERE id = ?",
+               ("1" if now_stale else "", item_id))
+    db.commit()
+    name = row["description"] or (f"{row['make']} {row['model']}").strip() or "Item"
+    flash(f"“{name}” marked stale." if now_stale else f"“{name}” is no longer stale.")
+    return redirect(url_for("inventory_page"))
 
 
 @app.route("/inventory/stale/<int:item_id>/trash", methods=["POST"])

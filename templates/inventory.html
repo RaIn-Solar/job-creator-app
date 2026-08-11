@@ -75,6 +75,7 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
         <td>{{ it["description"] or "—" }}</td>
         <td style="white-space:nowrap;">{{ it["make"] or "—" }}
           {% if it["status"] == "Discontinued" %}<span class="badge neutral" style="font-size:0.66rem;">Discontinued</span>{% endif %}
+          {% if it["stale_flag"] == "1" %}<span class="badge warn" style="font-size:0.66rem;" title="Manually marked stale">🕰 Stale</span>{% endif %}
           {% if it["flags"] %}<span title="{{ it['flags'] }}" style="cursor:help;">⚠️</span>{% endif %}</td>
         <td style="white-space:nowrap;">{{ it["model"] or "—" }}</td>
         <td class="muted" style="white-space:nowrap;">{{ it["vendor_name"] or "—" }}{% if it["vendor_number"] %}<br><span style="font-size:0.75rem;">#{{ it["vendor_number"] }}</span>{% endif %}</td>
@@ -87,7 +88,11 @@ overwrites it). Use <strong>＋ New product</strong> to add items.</p>
           {% if it["manual_url"] %}<a class="inv-ico" href="{{ it['manual_url'] }}" target="_blank" rel="noopener" title="Datasheet / manual">📄</a>{% endif %}
           {% if not it["purchase_url"] and not it["manual_url"] %}<span class="muted">—</span>{% endif %}
         </td>
-        <td>{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>{% endif %}</td>
+        <td style="white-space:nowrap;">{% if can('inventory.manage') %}<a class="inv-edit" href="{{ url_for('inventory_item_edit', item_id=it['id']) }}" title="Edit">✎</a>
+          <form method="post" action="{{ url_for('inventory_toggle_stale', item_id=it['id']) }}" style="display:inline; margin:0;">
+            <button type="submit" class="inv-ico" style="background:none; border:none; cursor:pointer; padding:0 0.1rem; font-size:0.95rem;{% if it['stale_flag'] == '1' %} opacity:1;{% else %} opacity:0.5;{% endif %}"
+                    title="{{ 'Unmark stale' if it['stale_flag'] == '1' else 'Mark as stale' }}">🕰</button>
+          </form>{% endif %}</td>
         {% for sp in s.specs %}<td class="spec-col" style="white-space:nowrap;">{{ it["specs"].get(sp, "") }}</td>{% endfor %}
       </tr>
       {% endfor %}

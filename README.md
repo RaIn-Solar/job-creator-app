@@ -460,4 +460,9 @@ can confirm a pull/update took effect.
   cancelled jobs with their reason/who/when and a one-click Reopen, plus
   completed jobs — the way cold leads are reviewed.
 
+- **Piece 30.4** — inventory items can be **manually marked stale at will** (a 🕰
+  toggle in the listing, `inventory.manage`), independent of the automatic
+  zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
+  stale review queue/count; Keep or Discontinue clears the manual mark.
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.
