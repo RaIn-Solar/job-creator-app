@@ -416,4 +416,15 @@ can confirm a pull/update took effect.
   suggested contract price) that never appears on the customer copy; change-order
   materials added after the deposit now bill at the marked-up customer price.
 
+- **Piece 29.7** — the internal pricing breakdown is now visible to Sales &
+  Design (who price/design jobs), not just Finance/Admin/GM.
+- **Piece 29.8 (Cost Model Defaults)** — Finance Settings becomes a **Cost Model**
+  page mirroring ECC's estimating sheet: six editable sections (Equipment
+  Inventory, Equipment Non-Inventory, Labor, Travel, Adders, Overhead) seeded
+  with the finance team's real figures, each line qty × cost × (1 + markup).
+  Equipment-Inventory markups price the job BOM; **Overhead (G&A)** applies on
+  top of each job's subtotal in the pricing breakdown; the Travel → Vehicle
+  Trips line is the per-mile travel rate. The page shows a default "standard
+  job" rollup, and the NM county GRT table stays alongside.
+
 Data lives in `job_creator.db`; uploaded documents live in `uploads/`.

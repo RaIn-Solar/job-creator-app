@@ -553,6 +553,7 @@
       <div class="field"><label>Equipment cost</label><div style="font-weight:600;">${{ "%.2f"|format(pricing.equipment_cost) }}</div></div>
       <div class="field"><label>Marked-up equipment price</label><div style="font-weight:600;">${{ "%.2f"|format(pricing.equipment_price) }} <span class="muted" style="font-size:0.8rem;">(+${{ "%.0f"|format(pricing.markup_amount) }} margin)</span></div></div>
       <div class="field"><label>Travel ({{ ('%.1f'|format(pricing.travel_miles)).rstrip('0').rstrip('.') }} mi × ${{ '%.2f'|format(pricing.travel_rate) }})</label><div style="font-weight:600;">${{ "%.2f"|format(pricing.travel_charge) }}</div></div>
+      {% if pricing.overhead_pct %}<div class="field"><label>Overhead (G&amp;A {{ ('%.2f'|format(pricing.overhead_pct)).rstrip('0').rstrip('.') }}%)</label><div style="font-weight:600;">${{ "%.2f"|format(pricing.overhead_amount) }}</div></div>{% endif %}
       <div class="field"><label>Suggested price</label><div style="font-weight:700; color:var(--brand);">${{ "%.2f"|format(pricing.suggested) }}
         {% if pricing.suggested and pricing.contract %}<span class="muted" style="font-size:0.8rem;">(contract ${{ "%.0f"|format(pricing.contract) }})</span>{% endif %}</div></div>
     </div>

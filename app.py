@@ -319,22 +319,31 @@ def seed_onboarding_steps(db):
 
 
 def seed_finance_reference(db):
-    """Piece 29.6: seed the NM county list (at 0% GRT) and a starter set of
-    equipment-markup categories (at 0%), so Finance has a table to fill in.
-    Idempotent — inserts only counties/categories not already present, so the
-    lists stay current without wiping edited rates."""
+    """Piece 29.6/29.8: seed the NM county list (at 0% GRT) and ECC's Cost Model
+    Defaults. Counties are inserted if missing (rates preserved). The cost model
+    is seeded once (meta-guarded) with the finance team's real figures; after
+    that it's edited on the Cost Model page and never re-seeded."""
     for c in NM_COUNTIES:
         db.execute("INSERT OR IGNORE INTO county_tax_rates (county, grt_rate)"
                    " VALUES (?, 0)", (c,))
-    # Categories: any already used in the component catalog, plus a default set.
-    # NOTE: init_db's connection returns tuples (no Row factory), so index by [0].
-    cats = {r[0] for r in db.execute(
-        "SELECT DISTINCT category FROM component_catalog"
-        " WHERE COALESCE(category,'') != ''").fetchall()}
-    cats.update(MARKUP_SEED_CATEGORIES)
-    for cat in sorted(cats):
-        db.execute("INSERT OR IGNORE INTO markup_categories (category, markup_pct)"
-                   " VALUES (?, 0)", (cat,))
+    if not db.execute("SELECT 1 FROM meta WHERE key = 'cost_model_seeded'").fetchone():
+        order = 0
+        for section in COST_MODEL_SECTIONS:
+            for item, unit, qty, cost, markup in COST_MODEL_SEED.get(section, []):
+                db.execute(
+                    "INSERT INTO cost_model_lines (section, item, unit,"
+                    " default_qty, unit_cost, markup_pct, sort_order)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (section, item, unit, qty, cost, markup, order))
+                order += 1
+        db.execute("INSERT INTO meta (key, value) VALUES ('cost_model_seeded','1')"
+                   " ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        # Align the per-job travel $/mile with the Vehicle Trips line (direct SQL:
+        # init_db's connection has no Row factory, so avoid _meta_get/_meta_set).
+        if not db.execute("SELECT 1 FROM meta WHERE key = 'travel_rate_per_mile'"
+                          ).fetchone():
+            db.execute("INSERT INTO meta (key, value)"
+                       " VALUES ('travel_rate_per_mile', '1.0')")
 EMPLOYEE_FIELD_LABELS = {
     "name": "Name", "first_name": "First name", "last_name": "Last name",
     "nickname": "Nickname", "roles": "Roles", "schedule": "Schedule",
@@ -575,6 +584,49 @@ MARKUP_SEED_CATEGORIES = [
 # Default travel reimbursement, $ per (round-trip) mile — stored in meta as
 # 'travel_rate_per_mile' and edited on Finance Settings. 0 until Finance sets it.
 TRAVEL_RATE_DEFAULT = 0.0
+# Piece 29.8: ECC's Cost Model Defaults (from the finance team's estimating
+# sheet). Sections in display order; each line = (item, unit, default_qty,
+# unit_cost, markup_pct). Equipment Inventory rows carry only a markup (they
+# price the BOM). Overhead rows carry a percent (in the markup slot) applied to
+# the whole job subtotal. Seeded once; fully editable on the Cost Model page.
+COST_MODEL_SECTIONS = ["Equipment Inventory", "Equipment Non-Inventory",
+                       "Labor", "Travel", "Adders", "Overhead"]
+COST_MODEL_SEED = {
+    "Equipment Inventory": [
+        ("Battery", "", None, None, 30), ("Breaker", "", None, None, 50),
+        ("Breaker Panel", "", None, None, 50), ("Charge Controller", "", None, None, 30),
+        ("Controls", "", None, None, 50), ("Electrical", "", None, None, 30),
+        ("Enclosure", "", None, None, 30), ("Generator", "", None, None, 30),
+        ("Inverter", "", None, None, 50), ("mc4", "", None, None, 0),
+        ("Monitoring", "", None, None, 50), ("Office Supplies", "", None, None, 0),
+        ("Optimizer", "", None, None, 50), ("Pumping", "", None, None, 40),
+        ("PV Module", "", None, None, 50), ("Racking", "", None, None, 50),
+        ("Wire", "", None, None, 50),
+    ],
+    "Equipment Non-Inventory": [
+        ("Ground PV Mount", "Watts", None, 0.8, 30),
+        ("Direct Roof PV Mount", "Watts", None, 0.18, 30),
+        ("Pergola PV Mount", "Watts", None, 1.1, 30),
+        ("Ballasted Roof PV Mount", "Watts", None, 0.5, 30),
+        ("Direct Roof on Shingles Mount", "Watts", None, 0.22, 30),
+    ],
+    "Labor": [
+        ("Hours", "", 100, 40, 100),
+        ("Panels", "Panels", None, 40, 100),
+    ],
+    "Travel": [
+        ("Vehicle Trips", "Mile", 7, 1, 0),
+        ("Person Trips", "Hour", 21, 30, 100),
+    ],
+    "Adders": [
+        ("Trench", "", 1, 1000, 0),
+        ("Permits", "", 1, 1000, 0),
+        ("Propane Line Installation", "", 1, 2500, 30),
+    ],
+    "Overhead": [
+        ("G&A", "", None, None, 22),
+    ],
+}
 
 # Piece 21.2: payroll pay-type calculation. A type is either a "multiplier" on
 # the employee's base wage (so it's per-employee automatically) or a "flat"
@@ -1023,7 +1075,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 29.7"
+VERSION = "Piece 29.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -4379,27 +4431,15 @@ def set_contract(job_id):
 @app.route("/finance/settings")
 @finance_required
 def finance_settings():
-    """Piece 29.6: Finance reference data — NM county GRT rates, per-category
-    equipment markup, and the travel $/mile rate."""
+    """Piece 29.6/29.8: the Cost Model Defaults (equipment, labor, travel,
+    adders, overhead) plus the NM county GRT rate table."""
     db = get_db()
     counties = db.execute(
         "SELECT * FROM county_tax_rates ORDER BY county").fetchall()
-    categories = db.execute(
-        "SELECT * FROM markup_categories ORDER BY category").fetchall()
     return render_template(
-        "finance_settings.html", counties=counties, categories=categories,
-        travel_rate=travel_rate(db))
-
-
-@app.route("/finance/settings/travel", methods=["POST"])
-@finance_required
-def finance_save_travel():
-    db = get_db()
-    rate = max(_to_float(request.form.get("travel_rate")) or 0.0, 0.0)
-    _meta_set(db, "travel_rate_per_mile", str(rate))
-    db.commit()
-    flash("Travel rate saved.")
-    return redirect(url_for("finance_settings"))
+        "finance_settings.html", counties=counties,
+        sections=cost_model_by_section(db), section_order=COST_MODEL_SECTIONS,
+        rollup=cost_model_rollup(db))
 
 
 @app.route("/finance/settings/counties", methods=["POST"])
@@ -4418,23 +4458,65 @@ def finance_save_counties():
     return redirect(url_for("finance_settings"))
 
 
-@app.route("/finance/settings/markup", methods=["POST"])
+def _cost_line_num(raw):
+    """Parse an optional numeric cost-model field: blank stays NULL."""
+    if raw is None or str(raw).strip() == "":
+        return None
+    v = _to_float(raw)
+    return max(v, 0.0) if v is not None else None
+
+
+@app.route("/finance/settings/cost-model", methods=["POST"])
 @finance_required
-def finance_save_markup():
+def finance_save_cost_model():
+    """Bulk-save every cost-model line's qty / cost / markup."""
     db = get_db()
-    for c in db.execute("SELECT id FROM markup_categories").fetchall():
-        val = request.form.get(f"markup_{c['id']}")
-        if val is not None:
-            db.execute("UPDATE markup_categories SET markup_pct = ? WHERE id = ?",
-                       (max(_to_float(val) or 0.0, 0.0), c["id"]))
-    # Optionally add a new category.
-    new_cat = request.form.get("new_category", "").strip()
-    if new_cat:
-        db.execute("INSERT OR IGNORE INTO markup_categories (category, markup_pct)"
-                   " VALUES (?, ?)",
-                   (new_cat, max(_to_float(request.form.get("new_markup")) or 0.0, 0.0)))
+    for r in db.execute("SELECT id FROM cost_model_lines WHERE active = '1'").fetchall():
+        i = r["id"]
+        if f"markup_{i}" not in request.form:
+            continue
+        db.execute(
+            "UPDATE cost_model_lines SET default_qty = ?, unit_cost = ?,"
+            " unit = ?, markup_pct = ? WHERE id = ?",
+            (_cost_line_num(request.form.get(f"qty_{i}")),
+             _cost_line_num(request.form.get(f"cost_{i}")),
+             request.form.get(f"unit_{i}", "").strip(),
+             max(_to_float(request.form.get(f"markup_{i}")) or 0.0, 0.0), i))
     db.commit()
-    flash("Equipment markup saved.")
+    flash("Cost model saved.")
+    return redirect(url_for("finance_settings"))
+
+
+@app.route("/finance/settings/cost-model/add", methods=["POST"])
+@finance_required
+def finance_add_cost_line():
+    db = get_db()
+    section = request.form.get("section", "")
+    item = request.form.get("item", "").strip()
+    if section not in COST_MODEL_SECTIONS or not item:
+        flash("Pick a section and name the line.", "error")
+        return redirect(url_for("finance_settings"))
+    nxt = db.execute("SELECT COALESCE(MAX(sort_order), -1) + 1"
+                     " FROM cost_model_lines").fetchone()[0]
+    db.execute(
+        "INSERT INTO cost_model_lines (section, item, unit, default_qty,"
+        " unit_cost, markup_pct, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (section, item, request.form.get("unit", "").strip(),
+         _cost_line_num(request.form.get("qty")),
+         _cost_line_num(request.form.get("cost")),
+         max(_to_float(request.form.get("markup")) or 0.0, 0.0), nxt))
+    db.commit()
+    flash(f"Added “{item}” to {section}.")
+    return redirect(url_for("finance_settings"))
+
+
+@app.route("/finance/settings/cost-model/<int:line_id>/delete", methods=["POST"])
+@finance_required
+def finance_delete_cost_line(line_id):
+    db = get_db()
+    db.execute("UPDATE cost_model_lines SET active = '' WHERE id = ?", (line_id,))
+    db.commit()
+    flash("Line removed.")
     return redirect(url_for("finance_settings"))
 
 
@@ -4533,15 +4615,62 @@ def county_grt_rate(db, county):
 
 
 def markup_map(db):
-    """{category (lower): markup percent} from the finance settings."""
-    return {(r["category"] or "").strip().lower(): float(r["markup_pct"] or 0)
+    """{equipment category (lower): markup percent} from the Cost Model's
+    Equipment Inventory section (Piece 29.8)."""
+    return {(r["item"] or "").strip().lower(): float(r["markup_pct"] or 0)
             for r in db.execute(
-                "SELECT category, markup_pct FROM markup_categories").fetchall()}
+                "SELECT item, markup_pct FROM cost_model_lines"
+                " WHERE section = 'Equipment Inventory' AND active = '1'").fetchall()}
 
 
 def travel_rate(db):
+    """Per-job travel $/mile — the Cost Model's Travel → Vehicle Trips line is
+    the single source of truth (falls back to the stored meta rate)."""
+    r = db.execute(
+        "SELECT unit_cost FROM cost_model_lines WHERE section = 'Travel'"
+        " AND item = 'Vehicle Trips' AND active = '1' LIMIT 1").fetchone()
+    if r and r["unit_cost"] is not None:
+        return float(r["unit_cost"] or 0)
     return _to_float(_meta_get(db, "travel_rate_per_mile",
                                str(TRAVEL_RATE_DEFAULT))) or 0.0
+
+
+def cost_model_by_section(db):
+    """Active cost-model lines grouped by section, in display order."""
+    out = {s: [] for s in COST_MODEL_SECTIONS}
+    for r in db.execute("SELECT * FROM cost_model_lines WHERE active = '1'"
+                        " ORDER BY sort_order, id").fetchall():
+        out.setdefault(r["section"], []).append(r)
+    return out
+
+
+def overhead_pct(db):
+    """Total overhead (G&A) percent applied to the whole job subtotal."""
+    return sum(float(r["markup_pct"] or 0) for r in db.execute(
+        "SELECT markup_pct FROM cost_model_lines"
+        " WHERE section = 'Overhead' AND active = '1'").fetchall())
+
+
+def cost_model_rollup(db):
+    """A default 'standard job' estimate straight from the model: each line is
+    qty × cost × (1 + markup) for Non-Inventory / Labor / Travel / Adders, then
+    G&A overhead on the subtotal (Piece 29.8). Equipment Inventory is excluded —
+    it prices the actual per-job BOM, not a default quantity."""
+    sections = cost_model_by_section(db)
+    section_totals, subtotal = {}, 0.0
+    for s in ["Equipment Non-Inventory", "Labor", "Travel", "Adders"]:
+        st = 0.0
+        for r in sections.get(s, []):
+            qty = float(r["default_qty"] or 0)
+            cost = float(r["unit_cost"] or 0)
+            st += qty * cost * (1 + float(r["markup_pct"] or 0) / 100.0)
+        section_totals[s] = round(st, 2)
+        subtotal += st
+    ov = overhead_pct(db)
+    overhead_amt = round(subtotal * ov / 100.0, 2)
+    return {"section_totals": section_totals, "subtotal": round(subtotal, 2),
+            "overhead_pct": ov, "overhead_amount": overhead_amt,
+            "total": round(subtotal + overhead_amt, 2)}
 
 
 def _effective_markup(category, line_markup, mmap):
@@ -4594,15 +4723,19 @@ def job_pricing(db, job):
     mmap = markup_map(db)
     bom = bom_pricing(db, job["id"], mmap)
     travel, miles = job_travel_charge(db, job)
-    suggested = round(bom["price_total"] + travel, 2)
+    subtotal = round(bom["price_total"] + travel, 2)
+    ov = overhead_pct(db)                              # G&A on the whole subtotal
+    overhead_amt = round(subtotal * ov / 100.0, 2)
+    suggested = round(subtotal + overhead_amt, 2)
     contract = _to_float(job["contract_amount"] if "contract_amount" in job.keys()
                          else 0) or 0.0
     return {"equipment_cost": bom["cost_total"],
             "equipment_price": bom["price_total"],
             "markup_amount": round(bom["price_total"] - bom["cost_total"], 2),
             "travel_miles": miles, "travel_rate": travel_rate(db),
-            "travel_charge": travel, "suggested": suggested,
-            "contract": contract, "lines": bom["lines"]}
+            "travel_charge": travel, "subtotal": subtotal,
+            "overhead_pct": ov, "overhead_amount": overhead_amt,
+            "suggested": suggested, "contract": contract, "lines": bom["lines"]}
 
 
 def _post_deposit_bom_total(db, job_id, cutoff_id):

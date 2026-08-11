@@ -435,6 +435,25 @@ CREATE TABLE IF NOT EXISTS markup_categories (
     markup_pct REAL NOT NULL DEFAULT 0   -- percent added to unit cost
 );
 
+-- Piece 29.8: ECC's Cost Model Defaults — the estimating template behind job
+-- pricing. One row per line, grouped by section (Equipment Inventory, Equipment
+-- Non-Inventory, Labor, Travel, Adders, Overhead). Equipment Inventory rows are
+-- the per-category equipment markups (feed the BOM); other sections carry a
+-- default qty, unit cost, unit label, and markup. Overhead rows are a percent
+-- (in markup_pct) applied to the whole job subtotal. Seeded once, then edited
+-- on the Cost Model page.
+CREATE TABLE IF NOT EXISTS cost_model_lines (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    section     TEXT NOT NULL,
+    item        TEXT NOT NULL,
+    unit        TEXT DEFAULT '',      -- e.g. Watts, Panels, Mile, Hour
+    default_qty REAL,                 -- nullable
+    unit_cost   REAL,                 -- nullable
+    markup_pct  REAL NOT NULL DEFAULT 0,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    active      TEXT NOT NULL DEFAULT '1'
+);
+
 -- Piece 29.3: lightweight in-app notifications (an inbox + nav bell). Used so
 -- far to alert Supervisors/GM when a reset auto-locks an account, but general
 -- purpose. One row per recipient.
