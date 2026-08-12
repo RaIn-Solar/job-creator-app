@@ -158,3 +158,111 @@ def ask(provider, api_key, model, system, user_message):
     # default: claude
     url, headers, body = build_claude_request(api_key, model, system, user_message)
     return parse_claude_response(_post_json(url, headers, body))
+
+
+# ----------------------------------------------------------------------------
+# Piece 32.1: tool-using agent loop — lets the model look data up live via a set
+# of read-only tools, instead of only reading a fixed snapshot.
+#
+# A tool is a dict: {"name", "description", "parameters" (JSON-schema object),
+# "run" (callable(args_dict) -> str)}. The caller (app.py) defines the tools and
+# their permission-scoped implementations; this module only drives the provider
+# request/response loop for each of Claude and Gemini.
+# ----------------------------------------------------------------------------
+MAX_AGENT_STEPS = 6  # tool round-trips before we force a final answer
+
+
+def _dispatch(registry, name, args):
+    """Run one tool by name; never raise — return an error string the model can
+    read and recover from."""
+    tool = registry.get(name)
+    if tool is None:
+        return f"Error: no such tool '{name}'."
+    try:
+        out = tool["run"](args or {})
+        return str(out) if out is not None else ""
+    except Exception as e:  # a tool bug must not crash the whole answer
+        return f"Error running {name}: {e}"
+
+
+def run_agent(provider, api_key, model, system, user_message, tools,
+              max_steps=MAX_AGENT_STEPS):
+    """Answer a question, letting the model call read-only tools as needed.
+    Returns the final answer text. Raises AssistantError on transport/provider
+    failure. Falls back to a plain (tool-less) call if `tools` is empty."""
+    if not (api_key or "").strip():
+        raise AssistantError(
+            "No API key is set for this provider — add one in AI settings.")
+    if not tools:
+        return ask(provider, api_key, model, system, user_message)
+    registry = {t["name"]: t for t in tools}
+    if provider == "gemini":
+        return _gemini_agent(api_key, model, system, user_message, tools,
+                             registry, max_steps)
+    return _claude_agent(api_key, model, system, user_message, tools,
+                         registry, max_steps)
+
+
+def _claude_agent(api_key, model, system, user_message, tools, registry, max_steps):
+    tool_defs = [{"name": t["name"], "description": t["description"],
+                  "input_schema": t["parameters"]} for t in tools]
+    headers = {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION,
+               "content-type": "application/json"}
+    messages = [{"role": "user", "content": user_message}]
+    for _ in range(max_steps):
+        body = {"model": model or CLAUDE_DEFAULT_MODEL, "max_tokens": 1024,
+                "system": system, "messages": messages, "tools": tool_defs}
+        data = _post_json(ANTHROPIC_URL, headers, body)
+        if data.get("type") == "error":
+            raise AssistantError(_provider_error_text(data))
+        content = data.get("content", [])
+        tool_uses = [b for b in content if b.get("type") == "tool_use"]
+        if not tool_uses:  # final answer
+            return parse_claude_response(data)
+        messages.append({"role": "assistant", "content": content})
+        results = []
+        for tu in tool_uses:
+            out = _dispatch(registry, tu.get("name"), tu.get("input"))
+            results.append({"type": "tool_result", "tool_use_id": tu.get("id"),
+                            "content": out})
+        messages.append({"role": "user", "content": results})
+    # Ran out of steps — ask for a final answer with tools withheld.
+    body = {"model": model or CLAUDE_DEFAULT_MODEL, "max_tokens": 1024,
+            "system": system, "messages": messages}
+    return parse_claude_response(_post_json(ANTHROPIC_URL, headers, body))
+
+
+def _gemini_agent(api_key, model, system, user_message, tools, registry, max_steps):
+    decls = []
+    for t in tools:
+        d = {"name": t["name"], "description": t["description"]}
+        # Gemini rejects an empty parameters object — include it only when there
+        # are properties to describe.
+        if (t["parameters"].get("properties") or {}):
+            d["parameters"] = t["parameters"]
+        decls.append(d)
+    url = GEMINI_URL_TMPL.format(model=model or GEMINI_DEFAULT_MODEL)
+    headers = {"content-type": "application/json", "x-goog-api-key": api_key}
+    gem_tools = [{"function_declarations": decls}]
+    contents = [{"role": "user", "parts": [{"text": user_message}]}]
+    for _ in range(max_steps):
+        body = {"system_instruction": {"parts": [{"text": system}]},
+                "contents": contents, "tools": gem_tools}
+        data = _post_json(url, headers, body)
+        if "error" in data:
+            raise AssistantError(_provider_error_text(data["error"]))
+        cand = (data.get("candidates") or [{}])[0]
+        parts = (cand.get("content") or {}).get("parts") or []
+        calls = [p["functionCall"] for p in parts if p.get("functionCall")]
+        if not calls:  # final answer
+            return parse_gemini_response(data)
+        contents.append({"role": "model", "parts": parts})
+        resp_parts = []
+        for call in calls:
+            out = _dispatch(registry, call.get("name"), call.get("args"))
+            resp_parts.append({"functionResponse": {
+                "name": call.get("name"), "response": {"result": out}}})
+        contents.append({"role": "user", "parts": resp_parts})
+    # Ran out of steps — force a final answer with tools withheld.
+    body = {"system_instruction": {"parts": [{"text": system}]}, "contents": contents}
+    return parse_gemini_response(_post_json(url, headers, body))

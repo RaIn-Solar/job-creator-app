@@ -548,6 +548,17 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 32.1** — the **Solbiz Assistant can now look data up live** via read-only
+  tools (function-calling), instead of relying only on the snapshot. The model may call
+  `find_jobs` (filter by text / stage / county / rep / overdue / min-contract),
+  `job_details` (one job's stage, tasks, materials, notes, contract), `find_clients`,
+  `list_tasks` (assignee / overdue / stage), and `staff_directory` — chaining several to
+  narrow a question (e.g. "Bernalillo jobs over $30k with an overdue permit"). Every tool
+  is **permission-scoped** (contract/pricing figures withheld from non-pricing viewers, no
+  pay ever exposed) and **read-only**. One tool-loop implementation drives **both Claude
+  (tool_use) and Gemini (functionCall)**; tool errors are caught and handed back to the
+  model to recover, and the loop is capped at 6 round-trips.
+
 - **Piece 32.0** — **Solbiz Assistant** (💬 in the top nav): an in-app, **read-only**
   AI chat over the business data. Ask about jobs, clients, tasks and the schedule and get
   a grounded answer. Highlights:

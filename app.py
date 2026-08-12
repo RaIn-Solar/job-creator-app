@@ -1121,7 +1121,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 32.0"
+VERSION = "Piece 32.1"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -10377,12 +10377,17 @@ ASSISTANT_SYSTEM_PROMPT = (
     "You are the Solbiz Assistant, a helpful internal aide for ECC Solar, a "
     "residential & commercial solar installer in New Mexico. You answer staff "
     "questions about the company's jobs, clients, tasks and schedule.\n\n"
-    "Ground every answer in the SOLBIZ DATA snapshot provided with the question. "
-    "It reflects only what THIS signed-in user is permitted to see. If the answer "
-    "isn't in the snapshot, say so plainly and suggest where in Solbiz to look — "
-    "never invent jobs, names, numbers, or dates. Be concise and specific; use "
-    "short lists for multiple items. You are read-only: you cannot change data, "
-    "so if asked to do something, explain how the user can do it in Solbiz."
+    "You are given a SOLBIZ DATA snapshot for quick orientation, plus a set of "
+    "read-only tools to look things up live. Use the tools whenever the answer "
+    "needs specifics beyond the snapshot (a particular job, filtered lists, a "
+    "client's history, someone's tasks). Prefer tools over guessing, and you may "
+    "call several in a row to narrow things down.\n\n"
+    "Everything you can see — snapshot and tools alike — is already limited to "
+    "what THIS signed-in user is permitted to see. Never invent jobs, names, "
+    "numbers, or dates; if the tools don't return something, say so plainly and "
+    "suggest where in Solbiz to look. Be concise and specific; use short lists "
+    "for multiple items. You are read-only: you cannot change data, so if asked "
+    "to do something, explain how the user can do it in Solbiz."
 )
 
 
@@ -10507,6 +10512,259 @@ def assistant_page():
         is_admin=_is_admin())
 
 
+def _assist_money(n):
+    try:
+        return f"${float(n or 0):,.0f}"
+    except (TypeError, ValueError):
+        return "$0"
+
+
+def build_assistant_tools(db, user):
+    """Piece 32.1: read-only, permission-scoped tools the assistant may call to
+    look data up live. Every tool respects what the signed-in user may see —
+    pricing/contract figures are withheld from non-pricing viewers, and no tool
+    exposes pay. Each returns a compact text block for the model to read."""
+    can_price = _can_see_pricing()
+
+    def find_jobs(args):
+        text = (args.get("text") or "").strip()
+        stage = (args.get("stage") or "").strip()
+        county = (args.get("county") or "").strip()
+        rep = (args.get("assigned_rep") or "").strip()
+        overdue_only = bool(args.get("overdue_only"))
+        try:
+            limit = min(int(args.get("limit") or 25), 50)
+        except (TypeError, ValueError):
+            limit = 25
+        where, params = ["1=1"], []
+        if text:
+            where.append("(j.job_name LIKE ? OR c.name LIKE ?)")
+            params += [f"%{text}%", f"%{text}%"]
+        if stage:
+            where.append("j.status = ?"); params.append(stage)
+        if county:
+            where.append("j.county LIKE ?"); params.append(f"%{county}%")
+        if rep:
+            where.append("e.name LIKE ?"); params.append(f"%{rep}%")
+        # min_contract only applies for pricing-cleared viewers; silently ignored
+        # otherwise so the filter can't be used to probe hidden figures.
+        if can_price and args.get("min_contract") not in (None, ""):
+            try:
+                where.append("COALESCE(j.contract_amount,0) >= ?")
+                params.append(float(args.get("min_contract")))
+            except (TypeError, ValueError):
+                pass
+        today = datetime.now().strftime("%Y-%m-%d")
+        if overdue_only:
+            where.append(
+                "EXISTS (SELECT 1 FROM job_tasks t WHERE t.job_id = j.id"
+                " AND t.status != 'Done' AND COALESCE(t.due_date,'') != ''"
+                " AND t.due_date < ?)")
+            params.append(today)
+        rows = db.execute(
+            "SELECT j.id, j.job_name, j.status, j.install_date, j.county,"
+            "  COALESCE(j.contract_amount,0) AS amt, c.name AS client,"
+            "  COALESCE(e.name,'') AS rep"
+            " FROM jobs j JOIN clients c ON c.id = j.client_id"
+            " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY (j.install_date = ''), j.install_date, j.id LIMIT ?",
+            params + [limit]).fetchall()
+        if not rows:
+            return "No jobs match those filters."
+        out = [f"{len(rows)} job(s):"]
+        for r in rows:
+            line = (f"#{r['id']} {r['job_name'] or 'Job'} — {r['client']} — "
+                    f"{r['status']} — install {r['install_date'] or 'TBD'}"
+                    f"{' — ' + r['county'] if r['county'] else ''}"
+                    f"{' — rep ' + r['rep'] if r['rep'] else ''}")
+            if can_price and r["amt"]:
+                line += f" — contract {_assist_money(r['amt'])}"
+            out.append("• " + line)
+        return "\n".join(out)
+
+    def job_details(args):
+        ident = (args.get("job") or "").strip()
+        if not ident:
+            return "Provide a job name or #id."
+        row = None
+        if ident.lstrip("#").isdigit():
+            row = db.execute(
+                "SELECT j.*, c.name AS client, COALESCE(e.name,'') AS rep"
+                " FROM jobs j JOIN clients c ON c.id = j.client_id"
+                " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
+                " WHERE j.id = ?", (int(ident.lstrip("#")),)).fetchone()
+        if row is None:
+            row = db.execute(
+                "SELECT j.*, c.name AS client, COALESCE(e.name,'') AS rep"
+                " FROM jobs j JOIN clients c ON c.id = j.client_id"
+                " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
+                " WHERE j.job_name LIKE ? ORDER BY j.id LIMIT 1",
+                (f"%{ident}%",)).fetchone()
+        if row is None:
+            return f"No job found matching '{ident}'."
+        out = [f"Job #{row['id']}: {row['job_name'] or 'Job'} — client {row['client']}",
+               f"Stage: {row['status']}",
+               f"Install date: {row['install_date'] or 'TBD'}",
+               f"County: {row['county'] or '—'}",
+               f"Payment: {row['cost_method'] or '—'}",
+               f"Assigned rep: {row['rep'] or '—'}"]
+        if can_price and (row["contract_amount"] or 0):
+            out.append(f"Contract total: {_assist_money(row['contract_amount'])}")
+        if (row["status"] or "") == "Lost" and (row["cancel_reason"] or ""):
+            out.append(f"Cancelled — reason: {row['cancel_reason']}")
+        tasks = db.execute(
+            "SELECT title, status, due_date, COALESCE(pipeline_status,'') AS ps"
+            " FROM job_tasks WHERE job_id = ? AND status != 'Done'"
+            " ORDER BY (due_date=''), due_date LIMIT 20", (row["id"],)).fetchall()
+        if tasks:
+            out.append(f"Open tasks ({len(tasks)}):")
+            for t in tasks:
+                out.append(f"  • {t['title']} — due {t['due_date'] or 'no date'}"
+                           f" [{t['status']}{'/' + t['ps'] if t['ps'] else ''}]")
+        else:
+            out.append("No open tasks.")
+        mats = db.execute(
+            "SELECT status, COUNT(*) c FROM job_materials WHERE job_id = ?"
+            " GROUP BY status", (row["id"],)).fetchall()
+        if mats:
+            out.append("Materials: " + ", ".join(f"{m['status'] or '—'}: {m['c']}"
+                                                  for m in mats))
+        notes = db.execute(
+            "SELECT note, created_at FROM job_notes WHERE job_id = ?"
+            " ORDER BY id DESC LIMIT 3", (row["id"],)).fetchall()
+        if notes:
+            out.append("Recent field notes:")
+            for n in notes:
+                out.append(f"  • {(n['created_at'] or '')[:10]}: {n['note']}")
+        return "\n".join(out)
+
+    def find_clients(args):
+        text = (args.get("text") or "").strip()
+        status = (args.get("status") or "").strip()
+        try:
+            limit = min(int(args.get("limit") or 25), 50)
+        except (TypeError, ValueError):
+            limit = 25
+        where, params = ["1=1"], []
+        if text:
+            where.append("c.name LIKE ?"); params.append(f"%{text}%")
+        if status:
+            where.append("c.lead_status LIKE ?"); params.append(f"%{status}%")
+        rows = db.execute(
+            "SELECT c.id, c.name, COALESCE(c.lead_status,'') AS status,"
+            "  COALESCE(c.phone,'') AS phone, COALESCE(e.name,'') AS rep,"
+            "  (SELECT COUNT(*) FROM jobs j WHERE j.client_id = c.id) AS jobs"
+            " FROM clients c LEFT JOIN employees e ON e.id = c.assigned_rep_id"
+            f" WHERE {' AND '.join(where)} ORDER BY c.name LIMIT ?",
+            params + [limit]).fetchall()
+        if not rows:
+            return "No clients match."
+        out = [f"{len(rows)} client(s):"]
+        for r in rows:
+            out.append(f"• {r['name']} — {r['status'] or 'no status'}"
+                       f"{' — rep ' + r['rep'] if r['rep'] else ''}"
+                       f"{' — ' + r['phone'] if r['phone'] else ''}"
+                       f" — {r['jobs']} job(s)")
+        return "\n".join(out)
+
+    def list_tasks(args):
+        assignee = (args.get("assignee") or "").strip()
+        overdue_only = bool(args.get("overdue_only"))
+        stage = (args.get("stage") or "").strip()
+        try:
+            limit = min(int(args.get("limit") or 30), 60)
+        except (TypeError, ValueError):
+            limit = 30
+        where = ["t.status != 'Done'", "j.status != 'Lost'"]
+        params = []
+        if assignee.lower() in ("me", "mine") and user:
+            where.append("t.employee_id = ?"); params.append(user["id"])
+        elif assignee:
+            where.append("e.name LIKE ?"); params.append(f"%{assignee}%")
+        if stage:
+            where.append("t.pipeline_status = ?"); params.append(stage)
+        today = datetime.now().strftime("%Y-%m-%d")
+        if overdue_only:
+            where.append("COALESCE(t.due_date,'') != '' AND t.due_date < ?")
+            params.append(today)
+        rows = db.execute(
+            "SELECT t.title, t.status, t.due_date, j.job_name,"
+            "  c.name AS client, COALESCE(e.name,'') AS who"
+            " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+            " JOIN clients c ON c.id = j.client_id"
+            " LEFT JOIN employees e ON e.id = t.employee_id"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY (t.due_date=''), t.due_date LIMIT ?",
+            params + [limit]).fetchall()
+        if not rows:
+            return "No matching open tasks."
+        out = [f"{len(rows)} task(s):"]
+        for r in rows:
+            out.append(f"• {r['title']} — {r['job_name'] or 'Job'} ({r['client']})"
+                       f" — due {r['due_date'] or 'no date'}"
+                       f"{' — ' + r['who'] if r['who'] else ' — unassigned'}")
+        return "\n".join(out)
+
+    def staff_directory(args):
+        role = (args.get("role") or "").strip()
+        where, params = ["1=1"], []
+        if role:
+            where.append("roles LIKE ?"); params.append(f"%{role}%")
+        rows = db.execute(
+            f"SELECT name, COALESCE(roles,'') AS roles FROM employees"
+            f" WHERE {' AND '.join(where)} ORDER BY name LIMIT 60", params).fetchall()
+        if not rows:
+            return "No staff match."
+        return "\n".join(f"• {r['name']} — {r['roles'] or 'no roles'}" for r in rows)
+
+    stages = ", ".join(JOB_STATUSES)
+    return [
+        {"name": "find_jobs",
+         "description": ("Search jobs with optional filters. Use for questions like "
+                         "'jobs in Job Prep', 'jobs in Bernalillo county', 'overdue "
+                         "jobs', or a client/job name search."),
+         "parameters": {"type": "object", "properties": {
+             "text": {"type": "string", "description": "match job or client name"},
+             "stage": {"type": "string", "description": f"pipeline stage; one of: {stages}"},
+             "county": {"type": "string", "description": "NM county name"},
+             "assigned_rep": {"type": "string", "description": "assigned sales rep name"},
+             "overdue_only": {"type": "boolean", "description": "only jobs with an overdue task"},
+             "min_contract": {"type": "number", "description": "minimum contract total (only honored for pricing-cleared users)"},
+             "limit": {"type": "integer", "description": "max rows (default 25)"}}},
+         "run": find_jobs},
+        {"name": "job_details",
+         "description": ("Full detail for one job by name or #id: stage, install "
+                         "date, rep, payment, open tasks, materials, recent notes "
+                         "(and contract total if you may see pricing)."),
+         "parameters": {"type": "object", "properties": {
+             "job": {"type": "string", "description": "job name or #id"}},
+             "required": ["job"]},
+         "run": job_details},
+        {"name": "find_clients",
+         "description": "Search clients by name/status. Returns rep, phone, job count.",
+         "parameters": {"type": "object", "properties": {
+             "text": {"type": "string", "description": "match client name"},
+             "status": {"type": "string", "description": "client status filter"},
+             "limit": {"type": "integer", "description": "max rows (default 25)"}}},
+         "run": find_clients},
+        {"name": "list_tasks",
+         "description": ("List open tasks. assignee 'me' for the current user, or a "
+                         "name; optional overdue_only and stage filters."),
+         "parameters": {"type": "object", "properties": {
+             "assignee": {"type": "string", "description": "'me' or a person's name"},
+             "overdue_only": {"type": "boolean"},
+             "stage": {"type": "string", "description": f"pipeline stage; one of: {stages}"},
+             "limit": {"type": "integer", "description": "max rows (default 30)"}}},
+         "run": list_tasks},
+        {"name": "staff_directory",
+         "description": "List employees and their roles (no pay info). Optional role filter.",
+         "parameters": {"type": "object", "properties": {
+             "role": {"type": "string", "description": "filter by role name"}}},
+         "run": staff_directory},
+    ]
+
+
 @app.route("/assistant/ask", methods=["POST"])
 def assistant_ask():
     db = get_db()
@@ -10526,9 +10784,10 @@ def assistant_ask():
               f"may see):\n{snapshot}\n\nQUESTION: {question}")
     key = cfg["gemini_key"] if provider == "gemini" else cfg["claude_key"]
     model = cfg["gemini_model"] if provider == "gemini" else cfg["claude_model"]
+    tools = build_assistant_tools(db, user)
     try:
-        answer = ai_assistant.ask(provider, key, model,
-                                  ASSISTANT_SYSTEM_PROMPT, prompt)
+        answer = ai_assistant.run_agent(provider, key, model,
+                                        ASSISTANT_SYSTEM_PROMPT, prompt, tools)
     except ai_assistant.AssistantError as e:
         return jsonify({"error": str(e)}), 502
     return jsonify({"answer": answer, "provider": provider})
