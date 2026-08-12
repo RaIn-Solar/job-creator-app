@@ -68,10 +68,18 @@ recordkeeping.</p>
              value="{{ values.get('warranty_type', '') }}">
     </div>
     <div class="field">
-      <label for="cost_method">Cost method *</label>
-      <input id="cost_method" name="cost_method"
-             value="{{ values.get('cost_method', '') }}"
-             placeholder="Cash, finance…" required>
+      <label for="cost_method">Payment *</label>
+      {% set cm = values.get('cost_method', '') %}
+      <select id="cost_method" name="cost_method" required>
+        <option value="" {% if not cm %}selected{% endif %} disabled>— how are they paying? —</option>
+        {% for term in payment_terms %}
+        <option value="{{ term }}" {% if cm == term %}selected{% endif %}>{{ term }}</option>
+        {% endfor %}
+        {# Preserve any legacy free-text value (e.g. "Cash") so edits don't lose it. #}
+        {% if cm and cm not in payment_terms %}
+        <option value="{{ cm }}" selected>{{ cm }}</option>
+        {% endif %}
+      </select>
     </div>
     <div class="field">
       <label for="tax_credit">Tax credit</label>

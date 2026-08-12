@@ -548,6 +548,14 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 31.8** — the **customer payment-schedule (50/40/10) callout** moved off the
+  dashboard and into the job **Estimate** tab, where it belongs — shown only to
+  **Sales & Finance** (and GM/Admin) and only **before the contract is signed**
+  (`contract_amount` still 0), so it disappears once the customer has agreed and terms
+  are set. Also, the job form's **Payment** field (formerly the free-text "Cost method")
+  is now a dropdown: **Pay in full** or **Financing** (legacy free-text values on existing
+  jobs are preserved).
+
 - **Piece 31.7** — dense multi-column tables (cost model, payroll, audit log, estimate/
   billing, etc.) **restack into labelled rows on phones** (≤560px) instead of getting
   their right-hand columns cut off. Each cell is auto-labelled from its own table's

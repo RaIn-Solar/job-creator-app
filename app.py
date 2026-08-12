@@ -189,7 +189,7 @@ JOB_FIELD_LABELS = {
     "job_name": "Job name", "site_location": "Site location",
     "county": "County", "electric_loads": "Electric loads",
     "utility_provider": "Utility provider", "warranty_type": "Warranty type",
-    "cost_method": "Cost method", "tax_credit": "Tax credit",
+    "cost_method": "Payment", "tax_credit": "Tax credit",
     "expand_option": "Expand option", "products": "Products / services",
     "pv_utility_connection": "PV — utility connection",
     "pv_mounting_type": "PV — mounting type",
@@ -562,6 +562,9 @@ EXPENSE_CATEGORIES = [
 # Piece 26.2: expense categories offered on the Work Bag receipt capture.
 RECEIPT_CATEGORIES = ["Materials", "Meals", "Tools and Supplies", "Overhead"]
 PAYMENT_METHODS = ["", "Cash", "Check", "Card", "ACH", "Financing"]
+# Piece 31.8: how the customer pays for the job (the job form's "Payment" field,
+# stored in cost_method). Two choices — pay the full amount up front, or finance.
+PAYMENT_TERMS = ["Pay in full", "Financing"]
 
 # Piece 21.5: source-document type for a ledger entry, so scanned/received
 # paperwork feeds the QuickBooks reports under the right account flow:
@@ -1117,7 +1120,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 31.7"
+VERSION = "Piece 31.8"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1922,6 +1925,18 @@ def _can_see_pricing():
     if is_gm() or _is_admin():
         return True
     return bool({"Finance", "Sales", "Design"} & set(user_departments(user)))
+
+
+def _can_see_pay_scheme():
+    """Piece 31.8: who sees the estimate's customer payment-schedule callout —
+    the people who walk a customer through it before signing: Sales and Finance
+    (plus GM/Admin). Narrower than pricing (no Design)."""
+    user = current_user()
+    if user is None:
+        return True
+    if is_gm() or _is_admin():
+        return True
+    return bool({"Finance", "Sales"} & set(user_departments(user)))
 
 
 def _can_edit_pay_rates():
@@ -4048,14 +4063,12 @@ def dashboard():
     if "Finance" in shown and _can_payroll():
         p_start, p_end = _pay_period()
         payroll_reminder = payroll_status(db, p_start, p_end)
-    # Piece 27.3: the 50/40/10 pay-scheme callout on the Sales and Finance
-    # viewports, so both explain it to customers the same way.
-    payment_scheme = (PAYMENT_SCHEME_NOTE
-                      if ("Sales" in shown or "Finance" in shown) else None)
+    # Piece 31.8: the 50/40/10 pay-scheme callout moved off the dashboard and
+    # into the job Estimate (Sales/Finance only, before the contract is signed).
     return render_template(
         "dashboard.html", user=user, depts=depts, mode=mode, saved_default=saved,
         stale_stock=stale_stock, task_groups=task_groups,
-        payroll_reminder=payroll_reminder, payment_scheme=payment_scheme,
+        payroll_reminder=payroll_reminder,
         sections=sections, my_tasks=my_tasks, leads=leads, show_leads=show_leads,
         payments=payments, pay_totals=pay_totals, show_payments=show_payments,
         pending_subs=pending_subs, today=datetime.now().strftime("%Y-%m-%d"),
@@ -4642,7 +4655,7 @@ def read_job_form():
     if not values["site_location"]:
         errors.append("Site location is required.")
     if not values["cost_method"]:
-        errors.append("Cost method is required.")
+        errors.append("Payment is required.")
     if not values["products"]:
         errors.append("Select at least one product/service.")
     if "Technician Service" in selected and not values["service_type"]:
@@ -4661,6 +4674,7 @@ def render_job_form(client, values, selected, existing_jobs=False,
         "job_form.html", client=client, values=values, selected=selected,
         products=PRODUCTS, utility_connections=UTILITY_CONNECTIONS,
         mounting_types=MOUNTING_TYPES, service_types=SERVICE_TYPES,
+        payment_terms=PAYMENT_TERMS,                       # Piece 31.8
         utilities=UTILITIES, counties=COUNTIES,
         county_utilities_json=json.dumps(COUNTY_UTILITIES),
         utilities_json=json.dumps(UTILITIES),
@@ -4834,6 +4848,12 @@ def job_detail(job_id):
         "SELECT * FROM job_notes WHERE job_id = ? ORDER BY id DESC",
         (job_id,)).fetchall()
 
+    pricing = job_pricing(db, job)
+    # Piece 31.8: the estimate's customer payment-schedule callout — shown to
+    # Sales/Finance only, and only before the contract is signed (contract_amount
+    # still 0), so it disappears once terms are agreed and set.
+    pay_scheme_callout = _can_see_pay_scheme() and (pricing["contract"] or 0) <= 0
+
     return render_template(
         "job_detail.html", job=job, groups=groups, versions=versions,
         job_notes=job_notes,
@@ -4851,7 +4871,8 @@ def job_detail(job_id):
         income_categories=INCOME_CATEGORIES, expense_categories=EXPENSE_CATEGORIES,
         payment_methods=PAYMENT_METHODS, doc_types=DOC_TYPES,
         invoices=invoice_schedule_view(db, job), payment_scheme=PAYMENT_SCHEME_NOTE,
-        pricing=job_pricing(db, job),                      # Piece 29.6
+        pricing=pricing,                                   # Piece 29.6
+        pay_scheme_callout=pay_scheme_callout,             # Piece 31.8
         county_grt=county_grt_rate(db, job["county"] if "county" in job.keys() else ""),
         can_see_pricing=_can_see_pricing(),                # Piece 29.7
         estimate_sections=ESTIMATE_SECTIONS,               # Piece 29.9

@@ -160,7 +160,7 @@
     </dd>
     <dt>Utility provider</dt><dd>{{ job["utility_provider"] or "—" }}</dd>
     <dt>Warranty type</dt><dd>{{ job["warranty_type"] or "—" }}</dd>
-    <dt>Cost method</dt><dd>{{ job["cost_method"] or "—" }}</dd>
+    <dt>Payment</dt><dd>{{ job["cost_method"] or "—" }}</dd>
     <dt>Tax credit</dt><dd>{{ job["tax_credit"] }}</dd>
     <dt>Expand option</dt><dd>{{ job["expand_option"] }}</dd>
     <dt>Property type</dt><dd>{{ job["property_type"] or "—" }}</dd>
@@ -548,6 +548,20 @@
 
 <div class="tab-panel" id="tab-estimate">
 {% if can_see_pricing %}
+{# Piece 31.8: customer payment-schedule callout — Sales/Finance only, and only
+   before the contract is signed. Walk the customer through 50/40/10 before they
+   sign; it clears once a contract total (their agreed terms) is set. #}
+{% if pay_scheme_callout %}
+<div class="card" style="border-left:4px solid var(--brand); background:#f3faf5; display:flex; gap:0.6rem; align-items:flex-start;">
+  <span style="font-size:1.3rem; line-height:1;">💬</span>
+  <div>
+    <div style="font-weight:700; margin-bottom:0.15rem;">Customer payment schedule — 50 / 40 / 10</div>
+    <p class="muted" style="margin:0; font-size:0.9rem;">{{ payment_scheme | safe }}</p>
+    <p class="muted" style="margin:0.4rem 0 0; font-size:0.8rem;">Go over this with the
+      customer before they sign — it clears here once a contract total is set.</p>
+  </div>
+</div>
+{% endif %}
 <div class="card">
   <div class="toolbar" style="margin-bottom:0.5rem;">
     <h2 style="margin:0; font-size:1.1rem;">📐 Job estimate</h2>
