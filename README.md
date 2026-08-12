@@ -548,6 +548,17 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 31.4** — swapped the three easiest-to-research **security questions**
+  (mother's maiden name, favorite sports team, first school) for harder-to-phish,
+  ECC-flavored ones (coffee order, favorite Thanksgiving dish, red or green chili).
+  Anyone already enrolled keeps their stored questions — resets read each user's
+  saved questions, not this menu — so nothing breaks; the change only affects new
+  or re-done enrollments.
+
+- **Piece 31.3** — the New Employee / Onboarding-tab owner picker now **says so** when
+  a submitted responsible party doesn't qualify (only a GM or Supervisor can), naming
+  the rejected pick and who ended up responsible, instead of falling back silently.
+
 - **Piece 31.2** — onboarding is now **initiated inside the New Employee form**:
   after the basic profile fields, a **🚀 Onboarding** section lets you pick who's
   **responsible** for completing it (a GM or Supervisor, defaulting to the GM) and

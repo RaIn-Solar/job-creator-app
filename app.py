@@ -276,12 +276,14 @@ PASSWORD_MIN_LEN = 6
 SECURITY_QUESTIONS = [
     "What was the name of your first pet?",
     "What street did you grow up on?",
-    "What is your mother's maiden name?",
     "What was the make of your first vehicle?",
     "What city were you born in?",
-    "What was the name of your first school?",
-    "What is your favorite sports team?",
     "What was your childhood nickname?",
+    # Piece 31.4: harder-to-phish, ECC-flavored questions replacing the classic
+    # maiden-name / sports-team / first-school prompts (too easy to research).
+    "What's your coffee order?",
+    "What's your favorite Thanksgiving dish?",
+    "Red or green chili?",
 ]
 SECURITY_QUESTIONS_REQUIRED = 3   # how many must be enrolled
 SECURITY_QUESTIONS_ASK = 2        # how many (randomly chosen) to answer on reset
@@ -1115,7 +1117,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 31.3"
+VERSION = "Piece 31.4"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
