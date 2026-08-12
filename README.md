@@ -390,12 +390,69 @@ can confirm a pull/update took effect.
 - A pay-period summary rolls up hours + dollars per person with a QuickBooks CSV
   export.
 
+### AI Assistant
+- **💬 Assistant** (top bar): an in-app, **read-only** AI chat over the business
+  data. Ask about jobs, clients, tasks and the schedule and get a grounded answer;
+  it can explain and summarize but **never changes anything**.
+- **Claude and/or Gemini, selectable.** Add a key for either or both under **AI
+  settings** (admin only); when both are set, staff pick the model per question.
+- **Grounded, not guessing.** Answers come from a live, permission-scoped view of
+  your data — the assistant looks things up with read-only tools (find jobs by
+  stage/county/rep/overdue/contract, drill into one job, search clients, list
+  tasks, look up staff) rather than inventing details.
+- **Permission-scoped & private.** It only ever sees what the signed-in user is
+  already allowed to see (pricing/contract figures are withheld from those who
+  can't view pricing; pay is never exposed). **Online-only** — nothing is sent
+  until a question is asked, and nothing is sent while offline.
+- Setup is below under **[Setting up the AI Assistant](#setting-up-the-ai-assistant)**.
+
 ### Help & records
 - **In-app Help** (❓ Help in the top bar): tutorials & FAQ for every feature,
   grouped by area with a contents list and expandable questions.
 - **Audit log** of all changes (create/update/delete), with password fields
   redacted and never logged in plaintext.
 - **NM directory** of authorities/utilities baked in for quick reference.
+
+---
+
+## Setting up the AI Assistant
+
+The 💬 Assistant is **off until an admin adds an API key** — Solbiz doesn't ship
+with one. It uses your own account with Anthropic (Claude) and/or Google (Gemini),
+so **you pay the provider per use** (both are inexpensive for this kind of Q&A).
+
+**1. Get an API key** for whichever provider(s) you want:
+
+- **Claude (Anthropic):** sign in at **console.anthropic.com**, add billing, and
+  create an API key under **API Keys** (it looks like `sk-ant-…`).
+- **Gemini (Google):** create a key at **aistudio.google.com** (API keys), or in
+  your Google Cloud project (it looks like `AIza…`). Note which **model** your
+  account offers (e.g. `gemini-2.0-flash`).
+
+**2. Enter it in Solbiz.** As an admin, open **💬 Assistant → ⚙️ AI settings** and:
+
+- Paste the Claude key and/or the Gemini key. Pick a **default provider**.
+- Choose the **Claude model** (Sonnet is the balanced default; Opus is the most
+  capable and priciest; Haiku is the cheapest) and set the **Gemini model** to
+  whatever your account provides.
+- Save. Keys are stored **on this machine** (in your Solbiz data folder), never in
+  the program itself, and are only ever sent to the provider you choose.
+
+**3. Ask a question.** Open **💬 Assistant**, type a question (e.g. *"Which jobs are
+in Job Prep?"*, *"What are my open tasks?"*, *"Bernalillo jobs over $30k with an
+overdue permit"*), and — if both providers are set up — pick the model to answer.
+
+**What to know:**
+
+- **Online only.** The assistant needs internet. Nothing is sent while offline, and
+  nothing is sent until someone actually asks a question.
+- **What leaves the building.** When a question is asked, Solbiz sends that question
+  plus the answer to a set of read-only lookups — **limited to what that person is
+  already permitted to see** — to the chosen provider. Both Anthropic and Google
+  offer "we don't train on your API data" terms; review them for your account.
+- **Read-only.** The assistant can't edit, create, or delete anything.
+- **Rotating/removing a key:** re-open AI settings; leave a key field blank to keep
+  the saved key, type a new value to replace it, or tick **Remove** to clear it.
 
 ---
 
