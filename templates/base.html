@@ -487,5 +487,34 @@
       });
     })();
   </script>
+  <script>
+    // Piece 31.0: on desktop, nav dropdowns behave like normal menus — opening
+    // one closes the others, and clicking away (or Escape) closes them, so they
+    // can't overlap and cause misclicks. On touch/mobile the native <details>
+    // "sticky" behaviour is left untouched (matchMedia guards this whole block).
+    (function () {
+      var desktop = window.matchMedia("(min-width: 700px) and (pointer: fine)");
+      var drops = Array.prototype.slice.call(document.querySelectorAll("details.navdrop"));
+      if (!drops.length) return;
+      function closeOthers(except) {
+        if (!desktop.matches) return;
+        drops.forEach(function (d) { if (d !== except && d.open) d.open = false; });
+      }
+      function closeAll() {
+        if (!desktop.matches) return;
+        drops.forEach(function (d) { if (d.open) d.open = false; });
+      }
+      drops.forEach(function (d) {
+        d.addEventListener("toggle", function () { if (d.open) closeOthers(d); });
+      });
+      document.addEventListener("click", function (e) {
+        if (!desktop.matches) return;
+        if (!e.target.closest || !e.target.closest("details.navdrop")) closeAll();
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closeAll();
+      });
+    })();
+  </script>
 </body>
 </html>
