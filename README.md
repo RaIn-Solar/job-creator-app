@@ -548,6 +548,15 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 31.5** — moving a job **forward a stage now auto-fills that stage's tasks**.
+  When a job turns over (Proposal → Job Prep and onward), Solbiz generates the
+  entered stage's process steps as To-do tasks, **auto-assigned by role/lane** and
+  dated, so the receiving department lands with its work already populated — on top
+  of the existing stage-turnover notification. Only the entered stage's steps are
+  created, existing tasks are skipped (no duplicates), and Complete adds nothing. The
+  manual **Generate tasks** button still produces the whole list at once; both now
+  share one generator (`_generate_job_tasks`, with an optional `only_status` filter).
+
 - **Piece 31.4** — swapped the three easiest-to-research **security questions**
   (mother's maiden name, favorite sports team, first school) for harder-to-phish,
   ECC-flavored ones (coffee order, favorite Thanksgiving dish, red or green chili).

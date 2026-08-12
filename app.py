@@ -1117,7 +1117,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 31.4"
+VERSION = "Piece 31.5"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -7777,13 +7777,28 @@ def set_job_status(job_id):
         moved_forward = (status != cur and status in STAGE_ORDER
                          and (cur not in STAGE_ORDER
                               or STAGE_ORDER.index(status) > STAGE_ORDER.index(cur)))
+        gen_added = 0
         if moved_forward:
             actor = current_user()
             notify_stage_turnover(db, job, status,
                                   exclude_id=actor["id"] if actor else None)
+            # Piece 31.5: auto-fill and assign the tasks the job just moved into,
+            # so the receiving department lands with its to-dos already populated.
+            # Only the entered stage's steps are generated (role-assigned, dated);
+            # existing tasks are skipped, so this never duplicates the manual
+            # "Generate tasks" button. Complete has no work of its own.
+            if status != "Complete":
+                job_row = fetch_job(job_id)  # re-read so scheduling sees new status
+                install_raw = (job_row["install_date"]
+                               if "install_date" in job_row.keys() else "") or ""
+                gen_added, _a, _s = _generate_job_tasks(
+                    db, job_row, install_raw, only_status=status)
         db.commit()
         if warn:
             flash(f"Advanced to {status} with {cur} still pending: {warn}.", "error")
+        if gen_added:
+            flash(f"Auto-added {gen_added} {status} task"
+                  f"{'s' if gen_added != 1 else ''}, assigned by role where possible.")
     return redirect(url_for("job_detail", job_id=job_id))
 
 
@@ -8363,17 +8378,14 @@ def tag_tasks_by_stage(db):
     db.commit()
 
 
-@app.route("/jobs/<int:job_id>/tasks/generate", methods=["POST"])
-def generate_tasks(job_id):
-    """Pre-load a job's task list from its process: run the same per-job
-    BPMN the Process chart uses, then turn each workflow step (skipping
-    start/end events and gateways) into a To-do task, in order. Each step
-    auto-assigns to the employee whose role matches its lane (when
-    unambiguous), and — if a target install date is given — gets a due date
-    spaced around the Site Installation step. Skips steps already on the
-    list, so it's safe to re-run after the job's fields change."""
-    job = fetch_job(job_id)
-    db = get_db()
+def _generate_job_tasks(db, job, install_date_raw="", only_status=None):
+    """Piece 31.5: core of the task auto-generator — materialize a job's process
+    steps into To-do tasks, auto-assigned by role/lane and scheduled, skipping
+    steps already on the list (safe to re-run). When `only_status` is given,
+    only steps tagged for that pipeline stage are inserted (used to auto-fill the
+    stage a job just entered); otherwise every actionable step is generated.
+    Returns (added, assigned, scheduled). Does not commit."""
+    job_id = job["id"]
     rules = db.execute("SELECT * FROM resource_rules").fetchall()
     _xml, details = build_job_bpmn(job, match_rules(job, rules))
     employees = db.execute("SELECT id, name, roles FROM employees").fetchall()
@@ -8389,7 +8401,7 @@ def generate_tasks(job_id):
     ]
     # Optional schedule anchored on Site Installation.
     base_date = None
-    raw_install = request.form.get("install_date", "").strip()
+    raw_install = (install_date_raw or "").strip()
     if raw_install:
         try:
             base_date = datetime.strptime(raw_install, "%Y-%m-%d").date()
@@ -8412,6 +8424,10 @@ def generate_tasks(job_id):
     default_seq = 0
     added = assigned = scheduled = 0
     for pos, step in enumerate(task_steps):
+        # When filling a single stage, skip steps that belong to other stages —
+        # without touching the default-deadline chain for the ones we keep.
+        if only_status is not None and step.get("status", "") != only_status:
+            continue
         title = step["name"].strip()
         if title.lower() in existing:
             continue
@@ -8438,13 +8454,29 @@ def generate_tasks(job_id):
             assigned += 1
         if due:
             scheduled += 1
+    return added, assigned, scheduled
+
+
+@app.route("/jobs/<int:job_id>/tasks/generate", methods=["POST"])
+def generate_tasks(job_id):
+    """Pre-load a job's task list from its process: run the same per-job
+    BPMN the Process chart uses, then turn each workflow step (skipping
+    start/end events and gateways) into a To-do task, in order. Each step
+    auto-assigns to the employee whose role matches its lane (when
+    unambiguous), and — if a target install date is given — gets a due date
+    spaced around the Site Installation step. Skips steps already on the
+    list, so it's safe to re-run after the job's fields change."""
+    job = fetch_job(job_id)
+    db = get_db()
+    raw_install = request.form.get("install_date", "").strip()
+    added, assigned, scheduled = _generate_job_tasks(db, job, raw_install)
     db.commit()
     if added:
         extra = []
         if assigned:
             extra.append(f"{assigned} auto-assigned by role")
         if scheduled:
-            if base_date is not None and install_idx is not None:
+            if raw_install:
                 extra.append(f"due dates set around {raw_install}")
             else:
                 extra.append("default deadlines set 7 days apart")
