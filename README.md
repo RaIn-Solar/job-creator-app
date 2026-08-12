@@ -548,6 +548,16 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 31.6** — **responsive layout** for phones and tablets (Windows, Android, iOS),
+  with the desktop view unchanged. The top nav collapses behind a **☰ Menu** hamburger
+  into a full-width vertical panel below ~820px (dropdowns expand inline there);
+  on desktop it stays the same inline row (via `display:contents`, so no markup was
+  duplicated). Wide tables are auto-wrapped in a horizontal-scroll container so they
+  never stretch the page, images are capped to their container, profile detail grids
+  and button rows collapse to one column, and form fields render at ≥16px on mobile to
+  stop iOS from zooming on focus. Verified with headless Chromium at 1280px and 390px —
+  no horizontal page overflow at either width.
+
 - **Piece 31.5** — moving a job **forward a stage now auto-fills that stage's tasks**.
   When a job turns over (Proposal → Job Prep and onward), Solbiz generates the
   entered stage's process steps as To-do tasks, **auto-assigned by role/lane** and
