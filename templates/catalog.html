@@ -64,7 +64,7 @@ applies everywhere immediately.</p>
       <tr>
         <td>{{ a["name"] }}</td>
         <td class="muted">{{ a["category"] }}</td>
-        <td>{% if a["era"] %}<span class="badge">{{ a["era"] }}</span>{% endif %}</td>
+        <td>{% if a["era"] %}<span class="badge{% if a['era'] == 'Vintage' %} era-vintage{% endif %}">{{ a["era"] }}</span>{% endif %}</td>
         <td>{{ a["avg_w"]|int }}</td>
         <td>{{ a["hrs_per_day"] }}</td>
         <td class="muted">{{ a["usage_type"] }}</td>
