@@ -548,6 +548,22 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 32.0** — **Solbiz Assistant** (💬 in the top nav): an in-app, **read-only**
+  AI chat over the business data. Ask about jobs, clients, tasks and the schedule and get
+  a grounded answer. Highlights:
+  - **Claude and/or Gemini, selectable** — add a key for either or both under **AI settings**
+    (admin only); staff pick the model per question when both are set. Keys live in the
+    local Solbiz data folder (`meta` table), never in the exe.
+  - **Grounded, not guessing** — each question is answered from a compact snapshot of the
+    current state (jobs by stage, active jobs, the user's tasks, overdue counts), so the
+    model doesn't invent data; it's told to say when something isn't in view.
+  - **Permission-scoped** — the snapshot only ever contains what the **signed-in user is
+    already allowed to see**; pricing/contract totals are withheld from anyone who can't
+    view pricing, and the assistant can't change anything (read-only).
+  - **Online-only, degrades gracefully** — nothing is sent until a question is asked or
+    while offline; a missing key or lost connection shows a clear message.
+  - Pure-stdlib provider layer (`ai_assistant.py`) so the frozen exe stays light.
+
 - **Piece 31.8** — the **customer payment-schedule (50/40/10) callout** moved off the
   dashboard and into the job **Estimate** tab, where it belongs — shown only to
   **Sales & Finance** (and GM/Admin) and only **before the contract is signed**

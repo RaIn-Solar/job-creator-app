@@ -490,6 +490,8 @@
     {% if adm_access %}<a href="/access" style="font-size:0.9rem; font-weight:500;">🔐 Access</a>{% endif %}
     {% endif %}
     {% if login_active and current_user %}
+    <a href="{{ url_for('assistant_page') }}" title="Ask the Solbiz Assistant"
+       style="font-size:0.9rem; font-weight:500; margin-left:0.3rem;">💬 Assistant</a>
     <a href="{{ url_for('help_page') }}" title="Tutorials &amp; FAQ"
        style="font-size:0.9rem; font-weight:500; margin-left:0.3rem;">❓ Help</a>
     <a href="{{ url_for('notifications_page') }}" title="Notifications"

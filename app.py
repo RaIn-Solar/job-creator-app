@@ -47,6 +47,7 @@ from inventory_research import (
     RESEARCH, RESEARCH_VERSION, TOOLS_RESEARCH, TOOLS_RESEARCH_VERSION,
 )
 import barcodes
+import ai_assistant  # Piece 32.0: Solbiz AI assistant (Claude / Gemini)
 
 # Code assets (schema.sql, templates) sit next to this file — except under
 # a PyInstaller desktop build, where they're unpacked into sys._MEIPASS.
@@ -1120,7 +1121,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 31.8"
+VERSION = "Piece 32.0"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -10365,6 +10366,202 @@ def _lazy_start_scheduler():
     # reloader — only the serving child gets requests) and any WSGI server.
     if not _scheduler_started:
         start_scheduler()
+
+
+# ============================================================================
+# Piece 32.0: Solbiz AI assistant — a read-only, permission-scoped chat over the
+# business data. Uses Claude and/or Gemini (selectable); keys live in `meta`.
+# Online-only: the model is called live, so it degrades gracefully offline.
+# ============================================================================
+ASSISTANT_SYSTEM_PROMPT = (
+    "You are the Solbiz Assistant, a helpful internal aide for ECC Solar, a "
+    "residential & commercial solar installer in New Mexico. You answer staff "
+    "questions about the company's jobs, clients, tasks and schedule.\n\n"
+    "Ground every answer in the SOLBIZ DATA snapshot provided with the question. "
+    "It reflects only what THIS signed-in user is permitted to see. If the answer "
+    "isn't in the snapshot, say so plainly and suggest where in Solbiz to look — "
+    "never invent jobs, names, numbers, or dates. Be concise and specific; use "
+    "short lists for multiple items. You are read-only: you cannot change data, "
+    "so if asked to do something, explain how the user can do it in Solbiz."
+)
+
+
+def assistant_settings(db):
+    """Current AI-assistant configuration, read from `meta`."""
+    return {
+        "default_provider": _meta_get(db, "ai_default_provider", "claude") or "claude",
+        "claude_key": _meta_get(db, "ai_claude_key", ""),
+        "claude_model": _meta_get(db, "ai_claude_model",
+                                  ai_assistant.CLAUDE_DEFAULT_MODEL)
+                        or ai_assistant.CLAUDE_DEFAULT_MODEL,
+        "gemini_key": _meta_get(db, "ai_gemini_key", ""),
+        "gemini_model": _meta_get(db, "ai_gemini_model",
+                                  ai_assistant.GEMINI_DEFAULT_MODEL)
+                        or ai_assistant.GEMINI_DEFAULT_MODEL,
+    }
+
+
+def _provider_configured(cfg, provider):
+    return bool((cfg["gemini_key"] if provider == "gemini" else cfg["claude_key"]).strip())
+
+
+def assistant_available_providers(cfg):
+    """Which providers have a key set, so the UI only offers usable ones."""
+    out = []
+    if _provider_configured(cfg, "claude"):
+        out.append("claude")
+    if _provider_configured(cfg, "gemini"):
+        out.append("gemini")
+    return out
+
+
+def build_assistant_snapshot(db, user):
+    """A compact, permission-scoped snapshot of the current business state, given
+    to the model as grounding context. Respects what THIS user may see — pricing
+    and payroll figures are only included for those who can already view them."""
+    lines = []
+    name = user["name"] if user else "the user"
+    roles = (user["roles"] or "") if user else ""
+    lines.append(f"Signed-in user: {name} — roles: {roles or 'none'}.")
+    can_price = _can_see_pricing()
+    can_pay = _can_payroll()
+    lines.append("Viewer may see internal pricing/margins: "
+                 f"{'yes' if can_price else 'no'}. Payroll: "
+                 f"{'yes' if can_pay else 'no'}.")
+    today = datetime.now().strftime("%Y-%m-%d")
+    lines.append(f"Today is {today}.")
+
+    # Jobs by pipeline stage (visible to everyone).
+    by_stage = db.execute(
+        "SELECT status, COUNT(*) c FROM jobs GROUP BY status").fetchall()
+    if by_stage:
+        counts = ", ".join(f"{r['status'] or 'Unset'}: {r['c']}" for r in by_stage)
+        lines.append(f"Jobs by stage — {counts}.")
+
+    # Active (non-terminal) jobs, capped for token budget.
+    active = db.execute(
+        "SELECT j.job_name, j.status, j.install_date, c.name AS client,"
+        "  COALESCE(e.name,'') AS rep"
+        " FROM jobs j JOIN clients c ON c.id = j.client_id"
+        " LEFT JOIN employees e ON e.id = c.assigned_rep_id"
+        " WHERE j.status NOT IN ('Complete','Lost')"
+        " ORDER BY (j.install_date = ''), j.install_date, j.id LIMIT 40"
+    ).fetchall()
+    if active:
+        lines.append("Active jobs (job — client — stage — install date — rep):")
+        for r in active:
+            lines.append(
+                f"  • {r['job_name'] or 'Job'} — {r['client']} — {r['status']}"
+                f" — install {r['install_date'] or 'TBD'}"
+                f"{(' — ' + r['rep']) if r['rep'] else ''}")
+
+    # This user's own open tasks.
+    if user:
+        mine = db.execute(
+            "SELECT t.title, t.status, t.due_date, j.job_name, c.name AS client"
+            " FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+            " JOIN clients c ON c.id = j.client_id"
+            " WHERE t.employee_id = ? AND t.status != 'Done' AND j.status != 'Lost'"
+            " ORDER BY (t.due_date = ''), t.due_date LIMIT 25", (user["id"],)
+        ).fetchall()
+        if mine:
+            lines.append(f"{name}'s open tasks (task — job — client — due):")
+            for r in mine:
+                lines.append(
+                    f"  • {r['title']} — {r['job_name'] or 'Job'} — {r['client']}"
+                    f" — due {r['due_date'] or 'no date'} [{r['status']}]")
+        else:
+            lines.append(f"{name} has no open tasks assigned.")
+
+    # Overdue open tasks across the company (status is not sensitive).
+    overdue = db.execute(
+        "SELECT COUNT(*) FROM job_tasks t JOIN jobs j ON j.id = t.job_id"
+        " WHERE t.status != 'Done' AND j.status != 'Lost'"
+        " AND COALESCE(t.due_date,'') != '' AND t.due_date < ?", (today,)
+    ).fetchone()[0]
+    lines.append(f"Company-wide overdue open tasks: {overdue}.")
+
+    # Contract totals only for pricing-cleared viewers.
+    if can_price:
+        row = db.execute(
+            "SELECT COUNT(*) n, COALESCE(SUM(contract_amount),0) t FROM jobs"
+            " WHERE status NOT IN ('Complete','Lost')"
+            " AND COALESCE(contract_amount,0) > 0").fetchone()
+        if row and row["n"]:
+            lines.append(
+                f"Active jobs with a contract total: {row['n']}, "
+                f"summing ${row['t']:,.0f}.")
+
+    return "\n".join(lines)
+
+
+@app.route("/assistant")
+def assistant_page():
+    db = get_db()
+    cfg = assistant_settings(db)
+    providers = assistant_available_providers(cfg)
+    default = cfg["default_provider"] if cfg["default_provider"] in providers else (
+        providers[0] if providers else "claude")
+    return render_template(
+        "assistant.html", providers=providers, default_provider=default,
+        is_admin=_is_admin())
+
+
+@app.route("/assistant/ask", methods=["POST"])
+def assistant_ask():
+    db = get_db()
+    cfg = assistant_settings(db)
+    question = (request.form.get("question", "") or "").strip()
+    provider = request.form.get("provider", cfg["default_provider"]) or "claude"
+    if provider not in ("claude", "gemini"):
+        provider = "claude"
+    if not question:
+        return jsonify({"error": "Ask a question first."}), 400
+    if not _provider_configured(cfg, provider):
+        return jsonify({"error": f"No API key is set for {provider.title()}. "
+                        "An admin can add one under AI settings."}), 400
+    user = current_user()
+    snapshot = build_assistant_snapshot(db, user)
+    prompt = (f"SOLBIZ DATA (only what {user['name'] if user else 'this user'} "
+              f"may see):\n{snapshot}\n\nQUESTION: {question}")
+    key = cfg["gemini_key"] if provider == "gemini" else cfg["claude_key"]
+    model = cfg["gemini_model"] if provider == "gemini" else cfg["claude_model"]
+    try:
+        answer = ai_assistant.ask(provider, key, model,
+                                  ASSISTANT_SYSTEM_PROMPT, prompt)
+    except ai_assistant.AssistantError as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify({"answer": answer, "provider": provider})
+
+
+@app.route("/assistant/settings", methods=["GET", "POST"])
+@admin_required
+def assistant_settings_page():
+    db = get_db()
+    if request.method == "POST":
+        _meta_set(db, "ai_default_provider",
+                  request.form.get("default_provider", "claude") or "claude")
+        _meta_set(db, "ai_claude_model",
+                  request.form.get("claude_model", "").strip()
+                  or ai_assistant.CLAUDE_DEFAULT_MODEL)
+        _meta_set(db, "ai_gemini_model",
+                  request.form.get("gemini_model", "").strip()
+                  or ai_assistant.GEMINI_DEFAULT_MODEL)
+        # Only overwrite a key when a new value is typed (blank = keep existing).
+        for field, meta_key in (("claude_key", "ai_claude_key"),
+                                ("gemini_key", "ai_gemini_key")):
+            val = request.form.get(field, "")
+            if val.strip():
+                _meta_set(db, meta_key, val.strip())
+            elif request.form.get(f"clear_{field}"):
+                _meta_set(db, meta_key, "")
+        db.commit()
+        flash("AI assistant settings saved.")
+        return redirect(url_for("assistant_settings_page"))
+    cfg = assistant_settings(db)
+    return render_template(
+        "assistant_settings.html", cfg=cfg, claude_models=ai_assistant.CLAUDE_MODELS,
+        gemini_default=ai_assistant.GEMINI_DEFAULT_MODEL)
 
 
 if __name__ == "__main__":
