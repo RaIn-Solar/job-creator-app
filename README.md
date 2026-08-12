@@ -548,6 +548,12 @@ can confirm a pull/update took effect.
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
 
+- **Piece 31.7** — dense multi-column tables (cost model, payroll, audit log, estimate/
+  billing, etc.) **restack into labelled rows on phones** (≤560px) instead of getting
+  their right-hand columns cut off. Each cell is auto-labelled from its own table's
+  header by a small script, so no template needed per-cell markup, and only tables with
+  3+ columns restack — narrow ones are left alone. Desktop and tablet are unchanged.
+
 - **Piece 31.6** — **responsive layout** for phones and tablets (Windows, Android, iOS),
   with the desktop view unchanged. The top nav collapses behind a **☰ Menu** hamburger
   into a full-width vertical panel below ~820px (dropdowns expand inline there);
