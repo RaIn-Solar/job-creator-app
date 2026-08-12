@@ -1115,7 +1115,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 31.1"
+VERSION = "Piece 31.2"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -1746,6 +1746,31 @@ def onboarding_overview(db, employee_id):
     return rows, done, len(rows)
 
 
+def onboarding_owner_candidates(db):
+    """Piece 31.2: who may be put on the hook for finishing a new hire's
+    onboarding — the General Manager(s) and any designated Supervisor, all of
+    whom must have a login so they can actually act. GM(s) first."""
+    return db.execute(
+        "SELECT id, name FROM employees"
+        " WHERE COALESCE(username,'') != ''"
+        "   AND (roles LIKE '%General Manager%' OR is_supervisor = '1')"
+        " ORDER BY (roles LIKE '%General Manager%') DESC, name").fetchall()
+
+
+def default_onboarding_owner_id(db):
+    """Default accountable person for a new hire's onboarding: the first
+    General Manager with a login, else the first Supervisor, else nobody."""
+    row = db.execute(
+        "SELECT id FROM employees WHERE roles LIKE '%General Manager%'"
+        " AND COALESCE(username,'') != '' ORDER BY name LIMIT 1").fetchone()
+    if row:
+        return str(row["id"])
+    row = db.execute(
+        "SELECT id FROM employees WHERE is_supervisor = '1'"
+        " AND COALESCE(username,'') != '' ORDER BY name LIMIT 1").fetchone()
+    return str(row["id"]) if row else ""
+
+
 def can_revoke_target(actor, target):
     """May `actor` emergency-revoke `target`? Guards the hierarchy: nobody
     revokes themselves; a GM can act on anyone else; a Supervisor can act on
@@ -1818,6 +1843,7 @@ VIEW_PERMISSION = {
     "onboarding_step_delete": "employees.manage",
     "onboarding_step_move": "employees.manage",
     "employee_onboarding_toggle": "employees.manage",
+    "employee_onboarding_owner": "employees.manage",  # Piece 31.2
     "audit_log_page": "audit.view",
     # Piece 24.6: inventory editing is scoped to inventory.manage (viewing the
     # catalog stays open to any signed-in user).
@@ -2925,7 +2951,9 @@ def init_db():
                    + ["dashboard_mode", "base_wage"]  # Piece 21.2: hourly base wage
                    # Piece 29.0: supervisor designation + emergency access lockout.
                    + ["is_supervisor", "access_revoked", "access_revoked_at",
-                      "access_revoked_by", "access_revoked_reason"])
+                      "access_revoked_by", "access_revoked_reason"]
+                   # Piece 31.2: who's accountable for finishing onboarding.
+                   + ["onboarding_owner_id"])
     # Piece 30.9: rename roles to the org-chart outline once (meta-guarded).
     # Rewrites each employee's comma-separated roles via ROLE_RENAMES. The
     # init_db connection returns tuples (no Row factory), so index by position.
@@ -9439,7 +9467,8 @@ def read_employee_form():
 
 
 def render_employee_form(values, employee_id=None, username="", access_level="",
-                         duplicate_warning=None, is_supervisor=""):
+                         duplicate_warning=None, is_supervisor="",
+                         onboarding_owner_id=None):
     """Render the shared new/edit form, splitting stored roles back into
     the known checkbox roles and any free-typed extras. Legacy fallback: an
     existing employee with no first/last gets its `name` split into the fields."""
@@ -9452,6 +9481,18 @@ def render_employee_form(values, employee_id=None, username="", access_level="",
               for r in (values.get("roles") or "").split(",") if r.strip()]
     selected = [r for r in stored if r in EMPLOYEE_ROLES]
     roles_other = ", ".join(r for r in stored if r not in EMPLOYEE_ROLES)
+    # Piece 31.2: onboarding is initiated inside the New-employee form. Show the
+    # checklist preview + who's accountable only when creating (edit keeps it on
+    # the profile). Default owner = the GM.
+    db = get_db()
+    onboarding_preview, owner_candidates = [], []
+    if employee_id is None:
+        onboarding_preview = db.execute(
+            "SELECT title, description, category FROM onboarding_steps"
+            " WHERE active = '1' ORDER BY sort_order, id").fetchall()
+        owner_candidates = onboarding_owner_candidates(db)
+        if onboarding_owner_id is None:
+            onboarding_owner_id = default_onboarding_owner_id(db)
     return render_template(
         "employee_form.html", values=values, roles=EMPLOYEE_ROLES,
         role_tree=ROLE_TREE,
@@ -9459,6 +9500,9 @@ def render_employee_form(values, employee_id=None, username="", access_level="",
         username=username, access_level=access_level, access_levels=ACCESS_LEVELS,
         duplicate_warning=duplicate_warning,
         supervisor_checked=(str(is_supervisor or "") == "1"),
+        onboarding_preview=onboarding_preview,
+        onboarding_owner_candidates=owner_candidates,
+        onboarding_owner_id=str(onboarding_owner_id or ""),
     )
 
 
@@ -9628,10 +9672,38 @@ def new_employee():
             db.execute("UPDATE employees SET is_supervisor = ? WHERE id = ?",
                        ("1" if request.form.get("is_supervisor") else "",
                         cur.lastrowid))
+        # Piece 31.2: put someone on the hook for finishing onboarding. Use the
+        # chosen owner if it's a valid GM/Supervisor, else fall back to the GM.
+        owner_id = _resolve_onboarding_owner(
+            db, request.form.get("onboarding_owner_id", ""))
+        db.execute("UPDATE employees SET onboarding_owner_id = ? WHERE id = ?",
+                   (owner_id, cur.lastrowid))
         db.commit()
-        flash(f"Employee added: {values['name']}")
-        return redirect(url_for("employee_detail", employee_id=cur.lastrowid))
+        if owner_id:
+            _, done, total = onboarding_overview(db, cur.lastrowid)
+            notify_employees(
+                db, [int(owner_id)],
+                f"You're responsible for onboarding {values['name']} — "
+                f"{total} step{'s' if total != 1 else ''} to complete.",
+                link=url_for("employee_detail", employee_id=cur.lastrowid,
+                             welcome=1, _anchor="onboarding"),
+                kind="onboarding")
+            db.commit()
+        flash(f"Employee added: {values['name']} — now complete their onboarding.")
+        return redirect(url_for("employee_detail", employee_id=cur.lastrowid,
+                                welcome=1, _anchor="onboarding"))
     return render_employee_form({})
+
+
+def _resolve_onboarding_owner(db, raw):
+    """Validate a submitted onboarding-owner id: it must be a current GM or
+    Supervisor with a login. Anything else (blank, stale, ineligible) falls
+    back to the default owner (the GM)."""
+    valid = {str(r["id"]) for r in onboarding_owner_candidates(db)}
+    raw = str(raw or "").strip()
+    if raw in valid:
+        return raw
+    return default_onboarding_owner_id(db)
 
 
 @app.route("/employees/<int:employee_id>")
@@ -9671,6 +9743,13 @@ def employee_detail(employee_id):
         (employee_id,)).fetchall()
     onboarding_rows, onboarding_done, onboarding_total = onboarding_overview(
         db, employee_id)  # Piece 29.2
+    # Piece 31.2: who's accountable for finishing this person's onboarding.
+    owner_id = str(employee["onboarding_owner_id"]
+                   if "onboarding_owner_id" in employee.keys() else "") or ""
+    onboarding_owner = None
+    if owner_id:
+        onboarding_owner = db.execute(
+            "SELECT id, name FROM employees WHERE id = ?", (owner_id,)).fetchone()
     # Piece 25.0: in-place edit — ?edit_credential pre-fills the add form.
     edit_credential = None
     if request.args.get("edit_credential", type=int):
@@ -9688,6 +9767,10 @@ def employee_detail(employee_id):
         can_revoke_this=can_revoke_target(current_user(), employee),
         onboarding=onboarding_rows, onboarding_done=onboarding_done,  # Piece 29.2
         onboarding_total=onboarding_total,
+        onboarding_owner=onboarding_owner,  # Piece 31.2
+        onboarding_owner_candidates=onboarding_owner_candidates(db),
+        onboarding_owner_id=owner_id,
+        onboarding_just_created=bool(request.args.get("welcome")),
     )
 
 
@@ -9892,6 +9975,37 @@ def employee_onboarding_toggle(employee_id, step_id):
             " done_by, note) VALUES (?, ?, ?, ?, ?, ?)",
             (employee_id, step_id, "1" if now_done else "", stamp, by, note))
     db.commit()
+    return redirect(url_for("employee_detail", employee_id=employee_id,
+                            _anchor="onboarding"))
+
+
+@app.route("/employees/<int:employee_id>/onboarding/owner", methods=["POST"])
+@admin_required
+def employee_onboarding_owner(employee_id):
+    """Piece 31.2: reassign who's accountable for finishing this person's
+    onboarding. Only a current GM/Supervisor is accepted; the new owner is
+    notified of what's still outstanding."""
+    db = get_db()
+    emp = db.execute("SELECT id, name FROM employees WHERE id = ?",
+                     (employee_id,)).fetchone()
+    if not emp:
+        abort(404)
+    owner_id = _resolve_onboarding_owner(
+        db, request.form.get("onboarding_owner_id", ""))
+    db.execute("UPDATE employees SET onboarding_owner_id = ? WHERE id = ?",
+               (owner_id, employee_id))
+    db.commit()
+    if owner_id:
+        _, done, total = onboarding_overview(db, employee_id)
+        notify_employees(
+            db, [int(owner_id)],
+            f"You're now responsible for onboarding {emp['name']} — "
+            f"{done}/{total} steps complete.",
+            link=url_for("employee_detail", employee_id=employee_id,
+                         _anchor="onboarding"),
+            kind="onboarding")
+        db.commit()
+        flash("Onboarding responsibility updated.")
     return redirect(url_for("employee_detail", employee_id=employee_id,
                             _anchor="onboarding"))
 

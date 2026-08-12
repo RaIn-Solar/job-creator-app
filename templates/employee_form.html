@@ -137,6 +137,52 @@
       </fieldset>
     </div>
     {% endif %}
+
+    {# Piece 31.2: onboarding is initiated here, as the last step of intake —
+       once the profile is saved, this new hire's onboarding checklist starts and
+       someone is put on the hook for finishing it. New-employee form only. #}
+    {% if not employee_id %}
+    <div class="field wide">
+      <fieldset class="section">
+        <legend>🚀 Onboarding</legend>
+        <p class="muted" style="margin:0 0 0.6rem; font-size:0.85rem;">
+          Saving this profile <strong>starts {{ values.get('first_name') or 'this person' }}'s
+          onboarding</strong>. The person you choose below is responsible for making
+          sure every to-do below gets done — they'll get a notification, and you'll
+          land on the checklist to start ticking items off.</p>
+
+        <div class="field" style="max-width:22rem;">
+          <label for="onboarding_owner_id">Who's responsible for onboarding?</label>
+          <select id="onboarding_owner_id" name="onboarding_owner_id">
+            {% if not onboarding_owner_candidates %}
+            <option value="">No General Manager or Supervisor set up yet</option>
+            {% endif %}
+            {% for o in onboarding_owner_candidates %}
+            <option value="{{ o['id'] }}" {% if onboarding_owner_id == o['id']|string %}selected{% endif %}>{{ o['name'] }}</option>
+            {% endfor %}
+          </select>
+          <p class="muted" style="margin:0.35rem 0 0; font-size:0.8rem;">Defaults to the
+            General Manager. Only GMs and Supervisors can be assigned.</p>
+        </div>
+
+        {% if onboarding_preview %}
+        <p class="muted" style="margin:0.9rem 0 0.3rem; font-size:0.82rem;">
+          Checklist they'll be responsible for ({{ onboarding_preview|length }} step{{ 's' if onboarding_preview|length != 1 else '' }}):</p>
+        <ul style="margin:0; padding-left:1.1rem; font-size:0.85rem;">
+          {% for s in onboarding_preview %}
+          <li style="margin:0.15rem 0;">{{ s['title'] }}{% if s['category'] %}
+            <span class="badge neutral" style="font-size:0.72rem;">{{ s['category'] }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        <p class="muted" style="margin:0.5rem 0 0; font-size:0.8rem;">Edit this template
+          any time under Employees → Onboarding checklist.</p>
+        {% else %}
+        <p class="muted" style="margin:0.6rem 0 0; font-size:0.82rem;">No onboarding
+          steps are defined yet — you can set them up after saving.</p>
+        {% endif %}
+      </fieldset>
+    </div>
+    {% endif %}
   </div>
   <p class="muted" style="margin:0.6rem 0 0;">💡 Licenses, certifications
   (with expiry dates) and document copies are added on the employee's profile

@@ -90,6 +90,28 @@
     <a href="{{ url_for('onboarding_checklist') }}" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Edit checklist template</a>
     {% endif %}
   </div>
+  {% if onboarding_just_created %}
+  <div class="flash" style="background:#eef6ff; border-color:#bcdcff; color:#0b4a8f; margin:0 0 0.8rem;">
+    ✅ <strong>Profile saved.</strong> This is the last step of intake — work through
+    {{ employee["name"] }}'s onboarding to-do's below.
+  </div>
+  {% endif %}
+  {# Piece 31.2: who's accountable for finishing onboarding. #}
+  <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; margin:0 0 0.8rem; padding:0.55rem 0.7rem; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
+    <span style="font-size:0.9rem;">🧑‍💼 <strong>Responsible:</strong>
+      {% if onboarding_owner %}{{ onboarding_owner["name"] }}{% else %}<span class="muted">no one assigned</span>{% endif %}</span>
+    {% if can('employees.manage') and onboarding_owner_candidates %}
+    <form method="post" action="{{ url_for('employee_onboarding_owner', employee_id=employee['id']) }}"
+          style="margin:0 0 0 auto; display:flex; gap:0.4rem; align-items:center;">
+      <select name="onboarding_owner_id" style="font-size:0.85rem; padding:0.2rem 0.4rem;">
+        {% for o in onboarding_owner_candidates %}
+        <option value="{{ o['id'] }}" {% if onboarding_owner_id == o['id']|string %}selected{% endif %}>{{ o['name'] }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.82rem;">Reassign</button>
+    </form>
+    {% endif %}
+  </div>
   {% if onboarding_total %}
   {% set pct = (onboarding_done * 100 // onboarding_total) if onboarding_total else 0 %}
   <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.8rem;">

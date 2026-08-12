@@ -226,6 +226,12 @@ can confirm a pull/update took effect.
   (seeded with sensible defaults; add / edit / reorder / archive), tracked
   per employee on their profile's **Onboarding** tab with a progress bar and
   who/when stamps. Managers check steps off; everyone else sees status read-only.
+  Onboarding is **initiated inside the New Employee form** — after the basic
+  profile fields you pick **who's responsible** for finishing it (a GM or
+  Supervisor, defaulting to the GM) and preview the steps; saving starts the
+  checklist, notifies the responsible person, and drops you on the checklist to
+  begin. The responsible person is shown on the Onboarding tab and can be
+  reassigned there.
 - **Emergency access lockout**: a GM — or a new GM-designated **Supervisor** —
   can instantly suspend **all** of an employee's access (they're signed out
   mid-session and blocked at login until reinstated); the account, login and
@@ -541,6 +547,21 @@ can confirm a pull/update took effect.
   toggle in the listing, `inventory.manage`), independent of the automatic
   zero-on-hand/unused rule. Flagged items show a **🕰 Stale** badge and join the
   stale review queue/count; Keep or Discontinue clears the manual mark.
+
+- **Piece 31.2** — onboarding is now **initiated inside the New Employee form**:
+  after the basic profile fields, a **🚀 Onboarding** section lets you pick who's
+  **responsible** for completing it (a GM or Supervisor, defaulting to the GM) and
+  previews the steps. Saving the profile starts the checklist, **notifies** the
+  responsible person, and lands you on their Onboarding tab. That tab now shows who's
+  responsible and lets a manager **reassign** it (`onboarding_owner_id` on employees).
+
+- **Piece 31.1** — in the Calculator Catalog, era badges are colour-coded: **Modern**
+  stays green, **Vintage** is now orange, so the two are distinguishable at a glance.
+
+- **Piece 31.0** — on **desktop**, nav dropdowns (Team / Databases / Admin) now close
+  when another opens, when you click away, or on Escape — so they can't overlap and
+  cause misclicks. **Touch/mobile** keeps the original sticky behaviour (guarded by
+  `matchMedia`).
 
 - **Piece 30.9** — the New Employee **Roles** picker is now an **indented org-chart
   tree** (checkboxes) matching the finance team's outline; roles were renamed to
