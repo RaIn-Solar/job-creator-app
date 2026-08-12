@@ -1115,7 +1115,7 @@ PRODUCTS = [
 
 # Shown in the footer of every page so it's always obvious which build
 # is running. Bumped with each piece.
-VERSION = "Piece 31.2"
+VERSION = "Piece 31.3"
 
 UPLOADS_DIR = DATA_DIR / "uploads"
 ALLOWED_EXTENSIONS = {
@@ -9674,11 +9674,13 @@ def new_employee():
                         cur.lastrowid))
         # Piece 31.2: put someone on the hook for finishing onboarding. Use the
         # chosen owner if it's a valid GM/Supervisor, else fall back to the GM.
-        owner_id = _resolve_onboarding_owner(
-            db, request.form.get("onboarding_owner_id", ""))
+        chosen_owner = request.form.get("onboarding_owner_id", "")
+        owner_id, owner_rejected = _resolve_onboarding_owner(db, chosen_owner)
         db.execute("UPDATE employees SET onboarding_owner_id = ? WHERE id = ?",
                    (owner_id, cur.lastrowid))
         db.commit()
+        if owner_rejected:
+            _flash_owner_override(db, chosen_owner, owner_id)
         if owner_id:
             _, done, total = onboarding_overview(db, cur.lastrowid)
             notify_employees(
@@ -9697,13 +9699,38 @@ def new_employee():
 
 def _resolve_onboarding_owner(db, raw):
     """Validate a submitted onboarding-owner id: it must be a current GM or
-    Supervisor with a login. Anything else (blank, stale, ineligible) falls
-    back to the default owner (the GM)."""
+    Supervisor with a login. Returns (owner_id, rejected) — `rejected` is True
+    only when a specific person was chosen but doesn't qualify, so callers can
+    tell the user their choice wasn't applied. A blank choice (no selection) or
+    an already-valid one is not a rejection. Invalid/blank falls back to the
+    default owner (the GM)."""
     valid = {str(r["id"]) for r in onboarding_owner_candidates(db)}
     raw = str(raw or "").strip()
     if raw in valid:
-        return raw
-    return default_onboarding_owner_id(db)
+        return raw, False
+    return default_onboarding_owner_id(db), bool(raw)
+
+
+def _flash_owner_override(db, chosen_raw, owner_id):
+    """Piece 31.2: warn that a submitted onboarding owner was overridden.
+    Names both the rejected pick (if we can still find them) and who ended up
+    responsible, so the notice is actionable."""
+    chosen = db.execute("SELECT name FROM employees WHERE id = ?",
+                        (chosen_raw,)).fetchone() if str(chosen_raw).strip() else None
+    who = chosen["name"] if chosen else "That person"
+    if owner_id:
+        landed = db.execute("SELECT name FROM employees WHERE id = ?",
+                            (owner_id,)).fetchone()
+        landed_name = landed["name"] if landed else "the General Manager"
+        flash(f"{who} can't be made responsible for onboarding — only a General "
+              f"Manager or a Supervisor can. Responsibility went to {landed_name} "
+              "instead; reassign it on the Onboarding tab if that's not right.",
+              "error")
+    else:
+        flash(f"{who} can't be made responsible for onboarding — only a General "
+              "Manager or a Supervisor can, and none is set up yet. No one is "
+              "assigned; set up a Supervisor or GM, then assign it on the "
+              "Onboarding tab.", "error")
 
 
 @app.route("/employees/<int:employee_id>")
@@ -9990,12 +10017,12 @@ def employee_onboarding_owner(employee_id):
                      (employee_id,)).fetchone()
     if not emp:
         abort(404)
-    owner_id = _resolve_onboarding_owner(
-        db, request.form.get("onboarding_owner_id", ""))
+    chosen_owner = request.form.get("onboarding_owner_id", "")
+    owner_id, owner_rejected = _resolve_onboarding_owner(db, chosen_owner)
     db.execute("UPDATE employees SET onboarding_owner_id = ? WHERE id = ?",
                (owner_id, employee_id))
     db.commit()
-    if owner_id:
+    if owner_id:  # notify whoever ended up responsible — keeps accountability held
         _, done, total = onboarding_overview(db, employee_id)
         notify_employees(
             db, [int(owner_id)],
@@ -10005,6 +10032,9 @@ def employee_onboarding_owner(employee_id):
                          _anchor="onboarding"),
             kind="onboarding")
         db.commit()
+    if owner_rejected:
+        _flash_owner_override(db, chosen_owner, owner_id)
+    elif owner_id:
         flash("Onboarding responsibility updated.")
     return redirect(url_for("employee_detail", employee_id=employee_id,
                             _anchor="onboarding"))

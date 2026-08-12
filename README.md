@@ -554,6 +554,9 @@ can confirm a pull/update took effect.
   previews the steps. Saving the profile starts the checklist, **notifies** the
   responsible person, and lands you on their Onboarding tab. That tab now shows who's
   responsible and lets a manager **reassign** it (`onboarding_owner_id` on employees).
+  If a submitted owner doesn't qualify (only a GM or Supervisor can), the app now
+  **says so** — a notice names the rejected pick and who ended up responsible
+  instead (the GM), rather than falling back silently.
 
 - **Piece 31.1** — in the Calculator Catalog, era badges are colour-coded: **Modern**
   stays green, **Vintage** is now orange, so the two are distinguishable at a glance.
