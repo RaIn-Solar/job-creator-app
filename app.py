@@ -182,6 +182,7 @@ JOB_FIELDS = [
     "warranty_type", "cost_method", "tax_credit", "expand_option", "products",
     "pv_utility_connection", "pv_mounting_type", "pv_manufactured_house",
     "generator_utility_connection", "battery_utility_connection", "service_type",
+    "service_notes", "otc_parts",
     "property_type",
 ]
 
@@ -198,6 +199,8 @@ JOB_FIELD_LABELS = {
     "generator_utility_connection": "Generator — utility connection",
     "battery_utility_connection": "Battery bank — utility connection",
     "service_type": "Service type",
+    "service_notes": "Reported issue / service notes",
+    "otc_parts": "Parts sold (over-the-counter)",
     "property_type": "Property type",
 }
 
@@ -1117,6 +1120,7 @@ PRODUCTS = [
     "Well Pumps",
     "Mini Split Air Conditioners",
     "Technician Service",
+    "Over-the-Counter Parts Sale",
 ]
 
 # Shown in the footer of every page so it's always obvious which build
@@ -4660,6 +4664,9 @@ def read_job_form():
         values["pv_manufactured_house"] = ""
     if "Technician Service" not in selected:
         values["service_type"] = ""
+        values["service_notes"] = ""
+    if "Over-the-Counter Parts Sale" not in selected:
+        values["otc_parts"] = ""
     errors = []
     if not values["job_name"]:
         errors.append("Job name is required.")

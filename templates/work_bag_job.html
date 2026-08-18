@@ -18,6 +18,13 @@ time it took — split into pay types (regular, roof, travel…) if the job need
 held for your supervisor to approve, then Finance approves the hours for payroll.
 Everything is saved on this device, so it keeps working offline.</p>
 
+{% if job["service_notes"] %}
+<div class="card" style="border-left:4px solid #d9821e; background:#fff8ec;">
+  <strong>🛠️ Reported issue</strong>
+  <p style="margin:0.3rem 0 0; white-space:pre-line;">{{ job["service_notes"] }}</p>
+</div>
+{% endif %}
+
 <div id="status" class="flash" style="display:none;"></div>
 
 <div class="card">

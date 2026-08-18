@@ -178,9 +178,26 @@ recordkeeping.</p>
           {% endfor %}
         </div>
       </div>
+      <div class="field wide" style="margin-top: 0.7rem;">
+        <label for="service_notes">Reported issue / service notes
+          <span class="muted">(so the crew knows what they're walking into)</span></label>
+        <textarea id="service_notes" name="service_notes" rows="3"
+                  placeholder="Describe the problem, symptoms, what to check, site/access notes…">{{ values.get('service_notes', '') }}</textarea>
+      </div>
       <p class="muted" style="margin: 0.6rem 0 0;">Then check the products above
       that describe the part of the system needing service — their options and
       requirements apply to the ticket.</p>
+    </fieldset>
+
+    <fieldset class="section" id="otc_options" style="grid-column: 1 / -1; display: none;">
+      <legend>🧾 Over-the-Counter Parts Sale</legend>
+      <p class="muted" style="margin: 0 0 0.5rem;">A parts sale with no service work —
+      list what was purchased so it's on record.</p>
+      <div class="field wide">
+        <label for="otc_parts">Parts sold / notes</label>
+        <textarea id="otc_parts" name="otc_parts" rows="3"
+                  placeholder="Part numbers, quantities, price, customer notes…">{{ values.get('otc_parts', '') }}</textarea>
+      </div>
     </fieldset>
   </div>
   <div class="actions">
@@ -198,6 +215,7 @@ recordkeeping.</p>
   const sectionFor = {
     "PV Systems": "pv_options",
     "Technician Service": "service_options",
+    "Over-the-Counter Parts Sale": "otc_options",
   };
   const gridProducts = ["PV Systems", "Battery Banks", "Generators"];
   const productBoxes = document.querySelectorAll('input[name="products"]');

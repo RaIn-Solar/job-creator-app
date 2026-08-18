@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     battery_utility_connection   TEXT DEFAULT '',  -- Off-grid / Grid-tie / Backup system
     service_type     TEXT DEFAULT '',   -- General service / Warranty service
     property_type    TEXT DEFAULT 'Residential',  -- Residential / Commercial
+    service_notes    TEXT DEFAULT '',   -- reported issue / notes for a Service Ticket
+    otc_parts        TEXT DEFAULT '',   -- parts sold for an over-the-counter (no-service) sale
     status           TEXT NOT NULL DEFAULT 'Proposal',  -- Piece 16 pipeline stage
     install_date     TEXT DEFAULT '',   -- Piece 18: set in Job Prep; gates Installation
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))

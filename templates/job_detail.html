@@ -190,6 +190,12 @@
     {% if job["service_type"] %}
     <dt>Service type</dt><dd>{{ job["service_type"] }}</dd>
     {% endif %}
+    {% if job["service_notes"] %}
+    <dt>Reported issue</dt><dd style="white-space:pre-line;">{{ job["service_notes"] }}</dd>
+    {% endif %}
+    {% if job["otc_parts"] %}
+    <dt>Parts sold (over-the-counter)</dt><dd style="white-space:pre-line;">{{ job["otc_parts"] }}</dd>
+    {% endif %}
     <dt>Created</dt><dd>{{ job["created_at"][:10] }}</dd>
   </dl>
 </div>
