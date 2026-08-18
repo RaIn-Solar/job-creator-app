@@ -1212,6 +1212,16 @@ def next_stage(status):
         return None
 
 
+def prev_stage(status):
+    """The stage immediately before `status` (None at Proposal). Lets the job
+    page offer a visible 'move back a stage' action to undo a mistaken advance."""
+    try:
+        i = STAGE_ORDER.index(status)
+        return STAGE_ORDER[i - 1] if i > 0 else None
+    except ValueError:
+        return None
+
+
 # Piece 19: role-based My Dashboard. A person belongs to a department if they
 # hold one of its roles; the dashboard stacks a section per department they're
 # in (with a mode switch to focus on one). `stages` are the pipeline statuses
@@ -7816,6 +7826,10 @@ def set_job_status(job_id):
                 gen_added, _a, _s = _generate_job_tasks(
                     db, job_row, install_raw, only_status=status)
         db.commit()
+        if status != cur and not moved_forward:
+            # Piece: a deliberate walk-back to correct a mistaken advance.
+            flash(f"Moved back to {status}. Tasks already created for later "
+                  f"stages were left in place.")
         if warn:
             flash(f"Advanced to {status} with {cur} still pending: {warn}.", "error")
         if gen_added:
@@ -8139,7 +8153,8 @@ def stage_info(db, job, groups, filed_labels):
         "permits_filed": filed, "permits_total": total, "permits_ok": permits_ok,
         "install_date": install_date, "tasks_done": tdone, "tasks_total": ttotal,
         "loads_ok": loads_ok,
-        "ready": ready, "pending": pending, "next": next_stage(status),
+        "ready": ready, "pending": pending,
+        "next": next_stage(status), "prev": prev_stage(status),
     }
 
 

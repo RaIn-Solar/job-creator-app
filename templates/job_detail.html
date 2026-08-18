@@ -92,8 +92,18 @@
     {% elif job["install_date"] %}
     <span class="muted" style="font-size:0.82rem;">📅 Install date {{ job["install_date"] }}</span>
     {% endif %}
-    {% if stage.next %}
+    {% if stage.prev %}
+    {# Visible walk-back to undo a mistaken advance (backward moves skip the
+       forward turnover side-effects; tasks already created are left alone). #}
     <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="margin:0 0 0 auto;"
+          onsubmit="return confirm('Move this job back to {{ stage.prev }}? Tasks already created for later stages aren’t removed.');">
+      <input type="hidden" name="status" value="{{ stage.prev }}">
+      <button type="submit" class="btn btn-secondary" style="padding:0.35rem 0.8rem;"
+              title="Move back a stage — corrects a mistaken advance">← Back to {{ stage.prev }}</button>
+    </form>
+    {% endif %}
+    {% if stage.next %}
+    <form method="post" action="{{ url_for('set_job_status', job_id=job['id']) }}" style="margin:0 0 0 {{ 'auto' if not stage.prev else '0.6rem' }};"
           {% if not stage.ready %}onsubmit="return confirm('This stage isn’t complete ({{ stage.pending|join(', ') }}). Advance to {{ stage.next }} anyway?');"{% endif %}>
       <input type="hidden" name="status" value="{{ stage.next }}">
       <button type="submit" class="btn {{ '' if stage.ready else 'btn-secondary' }}"
