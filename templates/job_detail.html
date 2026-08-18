@@ -26,6 +26,8 @@
 </div>
 
 <div class="card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; padding:0.7rem 0.9rem;">
+  <a href="{{ url_for('work_bag_job', job_id=job['id']) }}" class="btn"
+     title="Open this job in the field Work Bag — log hours, add receipts &amp; notes; works offline once opened">🎒 Open in Work Bag</a>
   <a href="{{ url_for('job_calendar_ics', job_id=job['id']) }}" class="btn btn-secondary"
      title="Download this job's due dates + install date to import into your calendar">📅 Calendar</a>
   <a href="{{ url_for('job_bpmn_view', job_id=job['id']) }}" class="btn">▰▰▰▱▱ Process chart</a>
